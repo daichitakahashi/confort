@@ -26,10 +26,13 @@ type Group struct {
 	network   *types.NetworkResource
 
 	m         sync.Mutex
+	terminate []TerminateFunc
 	endpoints map[string]map[nat.Port]string
 }
 
-func NewGroup(ctx context.Context, tb testing.TB, namespace, network string, opts ...client.Opt) *Group {
+type TerminateFunc func()
+
+func NewGroup(ctx context.Context, tb testing.TB, namespace, network string, opts ...client.Opt) (*Group, TerminateFunc) {
 	tb.Helper()
 
 	if namespace == "" {
@@ -80,11 +83,29 @@ func NewGroup(ctx context.Context, tb testing.TB, namespace, network string, opt
 		}
 	}
 
-	return &Group{
+	g := &Group{
 		cli:       cli,
 		namespace: namespace,
 		network:   nw,
+		endpoints: map[string]map[nat.Port]string{},
 	}
+	term := func() {
+		ctx := context.Background()
+
+		last := len(g.terminate) - 1
+		for i := range g.terminate {
+			g.terminate[last-i]()
+		}
+
+		if g.network != nil {
+			err := g.cli.NetworkRemove(ctx, g.network.ID)
+			if err != nil {
+				tb.Logf("error occurred in remove network %q: %s", network, err)
+			}
+		}
+	}
+
+	return g, term
 }
 
 type Container struct {
@@ -102,12 +123,9 @@ type RunOption struct {
 	HostConfig      func(config *container.HostConfig)
 	NetworkConfig   func(config *network.NetworkingConfig)
 	PullOptions     *types.ImagePullOptions
-	AutoCleanup     bool
 }
 
-type TerminateFunc func()
-
-func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Container, opt RunOption) (map[nat.Port]string, TerminateFunc) {
+func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Container, opt RunOption) map[nat.Port]string {
 	tb.Helper()
 
 	if g.namespace != "" {
@@ -120,7 +138,7 @@ func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Containe
 	// find cached endpoints
 	endpoints, ok := g.endpoints[name]
 	if ok {
-		return endpoints, nil
+		return endpoints
 	}
 
 	// find existing container
@@ -139,7 +157,7 @@ func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Containe
 			}
 		}
 		g.endpoints[name] = endpoints
-		return endpoints, func() {}
+		return endpoints
 	}
 
 	if opt.PullOptions != nil {
@@ -202,7 +220,7 @@ func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Containe
 	}
 
 	var success bool
-	terminate := func() {
+	term := func() {
 		err := g.cli.ContainerStop(context.Background(), created.ID, nil)
 		if err != nil {
 			tb.Log(err)
@@ -210,7 +228,7 @@ func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Containe
 	}
 	defer func() {
 		if !success {
-			terminate()
+			term()
 		}
 	}()
 
@@ -230,14 +248,10 @@ func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Containe
 		endpoints[p] = b.HostIP + ":" + b.HostPort
 	}
 
-	if opt.AutoCleanup {
-		tb.Cleanup(terminate)
-		terminate = func() {}
-	}
-
+	g.terminate = append(g.terminate, term)
 	g.endpoints[name] = endpoints
 	success = true
-	return endpoints, terminate
+	return endpoints
 }
 
 func (g *Group) existingContainer(ctx context.Context, image, name string) (*types.Container, error) {
@@ -260,7 +274,7 @@ func (g *Group) existingContainer(ctx context.Context, image, name string) (*typ
 	return nil, nil
 }
 
-func (g *Group) BuildAndRun(ctx context.Context, tb testing.TB, dockerfile string, skip bool, name string, c *Container, opt RunOption) (map[nat.Port]string, TerminateFunc) {
+func (g *Group) BuildAndRun(ctx context.Context, tb testing.TB, dockerfile string, skip bool, name string, c *Container, opt RunOption) map[nat.Port]string {
 	tb.Helper()
 
 	// 指定の名前のイメージが既に存在するかどうかの確認
