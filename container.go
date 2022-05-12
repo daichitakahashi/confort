@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/docker/docker/api/types"
@@ -23,6 +24,9 @@ type Group struct {
 	cli       *client.Client
 	namespace string
 	network   *types.NetworkResource
+
+	m         sync.Mutex
+	endpoints map[string]map[nat.Port]string
 }
 
 func NewGroup(ctx context.Context, tb testing.TB, namespace, network string, opts ...client.Opt) *Group {
@@ -110,22 +114,32 @@ func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Containe
 		name = g.namespace + "-" + name
 	}
 
+	g.m.Lock()
+	defer g.m.Unlock()
+
+	// find cached endpoints
+	endpoints, ok := g.endpoints[name]
+	if ok {
+		return endpoints, nil
+	}
+
 	// find existing container
 	existing, err := g.existingContainer(ctx, c.Image, name)
 	if err != nil {
 		tb.Fatal(err)
 	} else if existing != nil {
-		ports := map[nat.Port]string{}
+		endpoints = map[nat.Port]string{}
 		for _, p := range existing.Ports {
 			if p.IP != "" {
 				np, err := nat.NewPort(p.Type, fmt.Sprint(p.PrivatePort))
 				if err != nil {
 					tb.Fatal(err)
 				}
-				ports[np] = p.IP + ":" + fmt.Sprint(p.PublicPort)
+				endpoints[np] = p.IP + ":" + fmt.Sprint(p.PublicPort)
 			}
 		}
-		return ports, func() {}
+		g.endpoints[name] = endpoints
+		return endpoints, func() {}
 	}
 
 	if opt.PullOptions != nil {
@@ -204,7 +218,7 @@ func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Containe
 	if err != nil {
 		tb.Fatal(err)
 	}
-	ports := map[nat.Port]string{}
+	endpoints = map[nat.Port]string{}
 	for p, bindings := range i.NetworkSettings.Ports {
 		if len(bindings) == 0 {
 			continue
@@ -213,7 +227,7 @@ func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Containe
 		if b.HostPort == "" {
 			continue
 		}
-		ports[p] = b.HostIP + ":" + b.HostPort
+		endpoints[p] = b.HostIP + ":" + b.HostPort
 	}
 
 	if opt.AutoCleanup {
@@ -221,8 +235,9 @@ func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Containe
 		terminate = func() {}
 	}
 
+	g.endpoints[name] = endpoints
 	success = true
-	return ports, terminate
+	return endpoints, terminate
 }
 
 func (g *Group) existingContainer(ctx context.Context, image, name string) (*types.Container, error) {
