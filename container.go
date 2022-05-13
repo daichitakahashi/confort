@@ -25,9 +25,26 @@ type Group struct {
 	namespace string
 	network   *types.NetworkResource
 
-	m         sync.Mutex
-	terminate []TerminateFunc
-	endpoints map[string]map[nat.Port]string
+	m          sync.Mutex
+	terminate  []TerminateFunc
+	containers map[string]*containerInfo
+}
+
+type Container struct {
+	Image        string
+	Env          []string
+	Cmd          []string
+	Entrypoint   []string
+	ExposedPorts []string
+	WaitFor      wait.Strategy
+}
+
+type containerInfo struct {
+	name      string
+	c         *Container
+	opt       RunOption
+	endpoints map[nat.Port]string
+	started   bool
 }
 
 type TerminateFunc func()
@@ -52,7 +69,7 @@ func NewGroup(ctx context.Context, tb testing.TB, namespace, network string, opt
 
 	var nw *types.NetworkResource
 	if network != "" {
-		// ネットワークの存在を確認、なければ作成
+		// create network if not exists
 		list, err := cli.NetworkList(ctx, types.NetworkListOptions{})
 		if err != nil {
 			tb.Fatal(err)
@@ -66,7 +83,6 @@ func NewGroup(ctx context.Context, tb testing.TB, namespace, network string, opt
 			}
 		}
 		if !found {
-			// TODO: **remove network**
 			created, err := cli.NetworkCreate(ctx, network, types.NetworkCreate{
 				Driver: "bridge",
 			})
@@ -84,10 +100,10 @@ func NewGroup(ctx context.Context, tb testing.TB, namespace, network string, opt
 	}
 
 	g := &Group{
-		cli:       cli,
-		namespace: namespace,
-		network:   nw,
-		endpoints: map[string]map[nat.Port]string{},
+		cli:        cli,
+		namespace:  namespace,
+		network:    nw,
+		containers: map[string]*containerInfo{},
 	}
 	term := func() {
 		ctx := context.Background()
@@ -100,7 +116,7 @@ func NewGroup(ctx context.Context, tb testing.TB, namespace, network string, opt
 		if g.network != nil {
 			err := g.cli.NetworkRemove(ctx, g.network.ID)
 			if err != nil {
-				tb.Logf("error occurred in remove network %q: %s", network, err)
+				tb.Logf("error occurred on remove network %q: %s", network, err)
 			}
 		}
 	}
@@ -108,17 +124,7 @@ func NewGroup(ctx context.Context, tb testing.TB, namespace, network string, opt
 	return g, term
 }
 
-type Container struct {
-	Image        string
-	Env          []string
-	Cmd          []string
-	Entrypoint   []string
-	ExposedPorts []string
-	WaitFor      wait.Strategy
-}
-
 type RunOption struct {
-	// Lazy          bool // TODO: Group.LazyRun(ctx, &confort.M{}, name, c)???
 	ContainerConfig func(config *container.Config)
 	HostConfig      func(config *container.HostConfig)
 	NetworkConfig   func(config *network.NetworkingConfig)
@@ -135,49 +141,158 @@ func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Containe
 	g.m.Lock()
 	defer g.m.Unlock()
 
-	// find cached endpoints
-	endpoints, ok := g.endpoints[name]
-	if ok {
-		return endpoints
+	// find existing container in Group
+	info, ok := g.containers[name]
+	if ok && info.started {
+		return info.endpoints
 	}
 
+	return g.run(ctx, tb, name, c, opt, info)
+}
+
+func (g *Group) run(ctx context.Context, tb testing.TB, name string, c *Container, opt RunOption, info *containerInfo) map[nat.Port]string {
 	// find existing container
+	var containerID string
 	existing, err := g.existingContainer(ctx, c.Image, name)
 	if err != nil {
 		tb.Fatal(err)
 	} else if existing != nil {
-		endpoints = map[nat.Port]string{}
-		for _, p := range existing.Ports {
-			if p.IP != "" {
-				np, err := nat.NewPort(p.Type, fmt.Sprint(p.PrivatePort))
-				if err != nil {
-					tb.Fatal(err)
+		switch existing.State {
+		case "running":
+			endpoints := map[nat.Port]string{}
+			for _, p := range existing.Ports {
+				if p.IP != "" {
+					np, err := nat.NewPort(p.Type, fmt.Sprint(p.PrivatePort))
+					if err != nil {
+						tb.Fatal(err)
+					}
+					endpoints[np] = p.IP + ":" + fmt.Sprint(p.PublicPort)
 				}
-				endpoints[np] = p.IP + ":" + fmt.Sprint(p.PublicPort)
 			}
+			if info != nil {
+				info.endpoints = endpoints
+			} else {
+				g.containers[name] = &containerInfo{
+					name:      name,
+					c:         c,
+					opt:       opt,
+					endpoints: endpoints,
+					started:   true,
+				}
+			}
+			return endpoints
+
+		case "created": // LazyRun
+			containerID = existing.ID
+
+		case "paused":
+			// MEMO: bound port is still existing
+			tb.Fatalf("cannot start %q: unpause is not supported", name)
+
+		default:
+			tb.Fatalf("cannot start %q: unexpected container state %s", name, existing.State)
 		}
-		g.endpoints[name] = endpoints
-		return endpoints
 	}
 
+	// create container if not exists
+	if containerID == "" {
+		containerID, err = g.createContainer(ctx, name, c, opt)
+		if err != nil {
+			tb.Fatal(err)
+		}
+	}
+
+	err = g.cli.ContainerStart(ctx, containerID, types.ContainerStartOptions{})
+	if err != nil {
+		tb.Fatal(err)
+	}
+
+	var success bool
+	term := func() {
+		err := g.cli.ContainerStop(context.Background(), containerID, nil)
+		if err != nil {
+			tb.Log(err)
+		}
+	}
+	defer func() {
+		if !success {
+			term()
+		}
+	}()
+
+	i, err := g.cli.ContainerInspect(ctx, containerID)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	endpoints := map[nat.Port]string{}
+	for p, bindings := range i.NetworkSettings.Ports {
+		if len(bindings) == 0 {
+			continue
+		}
+		b := bindings[0]
+		if b.HostPort == "" {
+			continue
+		}
+		endpoints[p] = b.HostIP + ":" + b.HostPort
+	}
+
+	if info != nil {
+		info.endpoints = endpoints
+	} else {
+		g.containers[name] = &containerInfo{
+			name:      name,
+			c:         c,
+			opt:       opt,
+			endpoints: endpoints,
+			started:   true,
+		}
+	}
+	g.terminate = append(g.terminate, term)
+	success = true
+	return endpoints
+}
+
+func (g *Group) existingContainer(ctx context.Context, image, name string) (*types.Container, error) {
+	name = "/" + name
+
+	containers, err := g.cli.ContainerList(ctx, types.ContainerListOptions{
+		All: true, // contains exiting/paused images
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range containers {
+		for _, n := range c.Names {
+			if name == n {
+				if c.Image == image {
+					return &c, nil
+				}
+				return nil, fmt.Errorf("container name %q already exists but image is not %q(%q)", name, image, c.Image)
+			}
+		}
+	}
+	return nil, nil
+}
+
+func (g *Group) createContainer(ctx context.Context, name string, c *Container, opt RunOption) (string, error) {
 	if opt.PullOptions != nil {
 		rc, err := g.cli.ImagePull(ctx, c.Image, *opt.PullOptions)
 		if err != nil {
-			tb.Fatalf("pull: %s", err)
+			return "", fmt.Errorf("pull: %s", err)
 		}
 		_, err = io.ReadAll(rc)
 		if err != nil {
-			tb.Fatalf("pull: %s", err)
+			return "", fmt.Errorf("pull: %s", err)
 		}
 		err = rc.Close()
 		if err != nil {
-			tb.Fatalf("pull: %s", err)
+			return "", fmt.Errorf("pull: %s", err)
 		}
 	}
 
 	portSet, portBindings, err := nat.ParsePortSpecs(c.ExposedPorts)
 	if err != nil {
-		tb.Fatal(err)
+		return "", err
 	}
 
 	cc := &container.Config{
@@ -210,68 +325,7 @@ func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Containe
 	}
 
 	created, err := g.cli.ContainerCreate(ctx, cc, hc, nc, nil, name)
-	if err != nil {
-		tb.Fatal(err)
-	}
-
-	err = g.cli.ContainerStart(ctx, created.ID, types.ContainerStartOptions{})
-	if err != nil {
-		tb.Fatal(err)
-	}
-
-	var success bool
-	term := func() {
-		err := g.cli.ContainerStop(context.Background(), created.ID, nil)
-		if err != nil {
-			tb.Log(err)
-		}
-	}
-	defer func() {
-		if !success {
-			term()
-		}
-	}()
-
-	i, err := g.cli.ContainerInspect(ctx, created.ID)
-	if err != nil {
-		tb.Fatal(err)
-	}
-	endpoints = map[nat.Port]string{}
-	for p, bindings := range i.NetworkSettings.Ports {
-		if len(bindings) == 0 {
-			continue
-		}
-		b := bindings[0]
-		if b.HostPort == "" {
-			continue
-		}
-		endpoints[p] = b.HostIP + ":" + b.HostPort
-	}
-
-	g.terminate = append(g.terminate, term)
-	g.endpoints[name] = endpoints
-	success = true
-	return endpoints
-}
-
-func (g *Group) existingContainer(ctx context.Context, image, name string) (*types.Container, error) {
-	name = "/" + name
-
-	containers, err := g.cli.ContainerList(ctx, types.ContainerListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for _, c := range containers {
-		for _, n := range c.Names {
-			if name == n {
-				if c.Image == image {
-					return &c, nil
-				}
-				return nil, fmt.Errorf("container name %q already exists but image is not %q(%q)", name, image, c.Image)
-			}
-		}
-	}
-	return nil, nil
+	return created.ID, err
 }
 
 func (g *Group) BuildAndRun(ctx context.Context, tb testing.TB, dockerfile string, skip bool, name string, c *Container, opt RunOption) map[nat.Port]string {
@@ -354,6 +408,73 @@ LOOP:
 
 	opt.PullOptions = nil
 	return g.Run(ctx, tb, name, c, opt)
+}
+
+// LazyRun creates container but do not start.
+// If container is already created/started by other test or process, LazyRun just
+// store container info. It makes no error.
+//
+// We can start created container by Group.Run or Group.Use. The latter is an easier
+// way because it only requires container name.
+func (g *Group) LazyRun(ctx context.Context, tb testing.TB, name string, c *Container, opt RunOption) {
+	tb.Helper()
+
+	if g.namespace != "" {
+		name = g.namespace + "-" + name
+	}
+
+	g.m.Lock()
+	defer g.m.Unlock()
+
+	// find existing container in Group
+	_, foundContainerInfo := g.containers[name]
+	if foundContainerInfo {
+		return
+	}
+
+	// find existing container
+	existing, err := g.existingContainer(ctx, c.Image, name)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	if existing == nil {
+		// create if not exists
+		_, err = g.createContainer(ctx, name, c, opt)
+		if err != nil {
+			tb.Fatal(err)
+		}
+	}
+
+	g.containers[name] = &containerInfo{
+		name:      name,
+		c:         c,
+		opt:       opt,
+		endpoints: nil,
+		started:   false,
+	}
+}
+
+// Use starts container created by LazyRun and returns endpoint info.
+// If the container is already started by other test or process, Use reuse it.
+func (g *Group) Use(ctx context.Context, tb testing.TB, name string) map[nat.Port]string {
+	tb.Helper()
+
+	if g.namespace != "" {
+		name = g.namespace + "-" + name
+	}
+
+	g.m.Lock()
+	defer g.m.Unlock()
+
+	// find LazyRun container
+	info, ok := g.containers[name]
+	if !ok {
+		tb.Fatalf("container %q not found", name)
+	} else if info.started {
+		return info.endpoints
+	}
+
+	return g.run(ctx, tb, name, info.c, info.opt, info)
 }
 
 func archive(dockerfileName, dockerfile string) (io.Reader, error) {
