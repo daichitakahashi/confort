@@ -131,6 +131,9 @@ type RunOption struct {
 	PullOptions     *types.ImagePullOptions
 }
 
+// Run starts container from given parameters.
+// If container already exists and not started, Run start it.
+// It reuses already started container and its endpoint information.
 func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Container, opt RunOption) map[nat.Port]string {
 	tb.Helper()
 
@@ -328,6 +331,12 @@ func (g *Group) createContainer(ctx context.Context, name string, c *Container, 
 	return created.ID, err
 }
 
+// BuildAndRun builds new image and start.
+// It creates Dockerfile as temporary file. Usually we cannot use both `ADD` and `COPY`
+// instructions because absolute path is not allowed.
+//
+// When same name image already exists and skip == true, BuildAndRun skips to build. In
+// other words, it always builds image when skip == false.
 func (g *Group) BuildAndRun(ctx context.Context, tb testing.TB, dockerfile string, skip bool, name string, c *Container, opt RunOption) map[nat.Port]string {
 	tb.Helper()
 
