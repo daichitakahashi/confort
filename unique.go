@@ -18,12 +18,11 @@ type Unique[T comparable] struct {
 	retry uint
 }
 
-type UniqueOption interface {
-	option.Interface
-	unique()
-}
-
 type (
+	UniqueOption interface {
+		option.Interface
+		unique()
+	}
 	identOptionRetry struct{}
 	uniqueOption     struct{ option.Interface }
 )

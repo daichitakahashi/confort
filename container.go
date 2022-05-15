@@ -17,6 +17,7 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
+	"github.com/lestrrat-go/option"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
@@ -42,33 +43,76 @@ type Container struct {
 type containerInfo struct {
 	name      string
 	c         *Container
-	opt       RunOption
+	opts      []RunOption
 	endpoints map[nat.Port]string
 	started   bool
 }
 
 type TerminateFunc func()
 
-func NewGroup(ctx context.Context, tb testing.TB, namespace, network string, opts ...client.Opt) (*Group, TerminateFunc) {
+type (
+	GroupOption interface {
+		option.Interface
+		group()
+	}
+	identOptionNamespace  struct{}
+	identOptionNetwork    struct{}
+	identOptionClientOpts struct{}
+	groupOption           struct{ option.Interface }
+)
+
+func (groupOption) group() {}
+
+func WithNamespace(s string) GroupOption {
+	return groupOption{
+		Interface: option.New(identOptionNamespace{}, s),
+	}
+}
+
+func WithNetwork(s string) GroupOption {
+	return groupOption{
+		Interface: option.New(identOptionNetwork{}, s),
+	}
+}
+
+func WithClientOpts(opts ...client.Opt) GroupOption {
+	return groupOption{
+		Interface: option.New(identOptionClientOpts{}, opts),
+	}
+}
+
+func NewGroup(ctx context.Context, tb testing.TB, opts ...GroupOption) (*Group, TerminateFunc) {
 	tb.Helper()
 
-	if namespace == "" {
-		namespace = os.Getenv("CFT_NAMESPACE")
-	}
-	if network == "" {
-		network = os.Getenv("CFT_NETWORK")
-	} else if namespace != "" && network != "" {
-		network = namespace + "-" + network
+	namespace := os.Getenv("CFT_NAMESPACE")
+	networkName := os.Getenv("CFT_NETWORK")
+	clientOpts := []client.Opt{
+		client.FromEnv,
 	}
 
-	cli, err := client.NewClientWithOpts(opts...)
+	for _, opt := range opts {
+		switch opt.Ident() {
+		case identOptionNamespace{}:
+			namespace = opt.Value().(string)
+		case identOptionNetwork{}:
+			networkName = opt.Value().(string)
+		case identOptionClientOpts{}:
+			clientOpts = opt.Value().([]client.Opt)
+		}
+	}
+
+	if namespace != "" && networkName != "" {
+		networkName = namespace + "-" + networkName
+	}
+
+	cli, err := client.NewClientWithOpts(clientOpts...)
 	if err != nil {
 		tb.Fatal(err)
 	}
 	cli.NegotiateAPIVersion(ctx)
 
 	var nw *types.NetworkResource
-	if network != "" {
+	if networkName != "" {
 		// create network if not exists
 		list, err := cli.NetworkList(ctx, types.NetworkListOptions{})
 		if err != nil {
@@ -77,13 +121,13 @@ func NewGroup(ctx context.Context, tb testing.TB, namespace, network string, opt
 
 		var found bool
 		for _, n := range list {
-			if n.Name == network {
+			if n.Name == networkName {
 				found = true
 				break
 			}
 		}
 		if !found {
-			created, err := cli.NetworkCreate(ctx, network, types.NetworkCreate{
+			created, err := cli.NetworkCreate(ctx, networkName, types.NetworkCreate{
 				Driver: "bridge",
 			})
 			if err != nil {
@@ -116,25 +160,60 @@ func NewGroup(ctx context.Context, tb testing.TB, namespace, network string, opt
 		if g.network != nil {
 			err := g.cli.NetworkRemove(ctx, g.network.ID)
 			if err != nil {
-				tb.Logf("error occurred on remove network %q: %s", network, err)
+				tb.Logf("error occurred on remove network %q: %s", networkName, err)
 			}
+		}
+		err = g.cli.Close()
+		if err != nil {
+			tb.Log(err)
 		}
 	}
 
 	return g, term
 }
 
-type RunOption struct {
-	ContainerConfig func(config *container.Config)
-	HostConfig      func(config *container.HostConfig)
-	NetworkConfig   func(config *network.NetworkingConfig)
-	PullOptions     *types.ImagePullOptions
+type (
+	RunOption interface {
+		option.Interface
+		run()
+	}
+	identOptionContainerConfig  struct{}
+	identOptionHostConfig       struct{}
+	identOptionNetworkingConfig struct{}
+	identOptionPullOptions      struct{}
+	runOption                   struct{ option.Interface }
+)
+
+func (runOption) run() {}
+
+func WithContainerConfig(f func(config *container.Config)) RunOption {
+	return runOption{
+		Interface: option.New(identOptionContainerConfig{}, f),
+	}
+}
+
+func WithHostConfig(f func(config *container.HostConfig)) RunOption {
+	return runOption{
+		Interface: option.New(identOptionHostConfig{}, f),
+	}
+}
+
+func WithNetworkingConfig(f func(config *network.NetworkingConfig)) RunOption {
+	return runOption{
+		Interface: option.New(identOptionNetworkingConfig{}, f),
+	}
+}
+
+func WithPullOptions(opts types.ImagePullOptions) RunOption {
+	return runOption{
+		Interface: option.New(identOptionPullOptions{}, opts),
+	}
 }
 
 // Run starts container from given parameters.
-// If container already exists and not started, Run start it.
+// If container already exists and not started, it starts.
 // It reuses already started container and its endpoint information.
-func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Container, opt RunOption) map[nat.Port]string {
+func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Container, opts ...RunOption) map[nat.Port]string {
 	tb.Helper()
 
 	if g.namespace != "" {
@@ -150,10 +229,10 @@ func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Containe
 		return info.endpoints
 	}
 
-	return g.run(ctx, tb, name, c, opt, info)
+	return g.run(ctx, tb, name, c, info, opts...)
 }
 
-func (g *Group) run(ctx context.Context, tb testing.TB, name string, c *Container, opt RunOption, info *containerInfo) map[nat.Port]string {
+func (g *Group) run(ctx context.Context, tb testing.TB, name string, c *Container, info *containerInfo, opts ...RunOption) map[nat.Port]string {
 	// find existing container
 	var containerID string
 	existing, err := g.existingContainer(ctx, c.Image, name)
@@ -178,7 +257,7 @@ func (g *Group) run(ctx context.Context, tb testing.TB, name string, c *Containe
 				g.containers[name] = &containerInfo{
 					name:      name,
 					c:         c,
-					opt:       opt,
+					opts:      opts,
 					endpoints: endpoints,
 					started:   true,
 				}
@@ -199,7 +278,7 @@ func (g *Group) run(ctx context.Context, tb testing.TB, name string, c *Containe
 
 	// create container if not exists
 	if containerID == "" {
-		containerID, err = g.createContainer(ctx, name, c, opt)
+		containerID, err = g.createContainer(ctx, name, c, opts...)
 		if err != nil {
 			tb.Fatal(err)
 		}
@@ -245,7 +324,7 @@ func (g *Group) run(ctx context.Context, tb testing.TB, name string, c *Containe
 		g.containers[name] = &containerInfo{
 			name:      name,
 			c:         c,
-			opt:       opt,
+			opts:      opts,
 			endpoints: endpoints,
 			started:   true,
 		}
@@ -277,9 +356,28 @@ func (g *Group) existingContainer(ctx context.Context, image, name string) (*typ
 	return nil, nil
 }
 
-func (g *Group) createContainer(ctx context.Context, name string, c *Container, opt RunOption) (string, error) {
-	if opt.PullOptions != nil {
-		rc, err := g.cli.ImagePull(ctx, c.Image, *opt.PullOptions)
+func (g *Group) createContainer(ctx context.Context, name string, c *Container, opts ...RunOption) (string, error) {
+	var modifyContainer func(config *container.Config)
+	var modifyHost func(config *container.HostConfig)
+	var modifyNetworking func(config *network.NetworkingConfig)
+	var pullOptions *types.ImagePullOptions
+
+	for _, opt := range opts {
+		switch opt.Ident() {
+		case identOptionContainerConfig{}:
+			modifyContainer = opt.Value().(func(config *container.Config))
+		case identOptionHostConfig{}:
+			modifyHost = opt.Value().(func(config *container.HostConfig))
+		case identOptionNetworkingConfig{}:
+			modifyNetworking = opt.Value().(func(config *network.NetworkingConfig))
+		case identOptionPullOptions{}:
+			o := opt.Value().(types.ImagePullOptions)
+			pullOptions = &o
+		}
+	}
+
+	if pullOptions != nil {
+		rc, err := g.cli.ImagePull(ctx, c.Image, *pullOptions)
 		if err != nil {
 			return "", fmt.Errorf("pull: %s", err)
 		}
@@ -305,15 +403,15 @@ func (g *Group) createContainer(ctx context.Context, name string, c *Container, 
 		Cmd:          c.Cmd,
 		Entrypoint:   c.Entrypoint,
 	}
-	if opt.ContainerConfig != nil {
-		opt.ContainerConfig(cc)
+	if modifyContainer != nil {
+		modifyContainer(cc)
 	}
 	hc := &container.HostConfig{
 		PortBindings: portBindings,
 		AutoRemove:   true,
 	}
-	if opt.HostConfig != nil {
-		opt.HostConfig(hc)
+	if modifyHost != nil {
+		modifyHost(hc)
 	}
 	nc := &network.NetworkingConfig{}
 	if g.network != nil {
@@ -323,8 +421,8 @@ func (g *Group) createContainer(ctx context.Context, name string, c *Container, 
 			},
 		}
 	}
-	if opt.NetworkConfig != nil {
-		opt.NetworkConfig(nc)
+	if modifyNetworking != nil {
+		modifyNetworking(nc)
 	}
 
 	created, err := g.cli.ContainerCreate(ctx, cc, hc, nc, nil, name)
@@ -337,7 +435,7 @@ func (g *Group) createContainer(ctx context.Context, name string, c *Container, 
 //
 // When same name image already exists and skip == true, BuildAndRun skips to build. In
 // other words, it always builds image when skip == false.
-func (g *Group) BuildAndRun(ctx context.Context, tb testing.TB, dockerfile string, skip bool, name string, c *Container, opt RunOption) map[nat.Port]string {
+func (g *Group) BuildAndRun(ctx context.Context, tb testing.TB, dockerfile string, skip bool, name string, c *Container, opts ...RunOption) map[nat.Port]string {
 	tb.Helper()
 
 	// 指定の名前のイメージが既に存在するかどうかの確認
@@ -415,8 +513,17 @@ LOOP:
 		tb.Logf("image %q already exists", c.Image)
 	}
 
-	opt.PullOptions = nil
-	return g.Run(ctx, tb, name, c, opt)
+	var n int
+	var pullOpt identOptionPullOptions
+	for _, opt := range opts {
+		if opt.Ident() == pullOpt {
+			continue
+		}
+		opts[n] = opt
+		n++
+	}
+	opts = opts[:n]
+	return g.Run(ctx, tb, name, c, opts...)
 }
 
 // LazyRun creates container but do not start.
@@ -425,7 +532,7 @@ LOOP:
 //
 // We can start created container by Group.Run or Group.Use. The latter is an easier
 // way because it only requires container name.
-func (g *Group) LazyRun(ctx context.Context, tb testing.TB, name string, c *Container, opt RunOption) {
+func (g *Group) LazyRun(ctx context.Context, tb testing.TB, name string, c *Container, opts ...RunOption) {
 	tb.Helper()
 
 	if g.namespace != "" {
@@ -448,7 +555,7 @@ func (g *Group) LazyRun(ctx context.Context, tb testing.TB, name string, c *Cont
 	}
 	if existing == nil {
 		// create if not exists
-		_, err = g.createContainer(ctx, name, c, opt)
+		_, err = g.createContainer(ctx, name, c, opts...)
 		if err != nil {
 			tb.Fatal(err)
 		}
@@ -457,7 +564,7 @@ func (g *Group) LazyRun(ctx context.Context, tb testing.TB, name string, c *Cont
 	g.containers[name] = &containerInfo{
 		name:      name,
 		c:         c,
-		opt:       opt,
+		opts:      opts,
 		endpoints: nil,
 		started:   false,
 	}
@@ -483,7 +590,7 @@ func (g *Group) Use(ctx context.Context, tb testing.TB, name string) map[nat.Por
 		return info.endpoints
 	}
 
-	return g.run(ctx, tb, name, info.c, info.opt, info)
+	return g.run(ctx, tb, name, info.c, info, info.opts...)
 }
 
 func archive(dockerfileName, dockerfile string) (io.Reader, error) {
