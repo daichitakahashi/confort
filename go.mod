@@ -4,6 +4,8 @@ go 1.18
 
 require (
 	github.com/docker/docker v20.10.11+incompatible
+	github.com/docker/go-connections v0.4.0
+	github.com/lestrrat-go/option v1.0.0
 	github.com/testcontainers/testcontainers-go v0.13.0
 )
 
@@ -11,7 +13,6 @@ require (
 	github.com/Microsoft/go-winio v0.4.17 // indirect
 	github.com/containerd/containerd v1.5.9 // indirect
 	github.com/docker/distribution v2.7.1+incompatible // indirect
-	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-units v0.4.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
