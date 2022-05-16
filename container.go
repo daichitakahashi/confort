@@ -33,7 +33,7 @@ type Group struct {
 
 type Container struct {
 	Image        string
-	Env          []string
+	Env          map[string]string
 	Cmd          []string
 	Entrypoint   []string
 	ExposedPorts []string
@@ -396,10 +396,15 @@ func (g *Group) createContainer(ctx context.Context, name string, c *Container, 
 		return "", err
 	}
 
+	env := make([]string, 0, len(c.Env))
+	for envKey, envVar := range c.Env {
+		env = append(env, envKey+"="+envVar)
+	}
+
 	cc := &container.Config{
 		Image:        c.Image,
 		ExposedPorts: portSet,
-		Env:          c.Env,
+		Env:          env,
 		Cmd:          c.Cmd,
 		Entrypoint:   c.Entrypoint,
 	}
