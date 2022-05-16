@@ -18,7 +18,6 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	"github.com/lestrrat-go/option"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 type Group struct {
@@ -37,7 +36,7 @@ type Container struct {
 	Cmd          []string
 	Entrypoint   []string
 	ExposedPorts []string
-	WaitFor      wait.Strategy
+	Waiter       *Waiter
 }
 
 type containerInfo struct {
@@ -329,6 +328,18 @@ func (g *Group) run(ctx context.Context, tb testing.TB, name string, c *Containe
 			started:   true,
 		}
 	}
+
+	if c.Waiter != nil {
+		err = c.Waiter.Wait(ctx, &fetcher{
+			cli:         g.cli,
+			containerID: containerID,
+			endpoints:   endpoints,
+		})
+		if err != nil {
+			tb.Fatal(err)
+		}
+	}
+
 	g.terminate = append(g.terminate, term)
 	success = true
 	return endpoints
