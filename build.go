@@ -178,7 +178,8 @@ func createArchive(ctxDir, dockerfilePath string) (io.ReadCloser, error) {
 		return nil, err
 	}
 
-	// do not ignore Dockerfile and .dockerignore
+	// We have to include docker-ignored Dockerfile and .dockerignore for build.
+	// When `ADD` or `COPY` executes, daemon excludes these docker-ignored files.
 	excludes = build.TrimBuildFilesFromExcludes(excludes, relDockerfile, false)
 
 	err = build.ValidateContextDirectory(absContextDir, excludes)
