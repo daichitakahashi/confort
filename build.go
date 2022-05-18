@@ -107,12 +107,17 @@ func (g *Group) BuildAndRun(ctx context.Context, tb testing.TB, name string, b *
 	}
 
 	if !noBuild {
+		tarball, relDockerfile, err := createArchive(b.ContextDir, b.Dockerfile)
+		if err != nil {
+			tb.Fatal(err)
+		}
+
 		buildOption := types.ImageBuildOptions{
 			Tags:           []string{b.Image},
 			SuppressOutput: !b.Output,
 			Remove:         true,
 			PullParent:     true,
-			Dockerfile:     b.Dockerfile,
+			Dockerfile:     relDockerfile,
 			BuildArgs:      b.BuildArgs,
 			Target:         "",
 			SessionID:      "",
@@ -120,11 +125,6 @@ func (g *Group) BuildAndRun(ctx context.Context, tb testing.TB, name string, b *
 		}
 		if modifyBuildOptions != nil {
 			modifyBuildOptions(&buildOption)
-		}
-
-		tarball, err := createArchive(b.ContextDir, b.Dockerfile)
-		if err != nil {
-			tb.Fatal(err)
 		}
 
 		resp, err := g.cli.ImageBuild(ctx, tarball, buildOption)
@@ -162,20 +162,20 @@ func (g *Group) BuildAndRun(ctx context.Context, tb testing.TB, name string, b *
 		Env:          b.Env,
 		Cmd:          b.Cmd,
 		Entrypoint:   b.Entrypoint,
-		ExposedPorts: b.Entrypoint,
+		ExposedPorts: b.ExposedPorts,
 		Waiter:       b.Waiter,
 	}, info, runOpts...)
 }
 
-func createArchive(ctxDir, dockerfilePath string) (io.ReadCloser, error) {
+func createArchive(ctxDir, dockerfilePath string) (io.ReadCloser, string, error) {
 	absContextDir, relDockerfile, err := build.GetContextFromLocalDir(ctxDir, dockerfilePath)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	excludes, err := build.ReadDockerignore(absContextDir)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// We have to include docker-ignored Dockerfile and .dockerignore for build.
@@ -184,12 +184,16 @@ func createArchive(ctxDir, dockerfilePath string) (io.ReadCloser, error) {
 
 	err = build.ValidateContextDirectory(absContextDir, excludes)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	return archive.TarWithOptions(ctxDir, &archive.TarOptions{
+	tarball, err := archive.TarWithOptions(absContextDir, &archive.TarOptions{
 		ExcludePatterns: excludes,
 		Compression:     archive.Uncompressed,
 		NoLchown:        true,
 	})
+	if err != nil {
+		return nil, "", err
+	}
+	return tarball, relDockerfile, nil
 }

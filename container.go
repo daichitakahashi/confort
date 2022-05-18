@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 
@@ -146,6 +147,8 @@ func NewGroup(ctx context.Context, tb testing.TB, opts ...GroupOption) (*Group, 
 	}
 	term := func() {
 		ctx := context.Background()
+		g.m.Lock()
+		defer g.m.Unlock()
 
 		last := len(g.terminate) - 1
 		for i := range g.terminate {
@@ -230,6 +233,8 @@ func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Containe
 }
 
 func (g *Group) run(ctx context.Context, tb testing.TB, name string, c *Container, info *containerInfo, opts ...RunOption) map[nat.Port]string {
+	tb.Helper()
+
 	// find existing container
 	var containerID string
 	existing, err := g.existingContainer(ctx, c.Image, name)
@@ -429,9 +434,16 @@ func (g *Group) createContainer(ctx context.Context, name string, c *Container, 
 	}
 	nc := &network.NetworkingConfig{}
 	if g.network != nil {
+		var aliases []string
+		if g.namespace != "" {
+			aliases = []string{
+				strings.TrimPrefix(name, g.namespace+"-"),
+			}
+		}
 		nc.EndpointsConfig = map[string]*network.EndpointSettings{
 			g.network.ID: {
 				NetworkID: g.network.ID,
+				Aliases:   aliases,
 			},
 		}
 	}
