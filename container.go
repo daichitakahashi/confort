@@ -1,14 +1,10 @@
 package confort
 
 import (
-	"archive/tar"
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"sync"
 	"testing"
 
@@ -175,6 +171,7 @@ type (
 	RunOption interface {
 		option.Interface
 		run()
+		build()
 	}
 	identOptionContainerConfig  struct{}
 	identOptionHostConfig       struct{}
@@ -183,7 +180,8 @@ type (
 	runOption                   struct{ option.Interface }
 )
 
-func (runOption) run() {}
+func (runOption) run()   {}
+func (runOption) build() {}
 
 func WithContainerConfig(f func(config *container.Config)) RunOption {
 	return runOption{
@@ -209,7 +207,7 @@ func WithPullOptions(opts types.ImagePullOptions) RunOption {
 	}
 }
 
-// Run starts container from given parameters.
+// Run starts container with given parameters.
 // If container already exists and not started, it starts.
 // It reuses already started container and its endpoint information.
 func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Container, opts ...RunOption) map[nat.Port]string {
@@ -445,231 +443,6 @@ func (g *Group) createContainer(ctx context.Context, name string, c *Container, 
 	return created.ID, err
 }
 
-type Build struct {
-	Image      string
-	Dockerfile string
-	ContextDir string
-	BuildArgs  map[string]*string
-	Output     bool
-	Platform   string
-}
-
-type (
-	BuildOption interface {
-		option.Interface
-		build()
-	}
-	identOptionSkipIfAlreadyExists struct{}
-	identOptionImageBuildOptions   struct{}
-	buildOption                    struct{ option.Interface }
-)
-
-func (buildOption) build() {}
-
-func WithSkipIfAlreadyExists() BuildOption {
-	return buildOption{
-		Interface: option.New(identOptionSkipIfAlreadyExists{}, true),
-	}
-}
-
-func WithImageBuildOptions(f func(option *types.ImageBuildOptions)) BuildOption {
-	return buildOption{
-		Interface: option.New(identOptionImageBuildOptions{}, f),
-	}
-}
-
-func (g *Group) Build(ctx context.Context, tb testing.TB, b *Build, opts ...BuildOption) {
-	var skip bool
-	var modifyBuildOptions func(option *types.ImageBuildOptions)
-
-	for _, opt := range opts {
-		switch opt.Ident() {
-		case identOptionSkipIfAlreadyExists{}:
-			skip = opt.Value().(bool)
-		case identOptionImageBuildOptions{}:
-			modifyBuildOptions = opt.Value().(func(option *types.ImageBuildOptions))
-		}
-	}
-
-	if skip {
-		// check if the same image already exists
-		summaries, err := g.cli.ImageList(ctx, types.ImageListOptions{
-			All: true,
-		})
-		if err != nil {
-			tb.Fatal(err)
-		}
-		for _, s := range summaries {
-			for _, t := range s.RepoTags {
-				if t == b.Image {
-					tb.Logf("image %q already exists", b.Image)
-					return
-				}
-			}
-		}
-	}
-
-	dockerfile, err := os.ReadFile(b.Dockerfile)
-	if err != nil {
-		tb.Fatal(err)
-	}
-	tarball, err := archive(b.Dockerfile, string(dockerfile))
-	if err != nil {
-		tb.Fatal(err)
-	}
-
-	buildOption := types.ImageBuildOptions{
-		Tags:           []string{b.Image},
-		SuppressOutput: !b.Output,
-		Remove:         true,
-		PullParent:     true,
-		Dockerfile:     b.Dockerfile,
-		BuildArgs:      b.BuildArgs,
-		Target:         "",
-		SessionID:      "",
-		Platform:       b.Platform,
-	}
-	if modifyBuildOptions != nil {
-		modifyBuildOptions(&buildOption)
-	}
-	resp, err := g.cli.ImageBuild(ctx, tarball, buildOption)
-	if err != nil {
-		tb.Fatal(err)
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-
-	if !b.Output {
-		_, err = io.ReadAll(resp.Body)
-		if err != nil {
-			tb.Fatal(err)
-		}
-		return
-	}
-
-	var buf strings.Builder
-	dec := json.NewDecoder(resp.Body)
-	for {
-		v := map[string]interface{}{}
-		err = dec.Decode(&v)
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			tb.Fatal(err)
-		}
-		msg, ok := v["stream"].(string)
-		if ok {
-			buf.WriteString(msg)
-		}
-		errorMsg, ok := v["error"]
-		if ok {
-			tb.Log(buf.String())
-			tb.Fatal(errorMsg)
-		}
-	}
-	tb.Log(buf.String())
-
-	return
-}
-
-// BuildAndRun builds new image and start.
-// It creates Dockerfile as temporary file. Usually we cannot use both `ADD` and `COPY`
-// instructions because absolute path is not allowed.
-//
-// When same name image already exists and skip == true, BuildAndRun skips to build. In
-// other words, it always builds image when skip == false.
-func (g *Group) BuildAndRun(ctx context.Context, tb testing.TB, dockerfile string, skip bool, name string, c *Container, opts ...RunOption) map[nat.Port]string {
-	tb.Helper()
-
-	// 指定の名前のイメージが既に存在するかどうかの確認
-	var found bool
-	summaries, err := g.cli.ImageList(ctx, types.ImageListOptions{
-		All: true,
-	})
-	if err != nil {
-		tb.Fatal(err)
-	}
-LOOP:
-	for _, s := range summaries {
-		for _, t := range s.RepoTags {
-			if t == c.Image {
-				found = true
-				break LOOP
-			}
-		}
-	}
-
-	if !skip || !found {
-		f, err := os.CreateTemp("", "Dockerfile.*")
-		if err != nil {
-			tb.Fatal(err)
-		}
-		dockerfileName := f.Name()
-		defer func() {
-			_ = f.Close()
-			_ = os.Remove(dockerfileName)
-		}()
-
-		_, err = f.WriteString(dockerfile)
-		if err != nil {
-			tb.Fatal(err)
-		}
-
-		archived, err := archive(dockerfileName, dockerfile)
-		if err != nil {
-			tb.Fatal(err)
-		}
-
-		resp, err := g.cli.ImageBuild(ctx, archived, types.ImageBuildOptions{
-			Dockerfile: dockerfileName,
-			Tags:       []string{c.Image},
-			Remove:     true,
-		})
-		if err != nil {
-			tb.Fatal(err)
-		}
-		defer func() {
-			_ = resp.Body.Close()
-		}()
-
-		var buf strings.Builder
-		dec := json.NewDecoder(resp.Body)
-		for {
-			v := map[string]interface{}{}
-			err = dec.Decode(&v)
-			if err == io.EOF {
-				break
-			} else if err != nil {
-				tb.Fatal(err)
-			}
-			msg, ok := v["stream"].(string)
-			if ok {
-				buf.WriteString(msg)
-			}
-			errorMsg, ok := v["error"]
-			if ok {
-				tb.Log(buf.String())
-				tb.Fatal(errorMsg)
-			}
-		}
-	} else {
-		tb.Logf("image %q already exists", c.Image)
-	}
-
-	var n int
-	var pullOpt identOptionPullOptions
-	for _, opt := range opts {
-		if opt.Ident() == pullOpt {
-			continue
-		}
-		opts[n] = opt
-		n++
-	}
-	opts = opts[:n]
-	return g.Run(ctx, tb, name, c, opts...)
-}
-
 // LazyRun creates container but do not start.
 // If container is already created/started by other test or process, LazyRun just
 // store container info. It makes no error.
@@ -735,27 +508,4 @@ func (g *Group) Use(ctx context.Context, tb testing.TB, name string) map[nat.Por
 	}
 
 	return g.run(ctx, tb, name, info.c, info, info.opts...)
-}
-
-func archive(dockerfileName, dockerfile string) (io.Reader, error) {
-	buf := &bytes.Buffer{}
-	tw := tar.NewWriter(buf)
-
-	err := tw.WriteHeader(&tar.Header{
-		Name: dockerfileName,
-		Size: int64(len(dockerfile)),
-	})
-	if err != nil {
-		return nil, err
-	}
-	_, err = tw.Write([]byte(dockerfile))
-	if err != nil {
-		return nil, err
-	}
-	err = tw.Close()
-	if err != nil {
-		return nil, err
-	}
-
-	return buf, nil
 }
