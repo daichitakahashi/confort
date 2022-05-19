@@ -82,6 +82,9 @@ func TestNewGroup(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("got error response: %d: %s", resp.StatusCode, stat)
+		}
 		return string(stat)
 	}
 

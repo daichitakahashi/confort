@@ -111,6 +111,7 @@ func NewGroup(ctx context.Context, tb testing.TB, opts ...GroupOption) (*Group, 
 	cli.NegotiateAPIVersion(ctx)
 
 	var nw *types.NetworkResource
+	var nwCreated bool
 	if networkName != "" {
 		// create network if not exists
 		list, err := cli.NetworkList(ctx, types.NetworkListOptions{})
@@ -118,26 +119,26 @@ func NewGroup(ctx context.Context, tb testing.TB, opts ...GroupOption) (*Group, 
 			tb.Fatal(err)
 		}
 
-		var found bool
 		for _, n := range list {
 			if n.Name == networkName {
-				found = true
+				nw = &n
 				break
 			}
 		}
-		if !found {
-			created, err := cli.NetworkCreate(ctx, networkName, types.NetworkCreate{
+		if nw == nil {
+			resp, err := cli.NetworkCreate(ctx, networkName, types.NetworkCreate{
 				Driver: "bridge",
 			})
 			if err != nil {
 				tb.Fatal(err)
 			}
-			n, err := cli.NetworkInspect(ctx, created.ID, types.NetworkInspectOptions{
+			n, err := cli.NetworkInspect(ctx, resp.ID, types.NetworkInspectOptions{
 				Verbose: true,
 			})
 			if err != nil {
 				tb.Fatal(err)
 			}
+			nwCreated = true
 			nw = &n
 		}
 	}
@@ -158,7 +159,7 @@ func NewGroup(ctx context.Context, tb testing.TB, opts ...GroupOption) (*Group, 
 			g.terminate[last-i]()
 		}
 
-		if g.network != nil {
+		if nwCreated {
 			err := g.cli.NetworkRemove(ctx, g.network.ID)
 			if err != nil {
 				tb.Logf("error occurred on remove network %q: %s", networkName, err)
