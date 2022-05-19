@@ -2,18 +2,21 @@ package confort
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
+	"github.com/lestrrat-go/backoff/v2"
 	"github.com/lestrrat-go/option"
 )
 
@@ -304,20 +307,38 @@ func (g *Group) run(ctx context.Context, tb testing.TB, name string, c *Containe
 		}
 	}()
 
-	i, err := g.cli.ContainerInspect(ctx, containerID)
+	endpoints, err := func(ctx context.Context) (map[nat.Port]string, error) {
+		if _, ok := ctx.Deadline(); !ok {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+		}
+
+		b := backoff.Constant(
+			backoff.WithInterval(200 * time.Millisecond),
+		).Start(ctx)
+	retry:
+		for backoff.Continue(b) {
+			i, err := g.cli.ContainerInspect(ctx, containerID)
+			if err != nil {
+				return nil, err
+			}
+
+			endpoints := map[nat.Port]string{}
+			for p, bindings := range i.NetworkSettings.Ports {
+				if len(bindings) == 0 {
+					// endpoint not bound yet
+					continue retry
+				}
+				b := bindings[0]
+				endpoints[p] = b.HostIP + ":" + b.HostPort
+			}
+			return endpoints, nil
+		}
+		return nil, errors.New("cannot get endpoints")
+	}(ctx)
 	if err != nil {
 		tb.Fatal(err)
-	}
-	endpoints := map[nat.Port]string{}
-	for p, bindings := range i.NetworkSettings.Ports {
-		if len(bindings) == 0 {
-			continue
-		}
-		b := bindings[0]
-		if b.HostPort == "" {
-			continue
-		}
-		endpoints[p] = b.HostIP + ":" + b.HostPort
 	}
 
 	if info != nil {
