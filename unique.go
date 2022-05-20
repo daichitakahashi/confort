@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math/rand"
 	"sync"
+	"testing"
 	"time"
 	"unsafe"
 
@@ -81,6 +82,16 @@ func (u *Unique[T]) New() (T, error) {
 		return v, nil
 	}
 	return zero, errors.New("cannot create new unique value")
+}
+
+func (u *Unique[T]) Must(tb testing.TB) T {
+	tb.Helper()
+
+	v, err := u.New()
+	if err != nil {
+		tb.Fatal(err)
+	}
+	return v
 }
 
 const (
