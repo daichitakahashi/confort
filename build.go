@@ -32,16 +32,19 @@ type (
 	BuildOption interface {
 		option.Interface
 		build()
+		buildAndRun()
 	}
 	BuildAndRunOption interface {
-		RunOption | BuildOption
+		option.Interface
+		buildAndRun()
 	}
 	identOptionSkipIfAlreadyExists struct{}
 	identOptionImageBuildOptions   struct{}
 	buildOption                    struct{ option.Interface }
 )
 
-func (buildOption) build() {}
+func (buildOption) build()       {}
+func (buildOption) buildAndRun() {}
 
 func WithSkipIfAlreadyExists() BuildOption {
 	return buildOption{

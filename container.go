@@ -178,6 +178,7 @@ type (
 	RunOption interface {
 		option.Interface
 		run()
+		buildAndRun()
 	}
 	identOptionContainerConfig  struct{}
 	identOptionHostConfig       struct{}
@@ -186,7 +187,8 @@ type (
 	runOption                   struct{ option.Interface }
 )
 
-func (runOption) run() {}
+func (runOption) run()         {}
+func (runOption) buildAndRun() {}
 
 func WithContainerConfig(f func(config *container.Config)) RunOption {
 	return runOption{
