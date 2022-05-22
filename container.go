@@ -178,7 +178,6 @@ type (
 	RunOption interface {
 		option.Interface
 		run()
-		build()
 	}
 	identOptionContainerConfig  struct{}
 	identOptionHostConfig       struct{}
@@ -187,8 +186,7 @@ type (
 	runOption                   struct{ option.Interface }
 )
 
-func (runOption) run()   {}
-func (runOption) build() {}
+func (runOption) run() {}
 
 func WithContainerConfig(f func(config *container.Config)) RunOption {
 	return runOption{
@@ -229,8 +227,12 @@ func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Containe
 
 	// find existing container in Group
 	info, ok := g.containers[name]
-	if ok && info.started {
-		return info.endpoints
+	if ok {
+		if info.c.Image != c.Image {
+			tb.Fatal(containerNameConflict(name, c.Image, info.c.Image))
+		} else if info.started {
+			return info.endpoints
+		}
 	}
 
 	return g.run(ctx, tb, name, c, info, opts...)
@@ -309,6 +311,10 @@ func (g *Group) run(ctx context.Context, tb testing.TB, name string, c *Containe
 	}()
 
 	endpoints, err := func(ctx context.Context) (map[nat.Port]string, error) {
+		if len(c.ExposedPorts) == 0 {
+			return map[nat.Port]string{}, nil
+		}
+
 		if _, ok := ctx.Deadline(); !ok {
 			var cancel context.CancelFunc
 			ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
@@ -371,7 +377,7 @@ func (g *Group) run(ctx context.Context, tb testing.TB, name string, c *Containe
 }
 
 func (g *Group) existingContainer(ctx context.Context, image, name string) (*types.Container, error) {
-	name = "/" + name
+	fullName := "/" + name
 
 	containers, err := g.cli.ContainerList(ctx, types.ContainerListOptions{
 		All: true, // contains exiting/paused images
@@ -381,15 +387,19 @@ func (g *Group) existingContainer(ctx context.Context, image, name string) (*typ
 	}
 	for _, c := range containers {
 		for _, n := range c.Names {
-			if name == n {
+			if fullName == n {
 				if c.Image == image {
 					return &c, nil
 				}
-				return nil, fmt.Errorf("container name %q already exists but image is not %q(%q)", name, image, c.Image)
+				return nil, errors.New(containerNameConflict(name, image, c.Image))
 			}
 		}
 	}
 	return nil, nil
+}
+
+func containerNameConflict(name, wantImage, gotImage string) string {
+	return fmt.Sprintf("container name %q already exists but image is not %q(%q)", name, wantImage, gotImage)
 }
 
 func (g *Group) createContainer(ctx context.Context, name string, c *Container, opts ...RunOption) (string, error) {
@@ -494,8 +504,11 @@ func (g *Group) LazyRun(ctx context.Context, tb testing.TB, name string, c *Cont
 	defer g.m.Unlock()
 
 	// find existing container in Group
-	_, foundContainerInfo := g.containers[name]
+	info, foundContainerInfo := g.containers[name]
 	if foundContainerInfo {
+		if info.c.Image != c.Image {
+			tb.Fatal(containerNameConflict(name, c.Image, info.c.Image))
+		}
 		return
 	}
 

@@ -33,6 +33,9 @@ type (
 		option.Interface
 		build()
 	}
+	BuildAndRunOption interface {
+		RunOption | BuildOption
+	}
 	identOptionSkipIfAlreadyExists struct{}
 	identOptionImageBuildOptions   struct{}
 	buildOption                    struct{ option.Interface }
@@ -52,26 +55,12 @@ func WithImageBuildOptions(f func(option *types.ImageBuildOptions)) BuildOption 
 	}
 }
 
-// BuildAndRun builds new image with given Dockerfile and context directory.
-// After the build is complete, start the container.
+// Build creates new image with given Dockerfile and context directory.
 //
 // When same name image already exists and using WithSkipIfAlreadyExists option,
-// BuildAndRun skips to build. In other words, it always builds image without WithSkipIfAlreadyExists.
-func (g *Group) BuildAndRun(ctx context.Context, tb testing.TB, name string, b *Build, opts ...BuildOption) map[nat.Port]string {
+// Build skips to build. In other words, it always builds image without WithSkipIfAlreadyExists.
+func (g *Group) Build(ctx context.Context, tb testing.TB, b *Build, opts ...BuildOption) {
 	tb.Helper()
-
-	if g.namespace != "" {
-		name = g.namespace + "-" + name
-	}
-
-	g.m.Lock()
-	defer g.m.Unlock()
-
-	// find existing container in Group
-	info, ok := g.containers[name]
-	if ok && info.started {
-		return info.endpoints
-	}
 
 	var skip bool
 	var modifyBuildOptions func(option *types.ImageBuildOptions)
@@ -145,16 +134,53 @@ func (g *Group) BuildAndRun(ctx context.Context, tb testing.TB, name string, b *
 			tb.Fatal(err)
 		}
 	}
+}
+
+// BuildAndRun builds new image with given Dockerfile and context directory.
+// After the build is complete, start the container.
+//
+// When same name image already exists and using WithSkipIfAlreadyExists option,
+// BuildAndRun skips to build. In other words, it always builds image without WithSkipIfAlreadyExists.
+func (g *Group) BuildAndRun(ctx context.Context, tb testing.TB, name string, b *Build, opts ...BuildAndRunOption) map[nat.Port]string {
+	tb.Helper()
+
+	if g.namespace != "" {
+		name = g.namespace + "-" + name
+	}
+
+	g.m.Lock()
+	defer g.m.Unlock()
+
+	// find existing container in Group
+	info, ok := g.containers[name]
+	if ok {
+		if info.c.Image != b.Image {
+			tb.Fatal(containerNameConflict(name, b.Image, info.c.Image))
+		} else if info.started {
+			return info.endpoints
+		}
+	}
+
+	buildOpts := make([]BuildOption, 0, len(opts))
+	for _, opt := range opts {
+		buildOpt, ok := opt.(BuildOption)
+		if !ok {
+			continue
+		}
+		buildOpts = append(buildOpts, buildOpt)
+	}
+	g.Build(ctx, tb, b, buildOpts...)
 
 	runOpts := make([]RunOption, 0, len(opts))
 	var pullOpt identOptionPullOptions
 	for _, opt := range opts {
-		if opt.Ident() == pullOpt {
+		runOpt, ok := opt.(RunOption)
+		if !ok {
+			continue
+		} else if runOpt.Ident() == pullOpt {
 			continue // no need to pull
 		}
-		if runOpt, ok := opt.(RunOption); ok {
-			runOpts = append(runOpts, runOpt)
-		}
+		runOpts = append(runOpts, runOpt)
 	}
 
 	return g.run(ctx, tb, name, &Container{
