@@ -323,8 +323,14 @@ func (g *Group) run(ctx context.Context, tb testing.TB, name string, c *Containe
 			defer cancel()
 		}
 
+		requiredPorts, _, err := nat.ParsePortSpecs(c.ExposedPorts)
+		if err != nil {
+			return nil, err
+		}
+
 		b := backoff.Constant(
-			backoff.WithInterval(200 * time.Millisecond),
+			backoff.WithInterval(200*time.Millisecond),
+			backoff.WithMaxRetries(0),
 		).Start(ctx)
 	retry:
 		for backoff.Continue(b) {
@@ -335,7 +341,9 @@ func (g *Group) run(ctx context.Context, tb testing.TB, name string, c *Containe
 
 			endpoints := map[nat.Port]string{}
 			for p, bindings := range i.NetworkSettings.Ports {
-				if len(bindings) == 0 {
+				if _, ok := requiredPorts[p]; !ok {
+					continue
+				} else if len(bindings) == 0 {
 					// endpoint not bound yet
 					continue retry
 				}
