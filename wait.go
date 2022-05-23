@@ -119,7 +119,7 @@ func CheckLogOccurrence(message string, occurrence int) func(ctx context.Context
 			return false, err
 		}
 
-		return bytes.Count(data, []byte(msg)) >= occurrence, nil
+		return bytes.Count(data, msg) >= occurrence, nil
 	}
 }
 
