@@ -559,10 +559,14 @@ func (g *Group) Use(ctx context.Context, tb testing.TB, name string) map[nat.Por
 	// find LazyRun container
 	info, ok := g.containers[name]
 	if !ok {
-		tb.Fatalf("container %q not found", name)
+		tb.Fatalf(containerNotFound(name))
 	} else if info.started {
 		return info.endpoints
 	}
 
 	return g.run(ctx, tb, name, info.c, info, info.opts...)
+}
+
+func containerNotFound(name string) string {
+	return fmt.Sprintf("container %q not found", name)
 }

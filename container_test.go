@@ -11,6 +11,7 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
+	"github.com/google/go-cmp/cmp"
 )
 
 const (
@@ -219,14 +220,7 @@ func TestGroup_Run_SameNameButAnotherImage(t *testing.T) {
 		ctx           = context.Background()
 		namespace     = uniqueName.Must(t)
 		containerName = uniqueName.Must(t)
-		/*ctl           = &testutil.Controller{
-			TB: t,
-			FatalFunc: func(args ...any) {
-				t.Helper()
-				panic(fmt.Sprint(args...))
-			},
-		}*/
-		ctl, term = New()
+		ctl, term     = New()
 	)
 	t.Cleanup(term)
 
@@ -287,5 +281,103 @@ func TestGroup_Run_SameNameButAnotherImage(t *testing.T) {
 		t.Cleanup(term2)
 
 		test(t, g2)
+	})
+}
+
+// test LazyRun
+func TestGroup_LazyRun(t *testing.T) {
+	t.Parallel()
+
+	var (
+		ctx       = context.Background()
+		namespace = uniqueName.Must(t)
+		network   = uniqueName.Must(t)
+	)
+
+	g, term := NewGroup(ctx, t,
+		WithNamespace(namespace),
+		WithNetwork(network),
+	)
+	t.Cleanup(term)
+
+	t.Run("Use after LazyRun", func(t *testing.T) {
+		t.Parallel()
+
+		containerName := uniqueName.Must(t)
+
+		g.LazyRun(ctx, t, containerName, &Container{
+			Image:        imageEcho,
+			ExposedPorts: []string{"80/tcp"},
+			Waiter:       Healthy(),
+		})
+
+		e1 := g.Use(ctx, t, containerName)
+		if diff := cmp.Diff(e1, g.Use(ctx, t, containerName)); diff != "" {
+			t.Fatal(diff)
+		}
+	})
+
+	t.Run("Run after LazyRun across groups", func(t *testing.T) {
+		t.Parallel()
+
+		containerName := uniqueName.Must(t)
+
+		c := &Container{
+			Image:        imageEcho,
+			ExposedPorts: []string{"80/tcp"},
+			Waiter:       Healthy(),
+		}
+
+		g.LazyRun(ctx, t, containerName, c)
+
+		e1 := g.Run(ctx, t, containerName, c)
+		if diff := cmp.Diff(e1, g.Run(ctx, t, containerName, c)); diff != "" {
+			t.Fatal(diff)
+		}
+
+		g2, term := NewGroup(ctx, t,
+			WithNamespace(namespace),
+			WithNetwork(network),
+		)
+		t.Cleanup(term)
+
+		if diff := cmp.Diff(e1, g2.Run(ctx, t, containerName, c)); diff != "" {
+			t.Fatal(diff)
+		}
+	})
+
+	t.Run("unknown Use in a group", func(t *testing.T) {
+		t.Parallel()
+
+		containerName := uniqueName.Must(t)
+
+		g.LazyRun(ctx, t, containerName, &Container{
+			Image:        imageEcho,
+			ExposedPorts: []string{"80/tcp"},
+			Waiter:       Healthy(),
+		})
+
+		g2, term := NewGroup(ctx, t,
+			WithNamespace(namespace),
+			WithNetwork(network),
+		)
+		t.Cleanup(term)
+
+		ctl, _ := New()
+
+		recovered := func() (v any) {
+			defer func() { v = recover() }()
+			g2.Use(ctx, ctl, containerName)
+			return
+		}()
+		if recovered == nil {
+			t.Fatal("error expected on use container without LazyRun in the group")
+		}
+		expectedMsg := containerNotFound(
+			fmt.Sprintf("%s-%s", namespace, containerName),
+		)
+		if recovered != expectedMsg {
+			t.Fatalf("unexpected error: %v", recovered)
+		}
 	})
 }
