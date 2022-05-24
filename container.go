@@ -529,10 +529,30 @@ func (g *Group) LazyRun(ctx context.Context, tb testing.TB, name string, c *Cont
 	}
 	if existing == nil {
 		// create if not exists
-		_, err = g.createContainer(ctx, name, c, opts...)
+		created, err := g.createContainer(ctx, name, c, opts...)
 		if err != nil {
 			tb.Fatal(err)
 		}
+		g.terminate = append(g.terminate, func() {
+			ctx := context.Background()
+
+			inspect, err := g.cli.ContainerInspect(ctx, created)
+			if err != nil {
+				return // container not found
+			}
+			switch inspect.State.Status {
+			case "running", "paused", "restarting", "removing":
+				return
+			case "created", "exited", "dead":
+				// remove
+			}
+			err = g.cli.ContainerRemove(ctx, created, types.ContainerRemoveOptions{
+				RemoveVolumes: true,
+			})
+			if err != nil {
+				tb.Log(err)
+			}
+		})
 	}
 
 	g.containers[name] = &containerInfo{
