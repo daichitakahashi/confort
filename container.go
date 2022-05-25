@@ -269,11 +269,9 @@ func (g *Group) run(ctx context.Context, tb testing.TB, name string, c *Containe
 			}
 			if g.network != nil {
 				// If the container haven't joined the network, let it join.
-				if _, ok := existing.NetworkSettings.Networks[g.network.ID]; !ok {
-					err = g.connectNetwork(ctx, tb, name, existing.ID)
-					if err != nil {
-						tb.Fatal(err)
-					}
+				err = g.connectNetwork(ctx, tb, name, existing.ID, existing.NetworkSettings.Networks)
+				if err != nil {
+					tb.Fatal(err)
 				}
 			}
 
@@ -294,11 +292,9 @@ func (g *Group) run(ctx context.Context, tb testing.TB, name string, c *Containe
 			containerID = existing.ID
 			if g.network != nil {
 				// If the container haven't joined the network, let it join.
-				if _, ok := existing.NetworkSettings.Networks[g.network.ID]; !ok {
-					err = g.connectNetwork(ctx, tb, name, containerID)
-					if err != nil {
-						tb.Fatal(err)
-					}
+				err = g.connectNetwork(ctx, tb, name, containerID, existing.NetworkSettings.Networks)
+				if err != nil {
+					tb.Fatal(err)
 				}
 			}
 
@@ -522,7 +518,19 @@ func (g *Group) createContainer(ctx context.Context, name string, c *Container, 
 	return created.ID, err
 }
 
-func (g *Group) connectNetwork(ctx context.Context, tb testing.TB, name, containerID string) error {
+// make container to be connected to the network, if not connected yet
+func (g *Group) connectNetwork(ctx context.Context, tb testing.TB, name, containerID string, endpointSettings map[string]*network.EndpointSettings) error {
+	var found bool
+	for _, setting := range endpointSettings {
+		if setting.NetworkID == g.network.ID {
+			found = true
+			break
+		}
+	}
+	if found {
+		return nil
+	}
+
 	var aliases []string
 	if g.namespace != "" {
 		aliases = []string{
