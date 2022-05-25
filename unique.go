@@ -101,9 +101,9 @@ const (
 	letterIdxMax  = 63 / letterIdxBits
 )
 
-func UniqueString(name string, n int, opts ...UniqueOption) *Unique[string] {
+func UniqueStringFunc(n int) func() (string, error) {
 	randSrc := rand.NewSource(time.Now().UnixNano())
-	return NewUnique(name, func() (string, error) {
+	return func() (string, error) {
 		b := make([]byte, n)
 		cache, remain := randSrc.Int63(), letterIdxMax
 		for i := n - 1; i >= 0; {
@@ -119,5 +119,9 @@ func UniqueString(name string, n int, opts ...UniqueOption) *Unique[string] {
 			remain--
 		}
 		return *(*string)(unsafe.Pointer(&b)), nil
-	}, opts...)
+	}
+}
+
+func UniqueString(name string, n int, opts ...UniqueOption) *Unique[string] {
+	return NewUnique(name, UniqueStringFunc(n), opts...)
 }
