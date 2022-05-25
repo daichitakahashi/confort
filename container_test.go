@@ -109,44 +109,20 @@ func TestNewGroup(t *testing.T) {
 		t.Fatal("two: bound port not found")
 	}
 
-	request := func(t *testing.T, host, method, status string) string {
-		t.Helper()
-
-		resp, err := http.Post(
-			fmt.Sprintf("http://%s/%s", host, method),
-			"text/plain",
-			strings.NewReader(status),
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() {
-			_ = resp.Body.Close()
-		}()
-		stat, err := io.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("got error response: %d: %s", resp.StatusCode, stat)
-		}
-		return string(stat)
-	}
-
 	// set one's status
-	request(t, hostOne, "set", "at home")
+	doCommunicate(t, hostOne, "set", "at home")
 	// set two's status
-	request(t, hostTwo, "set", "at office")
+	doCommunicate(t, hostTwo, "set", "at office")
 
 	// exchange status between one and two using docker network
-	request(t, hostOne, "exchange", "")
+	doCommunicate(t, hostOne, "exchange", "")
 
 	// check exchanged one's status
-	if s := request(t, hostOne, "get", ""); s != "at office" {
+	if s := doCommunicate(t, hostOne, "get", ""); s != "at office" {
 		t.Fatalf("one: expected status is %q, but actual %q", "at office", s)
 	}
 	// check exchanged
-	if s := request(t, hostTwo, "get", ""); s != "at home" {
+	if s := doCommunicate(t, hostTwo, "get", ""); s != "at home" {
 		t.Fatalf("two: expected status is %q, but actual %q", "at home", s)
 	}
 }
@@ -380,4 +356,117 @@ func TestGroup_LazyRun(t *testing.T) {
 			t.Fatalf("unexpected error: %v", recovered)
 		}
 	})
+}
+
+// test if container can join different networks simultaneously
+func TestGroup_Run_AttachAliasToAnotherNetwork(t *testing.T) {
+	t.Parallel()
+
+	var (
+		ctx       = context.Background()
+		namespace = uniqueName.Must(t)
+	)
+
+	// Network1 ┳ Container "A"
+	//          ┗ Container "B" ┳　Network2
+	//            Container "C" ┛
+
+	g1, term1 := NewGroup(ctx, t,
+		WithNamespace(namespace),
+		WithNetwork(uniqueName.Must(t)), // unique network
+	)
+	t.Cleanup(term1)
+
+	e := g1.Run(ctx, t, "A", &Container{
+		Image: imageCommunicator,
+		Env: map[string]string{
+			"CM_TARGET": "B",
+		},
+		ExposedPorts: []string{"80/tcp"},
+		Waiter:       Healthy(),
+	})
+	hostA := e["80/tcp"]
+
+	e = g1.Run(ctx, t, "B", &Container{
+		Image: imageCommunicator,
+		Env: map[string]string{
+			"CM_TARGET": "C",
+		},
+		// Using ephemeral port makes test flaky, why?
+		// Without specifying host port, container loses the port binding occasionally.
+		ExposedPorts: []string{"8080:80/tcp"},
+		Waiter:       Healthy(),
+	})
+	hostB := e["80/tcp"]
+
+	g2, term2 := NewGroup(ctx, t,
+		WithNamespace(namespace),
+		WithNetwork(uniqueName.Must(t)), // unique network
+	)
+	t.Cleanup(term2)
+
+	e = g2.Run(ctx, t, "B", &Container{ // same name container
+		Image: imageCommunicator,
+	})
+	hostB2 := e["80/tcp"]
+	if hostB != hostB2 {
+		t.Fatalf("expected same host: want %q, got %q", hostB, hostB2)
+	}
+
+	e = g2.Run(ctx, t, "C", &Container{
+		Image: imageCommunicator,
+		Env: map[string]string{
+			"CM_TARGET": "B", // CHECK THIS WORKS
+		},
+		ExposedPorts: []string{"80/tcp"},
+		Waiter:       Healthy(),
+	})
+	hostC := e["80/tcp"]
+
+	// set initial values
+	// Container "A" => 1
+	// Container "B" => 2
+	// Container "C" => 3
+	doCommunicate(t, hostA, "set", "1")
+	doCommunicate(t, hostB, "set", "2")
+	doCommunicate(t, hostC, "set", "3")
+
+	// exchange values
+	// Container "A" => 1 ┓ 1.exchange
+	// Container "B" => 2 ┛ ┓
+	// Container "C" => 3   ┛ 2.exchange
+	doCommunicate(t, hostA, "exchange", "")
+	doCommunicate(t, hostC, "exchange", "")
+
+	// check all values
+	a := doCommunicate(t, hostA, "get", "")
+	b := doCommunicate(t, hostB, "get", "")
+	c := doCommunicate(t, hostC, "get", "")
+	if !(a == "2" && b == "3" && c == "1") {
+		t.Fatalf("unexpected result: a=%q, b=%q, c=%q", a, b, c)
+	}
+}
+
+func doCommunicate(t *testing.T, host, method, status string) string {
+	t.Helper()
+
+	resp, err := http.Post(
+		fmt.Sprintf("http://%s/%s", host, method),
+		"text/plain",
+		strings.NewReader(status),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+	stat, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("got error response: %d: %s", resp.StatusCode, stat)
+	}
+	return string(stat)
 }

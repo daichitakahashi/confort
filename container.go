@@ -217,6 +217,12 @@ func WithPullOptions(opts types.ImagePullOptions) RunOption {
 // Run starts container with given parameters.
 // If container already exists and not started, it starts.
 // It reuses already started container and its endpoint information.
+//
+// When container is already existing and connected to another network, Run and other
+// methods make the container to connect network of this Group and create alias.
+// For now, without specifying host port, container loses the port binding occasionally.
+// If you want to use port binding and use a container with several network,
+// and encounter such trouble, give it a try.
 func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Container, opts ...RunOption) map[nat.Port]string {
 	tb.Helper()
 
@@ -261,6 +267,16 @@ func (g *Group) run(ctx context.Context, tb testing.TB, name string, c *Containe
 					endpoints[np] = p.IP + ":" + fmt.Sprint(p.PublicPort)
 				}
 			}
+			if g.network != nil {
+				// If the container haven't joined the network, let it join.
+				if _, ok := existing.NetworkSettings.Networks[g.network.ID]; !ok {
+					err = g.connectNetwork(ctx, tb, name, existing.ID)
+					if err != nil {
+						tb.Fatal(err)
+					}
+				}
+			}
+
 			if info != nil {
 				info.endpoints = endpoints
 			} else {
@@ -276,6 +292,15 @@ func (g *Group) run(ctx context.Context, tb testing.TB, name string, c *Containe
 
 		case "created": // LazyRun
 			containerID = existing.ID
+			if g.network != nil {
+				// If the container haven't joined the network, let it join.
+				if _, ok := existing.NetworkSettings.Networks[g.network.ID]; !ok {
+					err = g.connectNetwork(ctx, tb, name, containerID)
+					if err != nil {
+						tb.Fatal(err)
+					}
+				}
+			}
 
 		case "paused":
 			// MEMO: bound port is still existing
@@ -495,6 +520,35 @@ func (g *Group) createContainer(ctx context.Context, name string, c *Container, 
 
 	created, err := g.cli.ContainerCreate(ctx, cc, hc, nc, nil, name)
 	return created.ID, err
+}
+
+func (g *Group) connectNetwork(ctx context.Context, tb testing.TB, name, containerID string) error {
+	var aliases []string
+	if g.namespace != "" {
+		aliases = []string{
+			strings.TrimPrefix(name, g.namespace+"-"),
+		}
+	}
+	err := g.cli.NetworkConnect(ctx, g.network.ID, containerID, &network.EndpointSettings{
+		NetworkID: g.network.ID,
+		Aliases:   aliases,
+	})
+	if err != nil {
+		return err
+	}
+	g.terminate = append(g.terminate, func() {
+		ctx := context.Background()
+
+		_, err := g.cli.ContainerInspect(ctx, containerID)
+		if err != nil {
+			return // container not found
+		}
+		err = g.cli.NetworkDisconnect(ctx, g.network.ID, containerID, true)
+		if err != nil {
+			tb.Logf("error occurred on disconnect network %q: %s", g.network.Name, err)
+		}
+	})
+	return nil
 }
 
 // LazyRun creates container but do not start.
