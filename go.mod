@@ -9,6 +9,8 @@ require (
 	github.com/google/go-cmp v0.5.7
 	github.com/lestrrat-go/backoff/v2 v2.0.8
 	github.com/lestrrat-go/option v1.0.0
+	go.uber.org/multierr v1.8.0
+	golang.org/x/sync v0.0.0-20220513210516-0976fa681c29
 )
 
 require (
