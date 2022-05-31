@@ -14,47 +14,19 @@ import (
 	"github.com/lestrrat-go/option"
 )
 
-type Build struct {
-	Image        string
-	Dockerfile   string
-	ContextDir   string
-	BuildArgs    map[string]*string
-	Output       bool
-	Platform     string
-	Env          map[string]string
-	Cmd          []string
-	Entrypoint   []string
-	ExposedPorts []string
-	Waiter       *Waiter
-}
-
 type (
-	BuildOption interface {
-		option.Interface
-		build()
-		buildAndRun()
-	}
 	BuildAndRunOption interface {
 		option.Interface
 		buildAndRun()
 	}
 	identOptionSkipIfAlreadyExists struct{}
-	identOptionImageBuildOptions   struct{}
-	buildOption                    struct{ option.Interface }
 )
 
-func (buildOption) build()       {}
 func (buildOption) buildAndRun() {}
 
 func WithSkipIfAlreadyExists() BuildOption {
 	return buildOption{
 		Interface: option.New(identOptionSkipIfAlreadyExists{}, true),
-	}
-}
-
-func WithImageBuildOptions(f func(option *types.ImageBuildOptions)) BuildOption {
-	return buildOption{
-		Interface: option.New(identOptionImageBuildOptions{}, f),
 	}
 }
 

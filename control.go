@@ -11,7 +11,7 @@ type C struct {
 	cleanup []func()
 }
 
-// New creates new instance of C, intended to use in TestMain.
+// NewControl creates new instance of C, intended to use in TestMain.
 // Instead of testing.T or testing.B, C satisfies testing.TB.
 // It enables us to create container shared by package's unit tests.
 //
@@ -21,7 +21,7 @@ type C struct {
 // Implementation of testing.TB is not perfect.
 // If you want to use an unimplemented method, inject implementation
 // by yourself.
-func New() (*C, func()) {
+func NewControl() (*C, func()) {
 	c := &C{}
 	term := func() {
 		last := len(c.cleanup) - 1

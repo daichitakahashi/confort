@@ -27,11 +27,11 @@ var (
 func TestMain(m *testing.M) {
 	var (
 		ctx        = context.Background()
-		c, cleanup = New()
+		c, cleanup = NewControl()
 	)
 	defer cleanup()
 
-	g, term := NewGroup(ctx, c, WithNamespace(uniqueName.Must(c)))
+	g, term := NewGroup(ctx, c, WithNamespace_(uniqueName.Must(c)))
 	func() {
 		defer term()
 		c.Logf("building image: %s", imageCommunicator)
@@ -76,7 +76,7 @@ func TestNewGroup(t *testing.T) {
 	)
 
 	g, term := NewGroup(ctx, t,
-		WithNamespace(t.Name()),
+		WithNamespace_(t.Name()),
 		WithNetwork(network),
 		WithClientOpts(client.FromEnv),
 	)
@@ -143,7 +143,7 @@ func TestNewGroup_Namespace(t *testing.T) {
 		t.Helper()
 
 		g, term := NewGroup(ctx, t,
-			WithNamespace(namespace),
+			WithNamespace_(namespace),
 			WithNetwork(network),
 		)
 		endpoints := g.Run(ctx, t, containerName, &Container{
@@ -196,12 +196,12 @@ func TestGroup_Run_SameNameButAnotherImage(t *testing.T) {
 		ctx           = context.Background()
 		namespace     = uniqueName.Must(t)
 		containerName = uniqueName.Must(t)
-		ctl, term     = New()
+		ctl, term     = NewControl()
 	)
 	t.Cleanup(term)
 
 	g1, term1 := NewGroup(ctx, t,
-		WithNamespace(namespace),
+		WithNamespace_(namespace),
 		WithNetwork(uniqueName.Must(t)),
 	)
 	t.Cleanup(term1)
@@ -251,7 +251,7 @@ func TestGroup_Run_SameNameButAnotherImage(t *testing.T) {
 		t.Parallel()
 
 		g2, term2 := NewGroup(ctx, t,
-			WithNamespace(namespace),
+			WithNamespace_(namespace),
 			WithNetwork(uniqueName.Must(t)),
 		)
 		t.Cleanup(term2)
@@ -271,7 +271,7 @@ func TestGroup_LazyRun(t *testing.T) {
 	)
 
 	g, term := NewGroup(ctx, t,
-		WithNamespace(namespace),
+		WithNamespace_(namespace),
 		WithNetwork(network),
 	)
 	t.Cleanup(term)
@@ -312,7 +312,7 @@ func TestGroup_LazyRun(t *testing.T) {
 		}
 
 		g2, term := NewGroup(ctx, t,
-			WithNamespace(namespace),
+			WithNamespace_(namespace),
 			WithNetwork(network),
 		)
 		t.Cleanup(term)
@@ -334,12 +334,12 @@ func TestGroup_LazyRun(t *testing.T) {
 		})
 
 		g2, term := NewGroup(ctx, t,
-			WithNamespace(namespace),
+			WithNamespace_(namespace),
 			WithNetwork(network),
 		)
 		t.Cleanup(term)
 
-		ctl, _ := New()
+		ctl, _ := NewControl()
 
 		recovered := func() (v any) {
 			defer func() { v = recover() }()
@@ -372,7 +372,7 @@ func TestGroup_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 	//            Container "C" ┛
 
 	g1, term1 := NewGroup(ctx, t,
-		WithNamespace(namespace),
+		WithNamespace_(namespace),
 		WithNetwork(uniqueName.Must(t)), // unique network
 	)
 	t.Cleanup(term1)
@@ -400,7 +400,7 @@ func TestGroup_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 	hostB := e["80/tcp"]
 
 	g2, term2 := NewGroup(ctx, t,
-		WithNamespace(namespace),
+		WithNamespace_(namespace),
 		WithNetwork(uniqueName.Must(t)), // unique network
 	)
 	t.Cleanup(term2)

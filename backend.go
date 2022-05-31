@@ -110,7 +110,7 @@ func (d *dockerBackend) Namespace(ctx context.Context, namespace string) (Namesp
 		namespace:     namespace,
 		network:       nw,
 		terminate:     term,
-		containers:    map[string]*containerInfo2{},
+		containers:    map[string]*containerInfo{},
 	}, nil
 }
 
@@ -158,16 +158,16 @@ var _ Backend = (*dockerBackend)(nil)
 
 type dockerNamespace struct {
 	*dockerBackend
-	m         sync.Mutex
-	acquireMu *keyedLock
+	namespace string
+	network   *types.NetworkResource
 
-	namespace  string
-	network    *types.NetworkResource
+	m          sync.RWMutex
+	acquireMu  *keyedLock
 	terminate  []func(ctx context.Context) error
-	containers map[string]*containerInfo2
+	containers map[string]*containerInfo
 }
 
-type containerInfo2 struct {
+type containerInfo struct {
 	containerID string
 	container   *container.Config
 	host        *container.HostConfig
@@ -191,6 +191,18 @@ func (d *dockerNamespace) CreateContainer(
 	d.m.Lock()
 	defer d.m.Unlock()
 
+	name = d.namespace + name
+	fullName := "/" + name
+	c, ok := d.containers[name]
+	if ok {
+		err := checkConfigConsistency(
+			container, c.container,
+			host, c.host,
+			networking.EndpointsConfig, c.network.EndpointsConfig,
+		)
+		return c.containerID, err
+	}
+
 	if pullOptions != nil {
 		err := d.pull(ctx, container.Image, *pullOptions)
 		if err != nil {
@@ -198,8 +210,6 @@ func (d *dockerNamespace) CreateContainer(
 		}
 	}
 
-	name = d.namespace + name
-	fullName := "/" + name
 	containers, err := d.cli.ContainerList(ctx, types.ContainerListOptions{
 		All: true, // contains exiting/paused images
 	})
@@ -288,7 +298,7 @@ func (d *dockerNamespace) CreateContainer(
 			return d.cli.NetworkDisconnect(ctx, d.network.ID, containerID, true)
 		})
 	}
-	d.containers[name] = &containerInfo2{
+	d.containers[name] = &containerInfo{
 		containerID: containerID,
 		container:   container,
 		host:        host,
@@ -363,18 +373,29 @@ retry:
 }
 
 func (d *dockerNamespace) StartContainer(ctx context.Context, name string, exclusive bool) (portMap nat.PortMap, err error) {
-	d.m.Lock()
+	if exclusive {
+		err = d.acquireMu.Lock(ctx, name)
+	} else {
+		err = d.acquireMu.RLock(ctx, name)
+	}
+	if err != nil {
+		return nil, err
+	}
 	defer func() {
-		d.m.Unlock()
+		if err == nil {
+			return
+		}
 		if exclusive {
-			err = d.acquireMu.Lock(ctx, name)
+			d.acquireMu.Unlock(name)
 		} else {
-			err = d.acquireMu.RLock(ctx, name)
+			d.acquireMu.RUnlock(name)
 		}
 	}()
 
 	name = d.namespace + name
+	d.m.RLock()
 	c, ok := d.containers[name]
+	d.m.RUnlock()
 	if !ok {
 		return nil, fmt.Errorf("confort: unknown container %q", name)
 	} else if c.running {

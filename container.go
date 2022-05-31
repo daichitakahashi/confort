@@ -27,19 +27,10 @@ type Group struct {
 
 	m          sync.Mutex
 	terminate  []TerminateFunc
-	containers map[string]*containerInfo
+	containers map[string]*containerInfo_
 }
 
-type Container struct {
-	Image        string
-	Env          map[string]string
-	Cmd          []string
-	Entrypoint   []string
-	ExposedPorts []string
-	Waiter       *Waiter
-}
-
-type containerInfo struct {
+type containerInfo_ struct {
 	name      string
 	c         *Container
 	opts      []RunOption
@@ -54,7 +45,7 @@ type (
 		option.Interface
 		group()
 	}
-	identOptionNamespace  struct{}
+	identOptionNamespace_ struct{}
 	identOptionNetwork    struct{}
 	identOptionClientOpts struct{}
 	groupOption           struct{ option.Interface }
@@ -62,9 +53,9 @@ type (
 
 func (groupOption) group() {}
 
-func WithNamespace(s string) GroupOption {
+func WithNamespace_(s string) GroupOption {
 	return groupOption{
-		Interface: option.New(identOptionNamespace{}, s),
+		Interface: option.New(identOptionNamespace_{}, s),
 	}
 }
 
@@ -91,7 +82,7 @@ func NewGroup(ctx context.Context, tb testing.TB, opts ...GroupOption) (*Group, 
 
 	for _, opt := range opts {
 		switch opt.Ident() {
-		case identOptionNamespace{}:
+		case identOptionNamespace_{}:
 			namespace = opt.Value().(string)
 		case identOptionNetwork{}:
 			networkName = opt.Value().(string)
@@ -147,7 +138,7 @@ func NewGroup(ctx context.Context, tb testing.TB, opts ...GroupOption) (*Group, 
 		cli:        cli,
 		namespace:  namespace,
 		network:    nw,
-		containers: map[string]*containerInfo{},
+		containers: map[string]*containerInfo_{},
 	}
 	term := func() {
 		ctx := context.Background()
@@ -174,45 +165,7 @@ func NewGroup(ctx context.Context, tb testing.TB, opts ...GroupOption) (*Group, 
 	return g, term
 }
 
-type (
-	RunOption interface {
-		option.Interface
-		run()
-		buildAndRun()
-	}
-	identOptionContainerConfig  struct{}
-	identOptionHostConfig       struct{}
-	identOptionNetworkingConfig struct{}
-	identOptionPullOptions      struct{}
-	runOption                   struct{ option.Interface }
-)
-
-func (runOption) run()         {}
 func (runOption) buildAndRun() {}
-
-func WithContainerConfig(f func(config *container.Config)) RunOption {
-	return runOption{
-		Interface: option.New(identOptionContainerConfig{}, f),
-	}
-}
-
-func WithHostConfig(f func(config *container.HostConfig)) RunOption {
-	return runOption{
-		Interface: option.New(identOptionHostConfig{}, f),
-	}
-}
-
-func WithNetworkingConfig(f func(config *network.NetworkingConfig)) RunOption {
-	return runOption{
-		Interface: option.New(identOptionNetworkingConfig{}, f),
-	}
-}
-
-func WithPullOptions(opts types.ImagePullOptions) RunOption {
-	return runOption{
-		Interface: option.New(identOptionPullOptions{}, opts),
-	}
-}
 
 // Run starts container with given parameters.
 // If container already exists and not started, it starts.
@@ -246,7 +199,7 @@ func (g *Group) Run(ctx context.Context, tb testing.TB, name string, c *Containe
 	return g.run(ctx, tb, name, c, info, opts...)
 }
 
-func (g *Group) run(ctx context.Context, tb testing.TB, name string, c *Container, info *containerInfo, opts ...RunOption) map[nat.Port]string {
+func (g *Group) run(ctx context.Context, tb testing.TB, name string, c *Container, info *containerInfo_, opts ...RunOption) map[nat.Port]string {
 	tb.Helper()
 
 	// find existing container
@@ -278,7 +231,7 @@ func (g *Group) run(ctx context.Context, tb testing.TB, name string, c *Containe
 			if info != nil {
 				info.endpoints = endpoints
 			} else {
-				g.containers[name] = &containerInfo{
+				g.containers[name] = &containerInfo_{
 					name:      name,
 					c:         c,
 					opts:      opts,
@@ -382,7 +335,7 @@ func (g *Group) run(ctx context.Context, tb testing.TB, name string, c *Containe
 	if info != nil {
 		info.endpoints = endpoints
 	} else {
-		g.containers[name] = &containerInfo{
+		g.containers[name] = &containerInfo_{
 			name:      name,
 			c:         c,
 			opts:      opts,
@@ -617,7 +570,7 @@ func (g *Group) LazyRun(ctx context.Context, tb testing.TB, name string, c *Cont
 		})
 	}
 
-	g.containers[name] = &containerInfo{
+	g.containers[name] = &containerInfo_{
 		name:      name,
 		c:         c,
 		opts:      opts,
