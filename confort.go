@@ -2,7 +2,6 @@ package confort
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"testing"
@@ -62,7 +61,9 @@ func WithResourcePolicy(s ResourcePolicy) NewOption {
 	}
 }
 
-func New(ctx context.Context, opts ...NewOption) (*Confort, error) {
+func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func()) {
+	tb.Helper()
+
 	clientOps := []client.Opt{
 		client.FromEnv,
 	}
@@ -88,8 +89,10 @@ func New(ctx context.Context, opts ...NewOption) (*Confort, error) {
 
 	cli, err := client.NewClientWithOpts(clientOps...)
 	if err != nil {
-		return nil, err
+		tb.Fatal(err)
 	}
+	cli.NegotiateAPIVersion(ctx)
+
 	backend := &dockerBackend{
 		buildMu: newKeyedLock(),
 		cli:     cli,
@@ -97,14 +100,21 @@ func New(ctx context.Context, opts ...NewOption) (*Confort, error) {
 	}
 	ns, err := backend.Namespace(ctx, namespace)
 	if err != nil {
-		return nil, err
+		tb.Fatal(err)
+	}
+	term := func() {
+		tb.Helper()
+		err := ns.Release(context.Background())
+		if err != nil {
+			tb.Log(err)
+		}
 	}
 
 	return &Confort{
 		backend:        backend,
 		namespace:      ns,
 		defaultTimeout: defaultTimeout,
-	}, nil
+	}, term
 }
 
 type Confort struct {
@@ -128,9 +138,9 @@ type (
 	BuildOption interface {
 		option.Interface
 		build()
-		buildAndRun() // TODO remove
 	}
 	identOptionImageBuildOptions struct{}
+	identOptionForceBuild        struct{}
 	buildOption                  struct{ option.Interface }
 )
 
@@ -139,6 +149,12 @@ func (buildOption) build() {}
 func WithImageBuildOptions(f func(option *types.ImageBuildOptions)) BuildOption {
 	return buildOption{
 		Interface: option.New(identOptionImageBuildOptions{}, f),
+	}
+}
+
+func WithForceBuild() BuildOption {
+	return buildOption{
+		Interface: option.New(identOptionForceBuild{}, true),
 	}
 }
 
@@ -156,16 +172,24 @@ type Build struct {
 	Waiter       *Waiter
 }
 
-func (cft *Confort) Build(ctx context.Context, b *Build, opts ...BuildOption) error {
+// Build creates new image from given Dockerfile and context directory.
+//
+// When same name image already exists, it doesn't perform building.
+// WithForceBuild enables us to build image on every call of Build.
+func (cft *Confort) Build(tb testing.TB, ctx context.Context, b *Build, opts ...BuildOption) {
+	tb.Helper()
+
 	ctx, cancel := cft.applyTimeout(ctx)
 	defer cancel()
 
 	var modifyBuildOptions func(option *types.ImageBuildOptions)
-
+	var force bool
 	for _, opt := range opts {
 		switch opt.Ident() {
 		case identOptionImageBuildOptions{}:
 			modifyBuildOptions = opt.Value().(func(option *types.ImageBuildOptions))
+		case identOptionForceBuild{}:
+			force = opt.Value().(bool)
 		}
 	}
 
@@ -184,9 +208,12 @@ func (cft *Confort) Build(ctx context.Context, b *Build, opts ...BuildOption) er
 		modifyBuildOptions(&buildOption)
 	}
 
-	out, err := cft.backend.BuildImage(ctx, b.ContextDir, buildOption)
+	out, err := cft.backend.BuildImage(ctx, b.ContextDir, buildOption, force)
 	if err != nil {
-		return err
+		tb.Fatal(err)
+	}
+	if out == nil {
+		return
 	}
 	err = func() error {
 		defer func() {
@@ -199,9 +226,8 @@ func (cft *Confort) Build(ctx context.Context, b *Build, opts ...BuildOption) er
 		return jsonmessage.DisplayJSONMessagesStream(out, os.Stdout, 0, false, nil)
 	}()
 	if err != nil {
-		return fmt.Errorf("confort: %w", err)
+		tb.Fatalf("confort: %s", err)
 	}
-	return nil
 }
 
 type Container struct {
@@ -281,7 +307,6 @@ type (
 	RunOption interface {
 		option.Interface
 		run()
-		buildAndRun() // TODO: remove
 	}
 	identOptionContainerConfig  struct{}
 	identOptionHostConfig       struct{}
@@ -316,24 +341,37 @@ func WithPullOptions(opts types.ImagePullOptions) RunOption {
 	}
 }
 
-func (cft *Confort) LazyRun(ctx context.Context, name string, c *Container, opts ...RunOption) error {
-	ctx, cancel := cft.applyTimeout(ctx)
-	defer cancel()
+func (cft *Confort) LazyRun(tb testing.TB, ctx context.Context, name string, c *Container, opts ...RunOption) {
+	tb.Helper()
 
-	return cft.createContainer(ctx, name, c, opts...)
-}
-
-func (cft *Confort) Run(ctx context.Context, name string, c *Container, opts ...RunOption) error {
 	ctx, cancel := cft.applyTimeout(ctx)
 	defer cancel()
 
 	err := cft.createContainer(ctx, name, c, opts...)
 	if err != nil {
-		return err
+		tb.Fatal(err)
+	}
+}
+
+func (cft *Confort) Run(tb testing.TB, ctx context.Context, name string, c *Container, opts ...RunOption) {
+	tb.Helper()
+
+	ctx, cancel := cft.applyTimeout(ctx)
+	defer cancel()
+
+	err := cft.createContainer(ctx, name, c, opts...)
+	if err != nil {
+		tb.Fatal(err)
 	}
 
 	_, err = cft.namespace.StartContainer(ctx, name, false)
-	return cft.namespace.ReleaseContainer(ctx, name, false)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	err = cft.namespace.ReleaseContainer(ctx, name, false)
+	if err != nil {
+		tb.Fatal(err)
+	}
 }
 
 type Ports map[nat.Port][]string
@@ -366,6 +404,8 @@ func WithReleaseFunc(f *func()) UseOption {
 }
 
 func (cft *Confort) use(tb testing.TB, ctx context.Context, name string, exclusive bool, opts ...UseOption) Ports {
+	tb.Helper()
+
 	var releaseFunc *func()
 	for _, opt := range opts {
 		switch opt.Ident() {
@@ -399,9 +439,13 @@ func (cft *Confort) use(tb testing.TB, ctx context.Context, name string, exclusi
 }
 
 func (cft *Confort) UseShared(tb testing.TB, ctx context.Context, name string, opts ...UseOption) Ports {
+	tb.Helper()
+
 	return cft.use(tb, ctx, name, false, opts...)
 }
 
 func (cft *Confort) UseExclusive(tb testing.TB, ctx context.Context, name string, opts ...UseOption) Ports {
+	tb.Helper()
+
 	return cft.use(tb, ctx, name, true, opts...)
 }

@@ -165,8 +165,6 @@ func NewGroup(ctx context.Context, tb testing.TB, opts ...GroupOption) (*Group, 
 	return g, term
 }
 
-func (runOption) buildAndRun() {}
-
 // Run starts container with given parameters.
 // If container already exists and not started, it starts.
 // It reuses already started container and its endpoint information.
@@ -380,10 +378,6 @@ func (g *Group) existingContainer(ctx context.Context, image, name string) (*typ
 		}
 	}
 	return nil, nil
-}
-
-func containerNameConflict(name, wantImage, gotImage string) string {
-	return fmt.Sprintf("container name %q already exists but image is not %q(%q)", name, wantImage, gotImage)
 }
 
 func (g *Group) createContainer(ctx context.Context, name string, c *Container, opts ...RunOption) (string, error) {
@@ -600,8 +594,4 @@ func (g *Group) Use(ctx context.Context, tb testing.TB, name string) map[nat.Por
 	}
 
 	return g.run(ctx, tb, name, info.c, info, info.opts...)
-}
-
-func containerNotFound(name string) string {
-	return fmt.Sprintf("container %q not found", name)
 }
