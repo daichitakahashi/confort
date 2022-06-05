@@ -6,6 +6,7 @@ require (
 	github.com/docker/cli v20.10.16+incompatible
 	github.com/docker/docker v20.10.11+incompatible
 	github.com/docker/go-connections v0.4.0
+	github.com/goccy/go-reflect v1.1.1-0.20210520085854-e1eb8c5193d0
 	github.com/google/go-cmp v0.5.7
 	github.com/lestrrat-go/backoff/v2 v2.0.8
 	github.com/lestrrat-go/option v1.0.0
