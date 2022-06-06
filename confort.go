@@ -89,7 +89,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 
 	cli, err := client.NewClientWithOpts(clientOps...)
 	if err != nil {
-		tb.Fatal(err)
+		tb.Fatalf("confort: %s", err)
 	}
 	cli.NegotiateAPIVersion(ctx)
 
@@ -100,7 +100,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 	}
 	ns, err := backend.Namespace(ctx, namespace)
 	if err != nil {
-		tb.Fatal(err)
+		tb.Fatalf("confort: %s", err)
 	}
 	term := func() {
 		tb.Helper()
@@ -210,7 +210,7 @@ func (cft *Confort) Build(tb testing.TB, ctx context.Context, b *Build, opts ...
 
 	out, err := cft.backend.BuildImage(ctx, b.ContextDir, buildOption, force)
 	if err != nil {
-		tb.Fatal(err)
+		tb.Fatalf("confort: %s", err)
 	}
 	if out == nil {
 		return
@@ -341,6 +341,11 @@ func WithPullOptions(opts types.ImagePullOptions) RunOption {
 	}
 }
 
+// LazyRun creates container but doesn't start.
+// When container is required by UseShared or UseExclusive, the container starts.
+//
+// If container is already created/started by other test or process, LazyRun just
+// store container info. It makes no error.
 func (cft *Confort) LazyRun(tb testing.TB, ctx context.Context, name string, c *Container, opts ...RunOption) {
 	tb.Helper()
 
@@ -349,10 +354,19 @@ func (cft *Confort) LazyRun(tb testing.TB, ctx context.Context, name string, c *
 
 	err := cft.createContainer(ctx, name, c, opts...)
 	if err != nil {
-		tb.Fatal(err)
+		tb.Fatalf("confort: %s", err)
 	}
 }
 
+// Run starts container with given parameters.
+// If container already exists and not started, it starts.
+// It reuses already started container and its endpoint information.
+//
+// When container is already existing and connected to another network, Run and other
+// methods let the container connect to this network and create alias.
+// For now, without specifying host port, container loses the port binding occasionally.
+// If you want to use port binding and use a container with several network,
+// and encounter such trouble, give it a try.
 func (cft *Confort) Run(tb testing.TB, ctx context.Context, name string, c *Container, opts ...RunOption) {
 	tb.Helper()
 
@@ -361,16 +375,16 @@ func (cft *Confort) Run(tb testing.TB, ctx context.Context, name string, c *Cont
 
 	err := cft.createContainer(ctx, name, c, opts...)
 	if err != nil {
-		tb.Fatal(err)
+		tb.Fatalf("confort: %s", err)
 	}
 
 	_, err = cft.namespace.StartContainer(ctx, name, false)
 	if err != nil {
-		tb.Fatal(err)
+		tb.Fatalf("confort: %s", err)
 	}
 	err = cft.namespace.ReleaseContainer(ctx, name, false)
 	if err != nil {
-		tb.Fatal(err)
+		tb.Fatalf("confort: %s", err)
 	}
 }
 
@@ -416,7 +430,7 @@ func (cft *Confort) use(tb testing.TB, ctx context.Context, name string, exclusi
 
 	ports, err := cft.namespace.StartContainer(ctx, name, exclusive)
 	if err != nil {
-		tb.Fatal(err)
+		tb.Fatalf("confort: %s", err)
 	}
 	p := make(Ports, len(ports))
 	for port, bindings := range ports {
@@ -438,12 +452,21 @@ func (cft *Confort) use(tb testing.TB, ctx context.Context, name string, exclusi
 	return p
 }
 
+// UseShared tries to start container created by Run or LazyRun and returns endpoint info.
+// If the container is already started by other test or process, UseShared reuse it.
+//
+// UseShared marks container "in use", but other call of UseShared is permitted.
 func (cft *Confort) UseShared(tb testing.TB, ctx context.Context, name string, opts ...UseOption) Ports {
 	tb.Helper()
 
 	return cft.use(tb, ctx, name, false, opts...)
 }
 
+// UseExclusive tries to start container created by Run or LazyRun and returns endpoint
+// info.
+//
+// UseExclusive requires to use container exclusively. When other UseShared marks
+// the container "in use", it blocks until acquire exclusive control.
 func (cft *Confort) UseExclusive(tb testing.TB, ctx context.Context, name string, opts ...UseOption) Ports {
 	tb.Helper()
 

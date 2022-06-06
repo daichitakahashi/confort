@@ -51,7 +51,7 @@ func (c C) Fatal(args ...any) {
 }
 
 func (c C) Fatalf(format string, args ...any) {
-	panic(fmt.Sprintf(format, args...))
+	c.Fatal(fmt.Sprintf(format, args...))
 }
 
 func (c C) Helper() {}
