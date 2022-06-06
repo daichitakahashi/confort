@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	"github.com/google/go-cmp/cmp"
@@ -136,7 +138,7 @@ func TestConfort_Run_ContainerIdentification(t *testing.T) {
 		port          = "80/tcp"
 	)
 
-	createContainer := func(t *testing.T, namespace string) (string, TerminateFunc) {
+	createContainer := func(t *testing.T, namespace string) (string, func()) {
 		t.Helper()
 
 		ctx := context.Background()
@@ -232,7 +234,7 @@ func TestConfort_Run_SameNameButAnotherImage(t *testing.T) {
 		imageCommunicator,
 		imageEcho,
 	)
-	if recovered != expectedMsg {
+	if !strings.Contains(fmt.Sprint(recovered), expectedMsg) {
 		t.Fatalf("unexpected error: %v", recovered)
 	}
 }
@@ -322,7 +324,7 @@ func TestConfort_LazyRun(t *testing.T) {
 		expectedMsg := containerNotFound(
 			fmt.Sprintf("%s-%s", namespace, containerName),
 		)
-		if recovered != expectedMsg {
+		if !strings.Contains(fmt.Sprint(recovered), expectedMsg) {
 			t.Fatalf("unexpected error: %v", recovered)
 		}
 	})
@@ -459,4 +461,90 @@ func communicate(t *testing.T, host, method, status string) string {
 		t.Fatalf("got error response: %d: %s", resp.StatusCode, stat)
 	}
 	return string(stat)
+}
+
+func TestWithResourcePolicy(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ResourcePolicyReuse(default)", func(t *testing.T) {
+		// TODO
+	})
+
+	t.Run("ResourcePolicyTakeOver", func(t *testing.T) {
+		// TODO
+	})
+
+	t.Run("ResourcePolicyError", func(t *testing.T) {
+		// TODO
+	})
+}
+
+func TestWithPullOptions(t *testing.T) {
+	// TODO
+}
+
+func TestConfort_Run_UnsupportedStatus(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	namespace := uniqueName.Must(t)
+	containerName := namespace + "-" + "foo"
+
+	cft, term := New(t, ctx,
+		WithNamespace(namespace, true),
+	)
+	t.Cleanup(term)
+
+	// start container
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := cli.ContainerCreate(ctx, &container.Config{
+		Image: imageEcho,
+	}, &container.HostConfig{}, &network.NetworkingConfig{}, nil, containerName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = cli.ContainerStart(ctx, created.ID, types.ContainerStartOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = cli.ContainerRemove(ctx, created.ID, types.ContainerRemoveOptions{
+			RemoveVolumes: true,
+			Force:         true,
+		})
+	})
+
+	tryRun := func() (r any) {
+		defer func() {
+			r = recover()
+		}()
+		c, _ := NewControl()
+		cft.Run(c, ctx, "foo", &Container{
+			Image: imageEcho,
+		})
+		return nil
+	}
+
+	// unsupported container status "pause"
+	err = cli.ContainerPause(ctx, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovered := tryRun()
+	if recovered == nil {
+		t.Fatal("unexpected success")
+	}
+
+	// unsupported container status "exited"
+	err = cli.ContainerStop(ctx, created.ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovered = tryRun()
+	if recovered == nil {
+		t.Fatal("unexpected success")
+	}
 }

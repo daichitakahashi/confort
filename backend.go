@@ -75,7 +75,7 @@ func (d *dockerBackend) Namespace(ctx context.Context, namespace string) (Namesp
 	for _, n := range list {
 		if n.Name == networkName {
 			if d.policy == ResourcePolicyError {
-				return nil, errors.New("confort: network %q already exists")
+				return nil, fmt.Errorf("dockerBackend: network %q already exists", networkName)
 			}
 			nw = &n
 			break
@@ -270,11 +270,11 @@ LOOP:
 	var connected bool
 	if existing != nil {
 		if d.policy == ResourcePolicyError {
-			return "", fmt.Errorf("confort: container %q(%s) already exists", name, container.Image)
+			return "", fmt.Errorf("dockerNamespace: container %q(%s) already exists", name, container.Image)
 		}
 		info, err := d.cli.ContainerInspect(ctx, existing.ID)
 		if err != nil {
-			return "", fmt.Errorf("confort: %w", err)
+			return "", err
 		}
 		err = checkConfigConsistency(
 			container, info.Config,
@@ -282,7 +282,7 @@ LOOP:
 			networking.EndpointsConfig, info.NetworkSettings.Networks,
 		)
 		if err != nil {
-			return "", fmt.Errorf("confort: %s: %w", info.Name, err)
+			return "", err
 		}
 
 		switch existing.State {
@@ -304,22 +304,22 @@ LOOP:
 					},
 				})
 				if err != nil {
-					return "", fmt.Errorf("confort: %w", err)
+					return "", err
 				}
 				connected = true
 			}
 
 		case "paused":
 			// MEMO: bound port is still existing
-			return "", fmt.Errorf("confort: cannot start %q, unpause is not supported", name)
+			return "", fmt.Errorf("dockerNamespace: cannot start %q, unpause is not supported", name)
 
 		default:
-			return "", fmt.Errorf("confort: cannot start %q, unexpected container state %s", name, existing.State)
+			return "", fmt.Errorf("dockerNamespace: cannot start %q, unexpected container state %q", name, existing.State)
 		}
 	} else {
 		created, err := d.cli.ContainerCreate(ctx, container, host, networking, nil, name)
 		if err != nil {
-			return "", fmt.Errorf("confort: %w", err)
+			return "", err
 		}
 		containerID = created.ID
 	}
@@ -670,7 +670,7 @@ func (d *dockerNamespace) StartContainer(ctx context.Context, name string, exclu
 }
 
 func containerNotFound(name string) string {
-	return fmt.Sprintf("confort: container %q not found", name)
+	return fmt.Sprintf("dockerBackend: container %q not found", name)
 }
 
 func (d *dockerNamespace) ReleaseContainer(_ context.Context, name string, exclusive bool) error {
