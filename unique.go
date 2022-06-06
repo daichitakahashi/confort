@@ -12,7 +12,6 @@ import (
 )
 
 type Unique[T comparable] struct {
-	name  string
 	f     func() (T, error)
 	mu    sync.Mutex
 	m     map[T]struct{}
@@ -39,9 +38,8 @@ func WithRetry(n uint) UniqueOption {
 	}
 }
 
-func NewUnique[T comparable](name string, f func() (T, error), opts ...UniqueOption) *Unique[T] {
+func NewUnique[T comparable](f func() (T, error), opts ...UniqueOption) *Unique[T] {
 	u := &Unique[T]{
-		name:  name,
 		f:     f,
 		m:     map[T]struct{}{},
 		retry: 10,
@@ -55,10 +53,6 @@ func NewUnique[T comparable](name string, f func() (T, error), opts ...UniqueOpt
 	}
 
 	return u
-}
-
-func (u *Unique[T]) Name() string {
-	return u.name
 }
 
 var ErrRetryable = errors.New("cannot create unique value but retryable")
@@ -122,6 +116,6 @@ func UniqueStringFunc(n int) func() (string, error) {
 	}
 }
 
-func UniqueString(name string, n int, opts ...UniqueOption) *Unique[string] {
-	return NewUnique(name, UniqueStringFunc(n), opts...)
+func UniqueString(n int, opts ...UniqueOption) *Unique[string] {
+	return NewUnique(UniqueStringFunc(n), opts...)
 }
