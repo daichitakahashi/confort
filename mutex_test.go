@@ -100,6 +100,36 @@ func TestKeyedLock(t *testing.T) {
 
 		m.RUnlock(key)
 	})
+
+	t.Run("unlocked Unlock", func(t *testing.T) {
+		t.Parallel()
+
+		recovered := func() (r any) {
+			defer func() {
+				r = recover()
+			}()
+			m.Unlock(t.Name())
+			return nil
+		}()
+		if recovered == nil {
+			t.Fatal("unexpected success")
+		}
+	})
+
+	t.Run("unlocked RUnlock", func(t *testing.T) {
+		t.Parallel()
+
+		recovered := func() (r any) {
+			defer func() {
+				r = recover()
+			}()
+			m.RUnlock(t.Name())
+			return nil
+		}()
+		if recovered == nil {
+			t.Fatal("unexpected success")
+		}
+	})
 }
 
 func BenchmarkKeyedLock(b *testing.B) {

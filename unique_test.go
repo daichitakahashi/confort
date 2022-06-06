@@ -10,7 +10,7 @@ func TestUnique_New(t *testing.T) {
 
 	var n int
 	var err error
-	unique := NewUnique("number", func() (int, error) {
+	unique := NewUnique(func() (int, error) {
 		return n, err
 	})
 
@@ -52,7 +52,7 @@ func TestUnique_New(t *testing.T) {
 func TestUniqueString(t *testing.T) {
 	t.Parallel()
 
-	unique := UniqueString("1byte", 1, WithRetry(999))
+	unique := UniqueString(1, WithRetry(999))
 
 	m := map[string]bool{}
 	for i := 0; i < 62; i++ {
@@ -63,8 +63,30 @@ func TestUniqueString(t *testing.T) {
 		m[v] = true
 	}
 
-	_, err := unique.New()
-	if err == nil {
-		t.Fatal("error expected")
+	recovered := func() (r any) {
+		defer func() {
+			r = recover()
+		}()
+		c, _ := NewControl()
+		unique.Must(c)
+		return nil
+	}()
+	if recovered == nil {
+		t.Fatalf("unexpected success: %#v", recovered)
+	}
+}
+
+func TestWithRetry_ZeroValue(t *testing.T) {
+	t.Parallel()
+	opt := WithRetry(0)
+
+	// only coverage matters
+	opt.unique()
+
+	var maxUint uint
+	maxUint--
+	v := opt.Value().(uint)
+	if maxUint != v {
+		t.Fatalf("expected: %d, actual: %d", maxUint, v)
 	}
 }

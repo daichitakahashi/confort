@@ -21,7 +21,7 @@ const (
 
 var (
 	// generate unique namespace and name for container
-	uniqueName = UniqueString("name", 16)
+	uniqueName = UniqueString(16)
 )
 
 func TestMain(m *testing.M) {
