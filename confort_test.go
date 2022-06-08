@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"testing"
 
@@ -45,7 +44,7 @@ func TestMain(m *testing.M) {
 			Image:      imageCommunicator,
 			Dockerfile: "testdata/communicator/Dockerfile",
 			ContextDir: "testdata/communicator",
-		}, WithBuildOutput(os.Stdout), WithForceBuild())
+		}, WithBuildOutput(io.Discard), WithForceBuild())
 		c.Cleanup(func() {
 			c.Logf("remove image: %s", imageCommunicator)
 			_, err := cli.ImageRemove(ctx, imageCommunicator, types.ImageRemoveOptions{})
@@ -58,7 +57,7 @@ func TestMain(m *testing.M) {
 			Image:      imageEcho,
 			Dockerfile: "testdata/echo/Dockerfile",
 			ContextDir: "testdata/echo/",
-		}, WithBuildOutput(os.Stdout), WithForceBuild())
+		}, WithBuildOutput(io.Discard), WithForceBuild())
 		c.Cleanup(func() {
 			c.Logf("remove image: %s", imageEcho)
 			_, err := cli.ImageRemove(ctx, imageEcho, types.ImageRemoveOptions{})
@@ -89,7 +88,7 @@ func TestConfort_Run_Communication(t *testing.T) {
 			"CM_TARGET": "two",
 		},
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       Healthy(),
+		Waiter:       LogContains("communicator is ready", 1),
 	})
 	portsOne := cft.UseExclusive(t, ctx, "one")
 	hostOne, ok := portsOne.Binding("80/tcp")
@@ -104,7 +103,7 @@ func TestConfort_Run_Communication(t *testing.T) {
 			"CM_TARGET": "one",
 		},
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       Healthy(),
+		Waiter:       LogContains("communicator is ready", 1),
 	})
 	portsTwo := cft.UseExclusive(t, ctx, "two")
 	hostTwo, ok := portsTwo.Binding("80/tcp")
