@@ -1,10 +1,12 @@
 package confort
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -43,7 +45,7 @@ func TestMain(m *testing.M) {
 			Image:      imageCommunicator,
 			Dockerfile: "testdata/communicator/Dockerfile",
 			ContextDir: "testdata/communicator",
-		})
+		}, WithBuildOutput(os.Stdout), WithForceBuild())
 		c.Cleanup(func() {
 			c.Logf("remove image: %s", imageCommunicator)
 			_, err := cli.ImageRemove(ctx, imageCommunicator, types.ImageRemoveOptions{})
@@ -56,7 +58,7 @@ func TestMain(m *testing.M) {
 			Image:      imageEcho,
 			Dockerfile: "testdata/echo/Dockerfile",
 			ContextDir: "testdata/echo/",
-		})
+		}, WithBuildOutput(os.Stdout), WithForceBuild())
 		c.Cleanup(func() {
 			c.Logf("remove image: %s", imageEcho)
 			_, err := cli.ImageRemove(ctx, imageEcho, types.ImageRemoveOptions{})
@@ -265,9 +267,15 @@ func TestConfort_LazyRun(t *testing.T) {
 		})
 
 		e1 := cft.UseShared(t, ctx, containerName)
-		if diff := cmp.Diff(e1, cft.UseShared(t, ctx, containerName)); diff != "" {
+		e2 := cft.UseShared(t, ctx, containerName)
+		if diff := cmp.Diff(e1, e2); diff != "" {
 			t.Fatal(diff)
 		}
+		endpoint, ok := e1.Binding("80/tcp")
+		if !ok {
+			t.Fatal("endpoint not found")
+		}
+		assertEchoWorks(t, endpoint)
 	})
 
 	t.Run("Run after LazyRun from another instance", func(t *testing.T) {
@@ -290,9 +298,16 @@ func TestConfort_LazyRun(t *testing.T) {
 		t.Cleanup(term)
 
 		cft2.Run(t, ctx, containerName, c)
-		if diff := cmp.Diff(e1, cft2.UseShared(t, ctx, containerName)); diff != "" {
+		e2 := cft2.UseShared(t, ctx, containerName)
+		if diff := cmp.Diff(e1, e2); diff != "" {
 			t.Fatal(diff)
 		}
+
+		endpoint, ok := e1.Binding("80/tcp")
+		if !ok {
+			t.Fatal("endpoint not found")
+		}
+		assertEchoWorks(t, endpoint)
 	})
 
 	t.Run("unknown Use", func(t *testing.T) {
@@ -480,7 +495,111 @@ func TestWithResourcePolicy(t *testing.T) {
 }
 
 func TestWithPullOptions(t *testing.T) {
-	// TODO
+	t.Parallel()
+
+	const pullImage = "ghcr.io/daichitakahashi/confort/testdata/echo:test"
+
+	ctx := context.Background()
+	namespace := uniqueName.Must(t)
+	containerName := uniqueName.Must(t)
+
+	cft, term := New(t, ctx,
+		WithNamespace(namespace, true),
+	)
+	t.Cleanup(func() {
+		if t.Failed() {
+			term()
+		}
+	})
+
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// remove target image if already exists
+	_ = removeImageIfExists(t, cli, pullImage)
+
+	// pull and run
+	out := &bytes.Buffer{}
+	cft.Run(t, ctx, containerName, &Container{
+		Image:        pullImage,
+		ExposedPorts: []string{"80/tcp"},
+		Waiter:       Healthy(),
+	}, WithPullOptions(&types.ImagePullOptions{}, out))
+
+	t.Log(out.String())
+	if out.Len() == 0 {
+		t.Fatal("pull image not performed")
+	}
+
+	// check if container works
+	ports := cft.UseShared(t, ctx, containerName)
+	endpoint, ok := ports.Binding("80/tcp")
+	if !ok {
+		t.Fatal("endpoint not found")
+	}
+	assertEchoWorks(t, endpoint)
+
+	// remove container
+	term()
+
+	// remove pulled image
+	removed := removeImageIfExists(t, cli, pullImage)
+	if !removed {
+		t.Fatalf("cannot remove pulled image %q", pullImage)
+	}
+}
+
+func removeImageIfExists(t *testing.T, cli *client.Client, image string) (removed bool) {
+	t.Helper()
+	ctx := context.Background()
+
+	images, err := cli.ImageList(ctx, types.ImageListOptions{
+		All: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+find:
+	for _, img := range images {
+		for _, tag := range img.RepoTags {
+			if tag == image {
+				found = true
+				break find
+			}
+		}
+	}
+	if found {
+		_, err = cli.ImageRemove(ctx, image, types.ImageRemoveOptions{
+			Force: false,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return true
+	}
+	return false
+}
+
+func assertEchoWorks(t *testing.T, endpoint string) {
+	t.Helper()
+
+	resp, err := http.Post("http://"+endpoint, "text/plain", strings.NewReader("ping"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+	response, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(response) != "ping" {
+		t.Fatalf("unexpected echo response: %q", response)
+	}
 }
 
 func TestConfort_Run_UnsupportedStatus(t *testing.T) {
