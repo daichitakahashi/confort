@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -67,6 +68,10 @@ func main() {
 		_, _ = w.Write(data)
 	})
 
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		fmt.Println("communicator is ready")
+	}()
 	err := http.ListenAndServe(":80", mux)
 	if err != nil {
 		log.Fatal(err)
