@@ -1,7 +1,9 @@
 package confort
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +17,7 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/archive"
+	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/go-connections/nat"
 	"github.com/goccy/go-reflect"
 	"github.com/google/go-cmp/cmp"
@@ -25,7 +28,7 @@ import (
 type (
 	Backend interface {
 		Namespace(ctx context.Context, namespace string) (Namespace, error)
-		BuildImage(ctx context.Context, contextDir string, buildOptions types.ImageBuildOptions, force bool) (io.ReadCloser, error)
+		BuildImage(ctx context.Context, contextDir string, buildOptions types.ImageBuildOptions, force bool, buildOut io.Writer) error
 	}
 
 	Namespace interface {
@@ -33,7 +36,7 @@ type (
 		Network() *types.NetworkResource
 
 		CreateContainer(ctx context.Context, name string, container *container.Config, host *container.HostConfig,
-			network *network.NetworkingConfig, pullOptions *types.ImagePullOptions) (string, error)
+			network *network.NetworkingConfig, pullOptions *types.ImagePullOptions, pullOut io.Writer) (string, error)
 		StartContainer(ctx context.Context, name string, exclusive bool) (nat.PortMap, error)
 		ReleaseContainer(ctx context.Context, name string, exclusive bool) error
 		Release(ctx context.Context) error
@@ -117,15 +120,15 @@ func (d *dockerBackend) Namespace(ctx context.Context, namespace string) (Namesp
 	}, nil
 }
 
-func (d *dockerBackend) BuildImage(ctx context.Context, contextDir string, buildOptions types.ImageBuildOptions, force bool) (io.ReadCloser, error) {
+func (d *dockerBackend) BuildImage(ctx context.Context, contextDir string, buildOptions types.ImageBuildOptions, force bool, buildOut io.Writer) (err error) {
 	if len(buildOptions.Tags) == 0 {
-		return nil, errors.New("tag not specified")
+		return errors.New("tag not specified")
 	}
 	image := buildOptions.Tags[0]
 
-	err := d.buildMu.Lock(ctx, image)
+	err = d.buildMu.Lock(ctx, image)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer d.buildMu.Unlock(image)
 
@@ -135,12 +138,12 @@ func (d *dockerBackend) BuildImage(ctx context.Context, contextDir string, build
 			All: true,
 		})
 		if err != nil {
-			return nil, err
+			return err
 		}
 		for _, s := range summaries {
 			for _, t := range s.RepoTags {
 				if t == image {
-					return nil, nil
+					return nil
 				}
 			}
 		}
@@ -148,15 +151,19 @@ func (d *dockerBackend) BuildImage(ctx context.Context, contextDir string, build
 
 	tarball, relDockerfile, err := createArchive(contextDir, buildOptions.Dockerfile)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	buildOptions.Dockerfile = relDockerfile
 
 	resp, err := d.cli.ImageBuild(ctx, tarball, buildOptions)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return resp.Body, nil
+	defer func() {
+		err = multierr.Append(err, resp.Body.Close())
+	}()
+
+	return handleJSONMessageStream(buildOut, resp.Body)
 }
 
 func createArchive(ctxDir, dockerfilePath string) (io.ReadCloser, string, error) {
@@ -223,6 +230,7 @@ func (d *dockerNamespace) Network() *types.NetworkResource {
 func (d *dockerNamespace) CreateContainer(
 	ctx context.Context, name string, container *container.Config,
 	host *container.HostConfig, networking *network.NetworkingConfig, pullOptions *types.ImagePullOptions,
+	pullOut io.Writer,
 ) (string, error) {
 	d.m.Lock()
 	defer d.m.Unlock()
@@ -240,7 +248,7 @@ func (d *dockerNamespace) CreateContainer(
 	}
 
 	if pullOptions != nil {
-		err := d.pull(ctx, container.Image, *pullOptions)
+		err := d.pull(ctx, container.Image, *pullOptions, pullOut)
 		if err != nil {
 			return "", err
 		}
@@ -346,7 +354,7 @@ LOOP:
 	return containerID, nil
 }
 
-func (d *dockerNamespace) pull(ctx context.Context, image string, pullOptions types.ImagePullOptions) (err error) {
+func (d *dockerNamespace) pull(ctx context.Context, image string, pullOptions types.ImagePullOptions, out io.Writer) (err error) {
 	rc, err := d.cli.ImagePull(ctx, image, pullOptions)
 	if err != nil {
 		return err
@@ -354,8 +362,7 @@ func (d *dockerNamespace) pull(ctx context.Context, image string, pullOptions ty
 	defer func() {
 		err = multierr.Append(err, rc.Close())
 	}()
-	_, err = io.ReadAll(rc)
-	return err
+	return handleJSONMessageStream(out, rc)
 }
 
 func containerNameConflict(name, wantImage, gotImage string) string {
@@ -696,3 +703,30 @@ func (d *dockerNamespace) Release(ctx context.Context) error {
 }
 
 var _ Namespace = (*dockerNamespace)(nil)
+
+// write stream message line by line
+func handleJSONMessageStream(dst io.Writer, src io.Reader) error {
+	dec := json.NewDecoder(src)
+	buf := &bytes.Buffer{}
+
+	for {
+		var msg jsonmessage.JSONMessage
+		err := dec.Decode(&msg)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+		err = msg.Display(buf, false)
+		if err != nil {
+			return err
+		}
+		_, err = dst.Write(buf.Bytes())
+		if err != nil {
+			return err
+		}
+		buf.Reset()
+	}
+	return nil
+}

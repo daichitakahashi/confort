@@ -11,7 +11,6 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/go-connections/nat"
 	"github.com/lestrrat-go/option"
 )
@@ -25,7 +24,7 @@ type (
 	identOptionNamespace     struct{}
 	namespaceOption          struct {
 		namespace string
-		overwrite bool
+		force     bool
 	}
 	identOptionDefaultTimeout struct{}
 	identOptionResourcePolicy struct{}
@@ -40,11 +39,11 @@ func WithClientOptions(opts ...client.Opt) NewOption {
 	}
 }
 
-func WithNamespace(namespace string, overwrite bool) NewOption {
+func WithNamespace(namespace string, force bool) NewOption {
 	return newOption{
 		Interface: option.New(identOptionNamespace{}, namespaceOption{
 			namespace: namespace,
-			overwrite: overwrite,
+			force:     force,
 		}),
 	}
 }
@@ -77,7 +76,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 			clientOps = opt.Value().([]client.Opt)
 		case identOptionNamespace{}:
 			o := opt.Value().(namespaceOption)
-			if namespace == "" || o.overwrite {
+			if namespace == "" || o.force {
 				namespace = o.namespace
 			}
 		case identOptionDefaultTimeout{}:
@@ -141,6 +140,7 @@ type (
 	}
 	identOptionImageBuildOptions struct{}
 	identOptionForceBuild        struct{}
+	identOptionBuildOutput       struct{}
 	buildOption                  struct{ option.Interface }
 )
 
@@ -158,12 +158,17 @@ func WithForceBuild() BuildOption {
 	}
 }
 
+func WithBuildOutput(dst io.Writer) BuildOption {
+	return buildOption{
+		Interface: option.New(identOptionBuildOutput{}, dst),
+	}
+}
+
 type Build struct {
 	Image        string
 	Dockerfile   string
 	ContextDir   string
 	BuildArgs    map[string]*string
-	Output       bool
 	Platform     string
 	Env          map[string]string
 	Cmd          []string
@@ -179,6 +184,8 @@ type Build struct {
 func (cft *Confort) Build(tb testing.TB, ctx context.Context, b *Build, opts ...BuildOption) {
 	tb.Helper()
 
+	buildOut := io.Discard
+
 	ctx, cancel := cft.applyTimeout(ctx)
 	defer cancel()
 
@@ -190,12 +197,14 @@ func (cft *Confort) Build(tb testing.TB, ctx context.Context, b *Build, opts ...
 			modifyBuildOptions = opt.Value().(func(option *types.ImageBuildOptions))
 		case identOptionForceBuild{}:
 			force = opt.Value().(bool)
+		case identOptionBuildOutput{}:
+			buildOut = opt.Value().(io.Writer)
 		}
 	}
 
 	buildOption := types.ImageBuildOptions{
 		Tags:           []string{b.Image},
-		SuppressOutput: !b.Output,
+		SuppressOutput: buildOut == io.Discard,
 		Remove:         true,
 		PullParent:     true,
 		Dockerfile:     b.Dockerfile,
@@ -208,23 +217,7 @@ func (cft *Confort) Build(tb testing.TB, ctx context.Context, b *Build, opts ...
 		modifyBuildOptions(&buildOption)
 	}
 
-	out, err := cft.backend.BuildImage(ctx, b.ContextDir, buildOption, force)
-	if err != nil {
-		tb.Fatalf("confort: %s", err)
-	}
-	if out == nil {
-		return
-	}
-	err = func() error {
-		defer func() {
-			_, _ = io.ReadAll(out)
-			_ = out.Close()
-		}()
-		if !b.Output {
-			return nil
-		}
-		return jsonmessage.DisplayJSONMessagesStream(out, os.Stdout, 0, false, nil)
-	}()
+	err := cft.backend.BuildImage(ctx, b.ContextDir, buildOption, force, buildOut)
 	if err != nil {
 		tb.Fatalf("confort: %s", err)
 	}
@@ -243,7 +236,8 @@ func (cft *Confort) createContainer(ctx context.Context, name string, c *Contain
 	var modifyContainer func(config *container.Config)
 	var modifyHost func(config *container.HostConfig)
 	var modifyNetworking func(config *network.NetworkingConfig)
-	var pullOptions *types.ImagePullOptions
+	var pullOpts *types.ImagePullOptions
+	pullOut := io.Discard
 
 	for _, opt := range opts {
 		switch opt.Ident() {
@@ -253,9 +247,12 @@ func (cft *Confort) createContainer(ctx context.Context, name string, c *Contain
 			modifyHost = opt.Value().(func(config *container.HostConfig))
 		case identOptionNetworkingConfig{}:
 			modifyNetworking = opt.Value().(func(config *network.NetworkingConfig))
-		case identOptionPullOptions{}:
-			o := opt.Value().(types.ImagePullOptions)
-			pullOptions = &o
+		case identOptionPullOption{}:
+			o := opt.Value().(pullOptions)
+			pullOpts = o.pullOption
+			if o.pullOut != nil {
+				pullOut = o.pullOut
+			}
 		}
 	}
 
@@ -299,7 +296,7 @@ func (cft *Confort) createContainer(ctx context.Context, name string, c *Contain
 		modifyNetworking(nc)
 	}
 
-	_, err = cft.namespace.CreateContainer(ctx, name, cc, hc, nc, pullOptions)
+	_, err = cft.namespace.CreateContainer(ctx, name, cc, hc, nc, pullOpts, pullOut)
 	return err
 }
 
@@ -311,8 +308,12 @@ type (
 	identOptionContainerConfig  struct{}
 	identOptionHostConfig       struct{}
 	identOptionNetworkingConfig struct{}
-	identOptionPullOptions      struct{}
-	runOption                   struct{ option.Interface }
+	identOptionPullOption       struct{}
+	pullOptions                 struct {
+		pullOption *types.ImagePullOptions
+		pullOut    io.Writer
+	}
+	runOption struct{ option.Interface }
 )
 
 func (runOption) run() {}
@@ -335,9 +336,12 @@ func WithNetworkingConfig(f func(config *network.NetworkingConfig)) RunOption {
 	}
 }
 
-func WithPullOptions(opts types.ImagePullOptions) RunOption {
+func WithPullOptions(opts *types.ImagePullOptions, out io.Writer) RunOption {
 	return runOption{
-		Interface: option.New(identOptionPullOptions{}, opts),
+		Interface: option.New(identOptionPullOption{}, pullOptions{
+			pullOption: opts,
+			pullOut:    out,
+		}),
 	}
 }
 
