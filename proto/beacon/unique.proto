@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+option go_package = "proto/beacon";
+
+package beacon;
+
+service UniqueValueService {
+  rpc StoreUniqueValue(StoreUniqueValueRequest)
+      returns (StoreUniqueValueResponse);
+}
+
+message StoreUniqueValueRequest {
+  string store = 1;
+  string value = 2;
+}
+
+message StoreUniqueValueResponse {
+  bool succeeded = 1;
+}
