@@ -11,6 +11,7 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
@@ -38,6 +39,14 @@ func TestMain(m *testing.M) {
 		c.Fatal(err)
 	}
 	func() {
+		c.Cleanup(func() {
+			_, err := cli.ImagesPrune(ctx, filters.NewArgs(
+				filters.Arg("dangling", "true"),
+			))
+			if err != nil {
+				c.Logf("prune dangling images failed: %s", err)
+			}
+		})
 		defer term()
 		c.Logf("building image: %s", imageCommunicator)
 		cft.Build(c, ctx, &Build{
