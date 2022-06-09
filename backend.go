@@ -19,8 +19,6 @@ import (
 	"github.com/docker/docker/pkg/archive"
 	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/go-connections/nat"
-	"github.com/goccy/go-reflect"
-	"github.com/google/go-cmp/cmp"
 	"github.com/lestrrat-go/backoff/v2"
 	"go.uber.org/multierr"
 )
@@ -36,7 +34,8 @@ type (
 		Network() *types.NetworkResource
 
 		CreateContainer(ctx context.Context, name string, container *container.Config, host *container.HostConfig,
-			network *network.NetworkingConfig, pullOptions *types.ImagePullOptions, pullOut io.Writer) (string, error)
+			network *network.NetworkingConfig, configConsistency bool,
+			pullOptions *types.ImagePullOptions, pullOut io.Writer) (string, error)
 		StartContainer(ctx context.Context, name string, exclusive bool) (nat.PortMap, error)
 		ReleaseContainer(ctx context.Context, name string, exclusive bool) error
 		Release(ctx context.Context) error
@@ -230,9 +229,11 @@ func (d *dockerNamespace) Network() *types.NetworkResource {
 
 func (d *dockerNamespace) CreateContainer(
 	ctx context.Context, name string, container *container.Config,
-	host *container.HostConfig, networking *network.NetworkingConfig, pullOptions *types.ImagePullOptions,
-	pullOut io.Writer,
+	host *container.HostConfig, networking *network.NetworkingConfig, configConsistency bool,
+	pullOptions *types.ImagePullOptions, pullOut io.Writer,
 ) (string, error) {
+	var err error
+
 	d.m.Lock()
 	defer d.m.Unlock()
 
@@ -240,11 +241,13 @@ func (d *dockerNamespace) CreateContainer(
 	fullName := "/" + name
 	c, ok := d.containers[name]
 	if ok {
-		err := checkConfigConsistency(
-			container, c.container,
-			host, c.host,
-			networking.EndpointsConfig, c.network.EndpointsConfig,
-		)
+		if configConsistency {
+			err = checkConfigConsistency(
+				container, c.container,
+				host, c.host,
+				networking.EndpointsConfig, c.network.EndpointsConfig,
+			)
+		}
 		return c.containerID, err
 	}
 
@@ -285,13 +288,15 @@ LOOP:
 		if err != nil {
 			return "", err
 		}
-		err = checkConfigConsistency(
-			container, info.Config,
-			host, info.HostConfig,
-			networking.EndpointsConfig, info.NetworkSettings.Networks,
-		)
-		if err != nil {
-			return "", err
+		if configConsistency {
+			err = checkConfigConsistency(
+				container, info.Config,
+				host, info.HostConfig,
+				networking.EndpointsConfig, info.NetworkSettings.Networks,
+			)
+			if err != nil {
+				return "", err
+			}
 		}
 
 		switch existing.State {
@@ -368,233 +373,6 @@ func (d *dockerNamespace) pull(ctx context.Context, image string, pullOptions ty
 
 func containerNameConflict(name, wantImage, gotImage string) string {
 	return fmt.Sprintf("container name %q already exists but image is not %q(%q)", name, wantImage, gotImage)
-}
-
-// TODO: make it optional
-func checkConfigConsistency(
-	container1, container2 *container.Config,
-	host1, host2 *container.HostConfig,
-	network1, network2 map[string]*network.EndpointSettings,
-) (err error) {
-	if err = checkContainerConfigConsistency(container2, container1); err != nil {
-		return fmt.Errorf("inconsistent container config\n %w", err)
-	}
-	if err = checkHostConfigConsistency(host2, host1); err != nil {
-		return fmt.Errorf("inconsistent host config\n%w", err)
-	}
-	if err = checkEndpointSettingsConsistency(network2, network1); err != nil {
-		return fmt.Errorf("inconsistent network config\n%w", err)
-	}
-	return nil
-}
-
-func checkContainerConfigConsistency(expected, target *container.Config) (err error) {
-	if err = stringSubset("Hostname", expected.Hostname, target.Hostname); err != nil {
-		return err
-	}
-	if err = stringSubset("Domainname", expected.Domainname, target.Domainname); err != nil {
-		return err
-	}
-	if err = stringSubset("User", expected.User, target.User); err != nil {
-		return err
-	}
-	// AttachStdin
-	// AttachStdout
-	// AttachStderr
-	if err = mapSubset("ExposedPorts", target.ExposedPorts, target.ExposedPorts); err != nil {
-		return err
-	}
-	// Tty
-	// OpenStdin
-	// StdinOnce
-	if err = sliceSubset("Env", expected.Env, target.Env); err != nil {
-		return err
-	}
-	if err = sequentialSubset("Cmd", expected.Cmd, target.Cmd); err != nil {
-		return err
-	}
-	if err = pointerSubset("Healthcheck", expected.Healthcheck, target.Healthcheck); err != nil {
-		return err
-	}
-	if expected.ArgsEscaped != target.ArgsEscaped {
-		return diffError("ArgsEscaped", expected.ArgsEscaped, target.ArgsEscaped)
-	}
-	if expected.Image != target.Image {
-		return diffError("Image", expected.Image, target.Image)
-	}
-	if err = mapSubset("Volumes", expected.Volumes, target.Volumes); err != nil {
-		return err
-	}
-	if expected.WorkingDir != target.WorkingDir {
-		return diffError("WorkingDir", expected.WorkingDir, target.WorkingDir)
-	}
-	if err = sequentialSubset("Entrypoint", expected.Entrypoint, target.Entrypoint); err != nil {
-		return err
-	}
-	// NetworkDisabled
-	if err = stringSubset("MacAddress", expected.MacAddress, target.MacAddress); err != nil {
-		return err
-	}
-	// OnBuild
-	if err = mapSubset("Labels", expected.Labels, target.Labels); err != nil {
-		return err
-	}
-	if err = stringSubset("StopSignal", expected.StopSignal, target.StopSignal); err != nil {
-		return err
-	}
-	if err = pointerSubset("StopTimeout", expected.StopTimeout, target.StopTimeout); err != nil {
-		return err
-	}
-	if err = sequentialSubset("Shell", expected.Shell, target.Shell); err != nil {
-		return err
-	}
-	return nil
-}
-
-func checkHostConfigConsistency(expected, target *container.HostConfig) (err error) {
-	// TODO: implement
-	/*
-		Binds           []string      // List of volume bindings for this container
-			ContainerIDFile string        // File (path) where the containerId is written
-			LogConfig       LogConfig     // Configuration of the logs for this container
-			NetworkMode     NetworkMode   // Network mode to use for the container
-			PortBindings    nat.PortMap   // Port mapping between the exposed port (container) and the host
-			RestartPolicy   RestartPolicy // Restart policy to be used for the container
-			AutoRemove      bool          // Automatically remove container when it exits
-			VolumeDriver    string        // Name of the volume driver used to mount volumes
-			VolumesFrom     []string      // List of volumes to take from other container
-
-			// Applicable to UNIX platforms
-			CapAdd          strslice.StrSlice // List of kernel capabilities to add to the container
-			CapDrop         strslice.StrSlice // List of kernel capabilities to remove from the container
-			CgroupnsMode    CgroupnsMode      // Cgroup namespace mode to use for the container
-			DNS             []string          `json:"Dns"`        // List of DNS server to lookup
-			DNSOptions      []string          `json:"DnsOptions"` // List of DNSOption to look for
-			DNSSearch       []string          `json:"DnsSearch"`  // List of DNSSearch to look for
-			ExtraHosts      []string          // List of extra hosts
-			GroupAdd        []string          // List of additional groups that the container process will run as
-			IpcMode         IpcMode           // IPC namespace to use for the container
-			Cgroup          CgroupSpec        // Cgroup to use for the container
-			Links           []string          // List of links (in the name:alias form)
-			OomScoreAdj     int               // Container preference for OOM-killing
-			PidMode         PidMode           // PID namespace to use for the container
-			Privileged      bool              // Is the container in privileged mode
-			PublishAllPorts bool              // Should docker publish all exposed port for the container
-			ReadonlyRootfs  bool              // Is the container root filesystem in read-only
-			SecurityOpt     []string          // List of string values to customize labels for MLS systems, such as SELinux.
-			StorageOpt      map[string]string `json:",omitempty"` // Storage driver options per container.
-			Tmpfs           map[string]string `json:",omitempty"` // List of tmpfs (mounts) used for the container
-			UTSMode         UTSMode           // UTS namespace to use for the container
-			UsernsMode      UsernsMode        // The user namespace to use for the container
-			ShmSize         int64             // Total shm memory usage
-			Sysctls         map[string]string `json:",omitempty"` // List of Namespaced sysctls used for the container
-			Runtime         string            `json:",omitempty"` // Runtime to use with this container
-
-			// Applicable to Windows
-			ConsoleSize [2]uint   // Initial console size (height,width)
-			Isolation   Isolation // Isolation technology of the container (e.g. default, hyperv)
-
-			// Contains container's resources (cgroups, ulimits)
-			Resources
-
-			// Mounts specs used by the container
-			Mounts []mount.Mount `json:",omitempty"`
-
-			// MaskedPaths is the list of paths to be masked inside the container (this overrides the default set of paths)
-			MaskedPaths []string
-
-			// ReadonlyPaths is the list of paths to be set as read-only inside the container (this overrides the default set of paths)
-			ReadonlyPaths []string
-
-			// Run a custom init inside the container, if null, use the daemon's configured settings
-			Init *bool `json:",omitempty"`
-	*/
-	return nil
-}
-
-func checkEndpointSettingsConsistency(expected, target map[string]*network.EndpointSettings) (err error) {
-	// TODO: implement
-	/*
-		// Configurations
-		IPAMConfig *EndpointIPAMConfig
-		Links      []string
-		Aliases    []string
-		// Operational data
-		NetworkID           string
-		EndpointID          string
-		Gateway             string
-		IPAddress           string
-		IPPrefixLen         int
-		IPv6Gateway         string
-		GlobalIPv6Address   string
-		GlobalIPv6PrefixLen int
-		MacAddress          string
-		DriverOpts          map[string]string
-	*/
-	return nil
-}
-
-func stringSubset(name, expected, target string) (err error) {
-	if target == "" || target == expected {
-		return nil
-	}
-	return diffError(name, expected, target)
-}
-
-func sliceSubset[T comparable](name string, expected, target []T) (err error) {
-	if len(target) == 0 {
-		return nil
-	} else if len(expected) == 0 {
-		return diffError(name, expected, target)
-	}
-	exp := make(map[T]bool)
-	for _, t := range expected {
-		exp[t] = true
-	}
-	for _, t := range target {
-		if !exp[t] {
-			return diffError(name, expected, target)
-		}
-	}
-	return nil
-}
-
-func sequentialSubset[T comparable](name string, expected, target []T) (err error) {
-	if len(target) == 0 {
-		return nil
-	} else if len(expected) == 0 || !reflect.DeepEqual(expected, target) {
-		return diffError(name, expected, target)
-	}
-	return nil
-}
-
-func mapSubset[K, V comparable](name string, expected, target map[K]V) error {
-	if len(target) == 0 {
-		return nil
-	} else if len(expected) == 0 {
-		return diffError(name, expected, target)
-	}
-	for k, v := range target {
-		e, ok := expected[k]
-		if !ok || e != v {
-			return diffError(name, expected, target)
-		}
-	}
-	return nil
-}
-
-func pointerSubset[T any](name string, expected, target *T) (err error) {
-	if target == nil {
-		return nil
-	} else if expected == nil || !reflect.DeepEqual(expected, target) {
-		return diffError(name, expected, target)
-	}
-	return nil
-}
-
-func diffError(msg string, expected, target any) error {
-	diff := cmp.Diff(expected, target)
-	return fmt.Errorf("%s\n%s", msg, diff)
 }
 
 func (d *dockerNamespace) containerPortMap(ctx context.Context, containerID string, requiredPorts nat.PortSet) (nat.PortMap, error) {

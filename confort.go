@@ -236,6 +236,7 @@ func (cft *Confort) createContainer(ctx context.Context, name string, c *Contain
 	var modifyContainer func(config *container.Config)
 	var modifyHost func(config *container.HostConfig)
 	var modifyNetworking func(config *network.NetworkingConfig)
+	checkConsistency := true
 	var pullOpts *types.ImagePullOptions
 	pullOut := io.Discard
 
@@ -247,6 +248,8 @@ func (cft *Confort) createContainer(ctx context.Context, name string, c *Contain
 			modifyHost = opt.Value().(func(config *container.HostConfig))
 		case identOptionNetworkingConfig{}:
 			modifyNetworking = opt.Value().(func(config *network.NetworkingConfig))
+		case identOptionConfigConsistency{}:
+			checkConsistency = opt.Value().(bool)
 		case identOptionPullOption{}:
 			o := opt.Value().(pullOptions)
 			pullOpts = o.pullOption
@@ -296,7 +299,7 @@ func (cft *Confort) createContainer(ctx context.Context, name string, c *Contain
 		modifyNetworking(nc)
 	}
 
-	_, err = cft.namespace.CreateContainer(ctx, name, cc, hc, nc, pullOpts, pullOut)
+	_, err = cft.namespace.CreateContainer(ctx, name, cc, hc, nc, checkConsistency, pullOpts, pullOut)
 	return err
 }
 
@@ -305,11 +308,12 @@ type (
 		option.Interface
 		run()
 	}
-	identOptionContainerConfig  struct{}
-	identOptionHostConfig       struct{}
-	identOptionNetworkingConfig struct{}
-	identOptionPullOption       struct{}
-	pullOptions                 struct {
+	identOptionContainerConfig   struct{}
+	identOptionHostConfig        struct{}
+	identOptionNetworkingConfig  struct{}
+	identOptionConfigConsistency struct{}
+	identOptionPullOption        struct{}
+	pullOptions                  struct {
 		pullOption *types.ImagePullOptions
 		pullOut    io.Writer
 	}
@@ -333,6 +337,12 @@ func WithHostConfig(f func(config *container.HostConfig)) RunOption {
 func WithNetworkingConfig(f func(config *network.NetworkingConfig)) RunOption {
 	return runOption{
 		Interface: option.New(identOptionNetworkingConfig{}, f),
+	}
+}
+
+func WithConfigConsistency(check bool) RunOption {
+	return runOption{
+		Interface: option.New(identOptionConfigConsistency{}, check),
 	}
 }
 

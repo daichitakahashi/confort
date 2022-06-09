@@ -641,7 +641,7 @@ func TestWithResourcePolicy(t *testing.T) {
 
 				precedingContainerID, err := precedes.namespace.CreateContainer(ctx, containerNameSuffix, &container.Config{
 					Image: imageEcho,
-				}, &container.HostConfig{}, &network.NetworkingConfig{}, nil, io.Discard)
+				}, &container.HostConfig{}, &network.NetworkingConfig{}, true, nil, io.Discard)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -662,7 +662,7 @@ func TestWithResourcePolicy(t *testing.T) {
 					)
 					containerID, err = cft.namespace.CreateContainer(ctx, fmt.Sprintf("%s-%s", middleName, containerNameSuffix), &container.Config{
 						Image: imageEcho,
-					}, &container.HostConfig{}, &network.NetworkingConfig{}, nil, io.Discard)
+					}, &container.HostConfig{}, &network.NetworkingConfig{}, true, nil, io.Discard)
 					if err != nil {
 						c.Fatal(err)
 					}
