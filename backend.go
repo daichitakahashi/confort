@@ -88,7 +88,8 @@ func (d *dockerBackend) Namespace(ctx context.Context, namespace string) (Namesp
 	var nwCreated bool
 	if nw == nil {
 		resp, err := d.cli.NetworkCreate(ctx, networkName, types.NetworkCreate{
-			Driver: "bridge",
+			Driver:         "bridge",
+			CheckDuplicate: true,
 		})
 		if err != nil {
 			return nil, err

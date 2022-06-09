@@ -480,17 +480,206 @@ func communicate(t *testing.T, host, method, status string) string {
 func TestWithResourcePolicy(t *testing.T) {
 	t.Parallel()
 
-	t.Run("ResourcePolicyReuse(default)", func(t *testing.T) {
-		// TODO
-	})
+	ctx := context.Background()
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	t.Run("ResourcePolicyTakeOver", func(t *testing.T) {
-		// TODO
-	})
+	// define assertions
 
-	t.Run("ResourcePolicyError", func(t *testing.T) {
-		// TODO
-	})
+	// container or network is reused
+	assertReused := func(t *testing.T, precedingID, id string, recovered any) {
+		t.Helper()
+		if recovered != nil {
+			t.Fatalf("unexpected error: %#v", recovered)
+		}
+		if precedingID != id {
+			t.Fatalf("ids are not match: %q and %q", precedingID, id)
+		}
+	}
+	// create network or container is failed because network/container having same name already exists
+	assertFailed := func(t *testing.T, _, _ string, recovered any) {
+		t.Helper()
+		if recovered == nil {
+			t.Fatal("expected failure, but succeeds")
+		}
+	}
+	// after termination, check the network is still alive or not
+	assertNetwork := func(removed bool) func(t *testing.T, networkID string) {
+		return func(t *testing.T, networkID string) {
+			t.Helper()
+			list, err := cli.NetworkList(ctx, types.NetworkListOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var found bool
+			for _, c := range list {
+				if c.ID == networkID {
+					found = true
+					break
+				}
+			}
+			if found && removed {
+				t.Fatalf("expected to be removed but exists: %q", networkID)
+			} else if !found && !removed {
+				t.Fatalf("network not found: %q", networkID)
+			}
+		}
+	}
+	// after termination, check the container is still alive or not
+	assertContainer := func(removed bool) func(t *testing.T, containerID string) {
+		return func(t *testing.T, containerID string) {
+			t.Helper()
+			list, err := cli.ContainerList(ctx, types.ContainerListOptions{
+				All: true,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var found bool
+			for _, c := range list {
+				if c.ID == containerID {
+					found = true
+					break
+				}
+			}
+			if found && removed {
+				t.Fatalf("expected to be removed but exists: %q", containerID)
+			} else if !found && !removed {
+				t.Fatalf("container not found: %q", containerID)
+			}
+		}
+	}
+
+	testCases := []struct {
+		policy                   ResourcePolicy
+		afterNamespaceCreated    func(t *testing.T, foundNetworkID, gotNetworkID string, recovered any)
+		afterNamespaceTerminated func(t *testing.T, networkID string)
+		afterContainerCreated    func(t *testing.T, foundContainerID, gotContainerID string, recovered any)
+		afterContainerTerminated func(t *testing.T, containerID string)
+	}{
+		{
+			policy:                   ResourcePolicyReuse,
+			afterNamespaceCreated:    assertReused,
+			afterNamespaceTerminated: assertNetwork(false),
+			afterContainerCreated:    assertReused,
+			afterContainerTerminated: assertContainer(false),
+		},
+		{
+			policy:                   ResourcePolicyTakeOver,
+			afterNamespaceCreated:    assertReused,
+			afterNamespaceTerminated: assertNetwork(true),
+			afterContainerCreated:    assertReused,
+			afterContainerTerminated: assertContainer(true),
+		},
+		{
+			policy:                   ResourcePolicyError,
+			afterNamespaceCreated:    assertFailed,
+			afterNamespaceTerminated: assertNetwork(false),
+			afterContainerCreated:    assertFailed,
+			afterContainerTerminated: assertContainer(false),
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(string(tc.policy), func(t *testing.T) {
+			t.Parallel()
+
+			t.Run("duplicated namespace(network)", func(t *testing.T) {
+				t.Parallel()
+
+				// create preceding network
+				networkName := uniqueName.Must(t)
+				precedes, termPrecedes := New(t, ctx, WithNamespace(networkName, true))
+				t.Cleanup(termPrecedes)
+
+				// try to re-create
+				var cft *Confort
+				var term func()
+				var terminated bool
+				var networkID string
+				recovered := func() (r any) {
+					defer func() {
+						r = recover()
+					}()
+					c, _ := NewControl()
+					cft, term = New(c, ctx,
+						WithNamespace(networkName, true),
+						WithResourcePolicy(tc.policy),
+					)
+					if cft != nil && cft.namespace != nil {
+						networkID = cft.namespace.Network().ID
+					}
+					return nil
+				}()
+				t.Cleanup(func() {
+					if !terminated && term != nil {
+						term()
+					}
+				})
+				tc.afterNamespaceCreated(t, precedes.namespace.Network().ID, networkID, recovered)
+				if term != nil {
+					term()
+					terminated = true
+				}
+				tc.afterNamespaceTerminated(t, precedes.namespace.Network().ID)
+			})
+
+			t.Run("duplicated container name", func(t *testing.T) {
+				t.Parallel()
+
+				// create preceding network and container
+				namespacePrefix := uniqueName.Must(t)
+				middleName := uniqueName.Must(t)
+				containerNameSuffix := uniqueName.Must(t)
+				precedes, termPrecedes := New(t, ctx,
+					WithNamespace(fmt.Sprintf("%s-%s", namespacePrefix, middleName), true),
+				)
+				t.Cleanup(termPrecedes)
+
+				precedingContainerID, err := precedes.namespace.CreateContainer(ctx, containerNameSuffix, &container.Config{
+					Image: imageEcho,
+				}, &container.HostConfig{}, &network.NetworkingConfig{}, nil, io.Discard)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				// try to re-create
+				var cft *Confort
+				var term func()
+				var terminated bool
+				var containerID string
+				recovered := func() (r any) {
+					defer func() {
+						r = recover()
+					}()
+					c, _ := NewControl()
+					cft, term = New(c, ctx,
+						WithNamespace(namespacePrefix, true),
+						WithResourcePolicy(tc.policy),
+					)
+					containerID, err = cft.namespace.CreateContainer(ctx, fmt.Sprintf("%s-%s", middleName, containerNameSuffix), &container.Config{
+						Image: imageEcho,
+					}, &container.HostConfig{}, &network.NetworkingConfig{}, nil, io.Discard)
+					if err != nil {
+						c.Fatal(err)
+					}
+					return nil
+				}()
+				t.Cleanup(func() {
+					if !terminated {
+						term()
+					}
+				})
+				tc.afterContainerCreated(t, precedingContainerID, containerID, recovered)
+				term()
+				terminated = true
+				tc.afterContainerTerminated(t, precedingContainerID)
+			})
+		})
+	}
 }
 
 func TestWithPullOptions(t *testing.T) {
