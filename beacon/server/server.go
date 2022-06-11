@@ -7,7 +7,9 @@ import (
 
 	"github.com/daichitakahashi/confort/proto/beacon"
 	"github.com/daichitakahashi/workerctl"
+	"github.com/docker/docker/client"
 	"google.golang.org/grpc"
+	health "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 type Server struct {
@@ -27,9 +29,18 @@ func (s *Server) LaunchWorker(ctx context.Context) (stop func(ctx context.Contex
 	}
 	s.addr = ln.Addr().String() // set actual address
 
+	// docker client
+	cli, err := client.NewClientWithOpts(client.FromEnv) // TODO: option
+	if err != nil {
+		return nil, err
+	}
+
 	serv := grpc.NewServer()
 	beacon.RegisterBeaconServiceServer(serv, &beaconServer{})
 	beacon.RegisterUniqueValueServiceServer(serv, &uniqueValueServer{})
+	health.RegisterHealthServer(serv, &healthServer{
+		cli: cli,
+	})
 
 	go func() {
 		err := serv.Serve(ln)
