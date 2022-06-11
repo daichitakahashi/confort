@@ -43,7 +43,8 @@ message RegisterResponse {
 }
 
 message DeregisterRequest {
-  string namespace = 1;
+  string client_id = 1;
+  string namespace = 2;
 }
 
 message BuildImageRequest {
@@ -68,12 +69,13 @@ message BuildImageResponse {
 }
 
 message CreateContainerRequest {
-  string name = 1;
-  bytes container_config = 2;
-  bytes host_config = 3;
-  bytes networking_config = 4;
-  bool check_config_consistency = 5;
-  optional bytes pull_config = 6;
+  string client_id = 1;
+  string name = 2;
+  bytes container_config = 3;
+  bytes host_config = 4;
+  bytes networking_config = 5;
+  bool check_config_consistency = 6;
+  optional bytes pull_config = 7;
 }
 
 message CreatedContainer {
@@ -88,8 +90,9 @@ message CreateContainerResponse {
 }
 
 message AcquireContainerEndpointRequest {
-  string container_name = 1;
-  bool exclusive = 2;
+  string client_id = 1;
+  string container_name = 2;
+  bool exclusive = 3;
 }
 
 message PortBinding {
@@ -106,5 +109,6 @@ message AcquireContainerEndpointResponse {
 }
 
 message ReleaseContainerRequest {
-  string container_name = 1;
+  string client_id = 1;
+  string container_name = 2;
 }
