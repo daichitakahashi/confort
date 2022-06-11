@@ -3,6 +3,7 @@ module github.com/daichitakahashi/confort
 go 1.18
 
 require (
+	github.com/daichitakahashi/oncewait v1.0.0
 	github.com/docker/cli v20.10.16+incompatible
 	github.com/docker/docker v20.10.11+incompatible
 	github.com/docker/go-connections v0.4.0
