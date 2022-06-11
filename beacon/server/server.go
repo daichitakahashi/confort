@@ -25,6 +25,7 @@ func (s *Server) LaunchWorker(ctx context.Context) (stop func(ctx context.Contex
 	if err != nil {
 		return nil, err
 	}
+	s.addr = ln.Addr().String() // set actual address
 
 	serv := grpc.NewServer()
 	beacon.RegisterBeaconServiceServer(serv, &beaconServer{})
