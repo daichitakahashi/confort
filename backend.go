@@ -26,7 +26,7 @@ import (
 type (
 	Backend interface {
 		Namespace(ctx context.Context, namespace string) (Namespace, error)
-		BuildImage(ctx context.Context, contextDir string, buildOptions types.ImageBuildOptions, force bool, buildOut io.Writer) error
+		BuildImage(ctx context.Context, buildContext io.Reader, buildOptions types.ImageBuildOptions, force bool, buildOut io.Writer) error
 	}
 
 	Namespace interface {
@@ -59,6 +59,14 @@ type dockerBackend struct {
 	buildMu   *keyedLock
 	cli       *client.Client // inject
 	policy    ResourcePolicy
+}
+
+func NewDockerBackend(cli *client.Client, policy ResourcePolicy) Backend {
+	return &dockerBackend{
+		buildMu: newKeyedLock(),
+		cli:     cli,
+		policy:  policy,
+	}
 }
 
 func (d *dockerBackend) Namespace(ctx context.Context, namespace string) (Namespace, error) {
@@ -120,9 +128,9 @@ func (d *dockerBackend) Namespace(ctx context.Context, namespace string) (Namesp
 	}, nil
 }
 
-func (d *dockerBackend) BuildImage(ctx context.Context, contextDir string, buildOptions types.ImageBuildOptions, force bool, buildOut io.Writer) (err error) {
+func (d *dockerBackend) BuildImage(ctx context.Context, buildContext io.Reader, buildOptions types.ImageBuildOptions, force bool, buildOut io.Writer) (err error) {
 	if len(buildOptions.Tags) == 0 {
-		return errors.New("tag not specified")
+		return errors.New("image tag not specified")
 	}
 	image := buildOptions.Tags[0]
 
@@ -149,13 +157,7 @@ func (d *dockerBackend) BuildImage(ctx context.Context, contextDir string, build
 		}
 	}
 
-	tarball, relDockerfile, err := createArchive(contextDir, buildOptions.Dockerfile)
-	if err != nil {
-		return err
-	}
-	buildOptions.Dockerfile = relDockerfile
-
-	resp, err := d.cli.ImageBuild(ctx, tarball, buildOptions)
+	resp, err := d.cli.ImageBuild(ctx, buildContext, buildOptions)
 	if err != nil {
 		return err
 	}

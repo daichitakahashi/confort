@@ -7,6 +7,7 @@ require (
 	github.com/docker/cli v20.10.16+incompatible
 	github.com/docker/docker v20.10.11+incompatible
 	github.com/docker/go-connections v0.4.0
+	github.com/docker/go-units v0.4.0
 	github.com/goccy/go-reflect v1.1.1-0.20210520085854-e1eb8c5193d0
 	github.com/google/go-cmp v0.5.7
 	github.com/lestrrat-go/backoff/v2 v2.0.8
@@ -24,7 +25,6 @@ require (
 	github.com/containerd/cgroups v1.0.3 // indirect
 	github.com/containerd/containerd v1.6.3-0.20220401172941-5ff8fce1fcc6 // indirect
 	github.com/docker/distribution v2.8.0+incompatible // indirect
-	github.com/docker/go-units v0.4.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.2 // indirect

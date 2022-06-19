@@ -11,7 +11,7 @@ func TestUniqueValueServer_StoreUniqueValue(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	cli := beacon.NewUniqueValueServiceClient(conn)
+	_, _, cli, _ := startServer(t)
 
 	testCases := []struct {
 		store   string
