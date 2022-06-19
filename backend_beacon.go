@@ -1,18 +1,23 @@
 package confort
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"testing"
 
+	"github.com/daichitakahashi/confort/internal/beaconutil"
 	"github.com/daichitakahashi/confort/proto/beacon"
 	"github.com/daichitakahashi/oncewait"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/go-connections/nat"
+	"go.uber.org/multierr"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -41,18 +46,16 @@ func ConnectBeacon(tb testing.TB, ctx context.Context) (*grpc.ClientConn, bool) 
 }
 
 // TODO:
-//  - export CFT_BEACON_ENDPOINT=`go run github.com/daichitakahashi/confort/cmd/confort -p 9999 -namespace hogehoge*`
+//  - export CFT_BEACON_ENDPOINT=`go run github.com/daichitakahashi/confort/cmd/confort run -p 9999`
 
 // client of beacon container
 type beaconBackend struct {
-	cli    beacon.BeaconServiceClient
-	policy beacon.ResourcePolicy
+	cli beacon.BeaconServiceClient
 }
 
 func (b *beaconBackend) Namespace(ctx context.Context, namespace string) (Namespace, error) {
 	resp, err := b.cli.Register(ctx, &beacon.RegisterRequest{
-		Namespace:      namespace,
-		ResourcePolicy: b.policy,
+		Namespace: namespace,
 	})
 	if err != nil {
 		return nil, err
@@ -72,40 +75,87 @@ func (b *beaconBackend) Namespace(ctx context.Context, namespace string) (Namesp
 	}, nil
 }
 
-func (b *beaconBackend) BuildImage(ctx context.Context, contextDir string, buildOptions types.ImageBuildOptions, force bool, buildOut io.Writer) error {
+func (b *beaconBackend) BuildImage(ctx context.Context, buildContext io.Reader, buildOptions types.ImageBuildOptions, force bool, buildOut io.Writer) error {
+	if len(buildOptions.Tags) == 0 {
+		return errors.New("image tag not specified")
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	options, err := json.Marshal(buildOptions)
+	stream, err := b.cli.BuildImage(ctx)
 	if err != nil {
 		return err
 	}
-	stream, err := b.cli.BuildImage(ctx, &beacon.BuildImageRequest{
-		ContextDir:   contextDir,
-		BuildOptions: options,
-		Force:        force,
+
+	err = stream.Send(&beacon.BuildImageRequest{
+		Build: &beacon.BuildImageRequest_BuildInfo{
+			BuildInfo: &beacon.BuildInfo{
+				BuildOptions: beaconutil.ConvertBuildOptionsToProto(buildOptions),
+				Force:        force,
+			},
+		},
 	})
 	if err != nil {
 		return err
 	}
 
-streaming:
-	for {
-		resp, err := stream.Recv()
-		if err != nil {
-			return err
-		}
-		switch vt := resp.GetProcessing().(type) {
-		case *beacon.BuildImageResponse_Building:
-			_, err = io.WriteString(buildOut, vt.Building.GetMessage())
+	r := bufio.NewReaderSize(buildContext, 4*1024)
+
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+			resp, err := stream.Recv()
 			if err != nil {
+				if err == io.EOF {
+					return nil
+				}
 				return err
 			}
-		case *beacon.BuildImageResponse_Built:
-			break streaming
+			switch vt := resp.GetProcessing().(type) {
+			case *beacon.BuildImageResponse_Building:
+				_, err = buildOut.Write(vt.Building.GetMessage())
+				if err != nil {
+					return err
+				}
+			case *beacon.BuildImageResponse_Built:
+				return nil
+			}
 		}
-	}
-	return nil
+	})
+	eg.Go(func() error {
+		buf := make([]byte, 4*1024)
+		for {
+			select {
+			case <-ctx.Done():
+				return multierr.Append(ctx.Err(), stream.CloseSend())
+			default:
+			}
+			n, err := r.Read(buf)
+			if n > 0 {
+				err = stream.Send(&beacon.BuildImageRequest{
+					Build: &beacon.BuildImageRequest_Context{
+						Context: buf[:n],
+					},
+				})
+				if err != nil {
+					return multierr.Append(err, stream.CloseSend())
+				}
+			}
+			if err == io.EOF {
+				return stream.CloseSend()
+			}
+			if err != nil {
+				return multierr.Append(err, stream.CloseSend())
+			}
+		}
+	})
+	return eg.Wait()
 }
 
 var _ Backend = (*beaconBackend)(nil)
@@ -138,13 +188,7 @@ func (b *beaconNamespace) CreateContainer(ctx context.Context, name string, cont
 	if err != nil {
 		return "", err
 	}
-	var pull []byte
-	if pullOptions != nil {
-		pull, err = json.Marshal(pullOptions)
-		if err != nil {
-			return "", err
-		}
-	}
+	pull := beaconutil.ConvertPullOptionsToProto(pullOptions)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -156,7 +200,7 @@ func (b *beaconNamespace) CreateContainer(ctx context.Context, name string, cont
 		HostConfig:             hc,
 		NetworkingConfig:       nc,
 		CheckConfigConsistency: configConsistency,
-		PullConfig:             pull,
+		PullOptions:            pull,
 	})
 	if err != nil {
 		return "", err
@@ -169,7 +213,7 @@ func (b *beaconNamespace) CreateContainer(ctx context.Context, name string, cont
 		}
 		switch vt := resp.GetProcessing().(type) {
 		case *beacon.CreateContainerResponse_Pulling:
-			_, err = io.WriteString(pullOut, vt.Pulling.GetMessage())
+			_, err = pullOut.Write(vt.Pulling.GetMessage())
 			if err != nil {
 				return "", err
 			}
@@ -221,8 +265,7 @@ func (b *beaconNamespace) ReleaseContainer(ctx context.Context, name string, _ b
 
 func (b *beaconNamespace) Release(ctx context.Context) error {
 	_, err := b.cli.Deregister(ctx, &beacon.DeregisterRequest{
-		ClientId:  b.clientID,
-		Namespace: b.namespace,
+		ClientId: b.clientID,
 	})
 	return err
 }

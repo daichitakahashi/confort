@@ -92,11 +92,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 	}
 	cli.NegotiateAPIVersion(ctx)
 
-	backend := &dockerBackend{
-		buildMu: newKeyedLock(),
-		cli:     cli,
-		policy:  policy,
-	}
+	backend := NewDockerBackend(cli, policy)
 	ns, err := backend.Namespace(ctx, namespace)
 	if err != nil {
 		tb.Fatalf("confort: %s", err)
@@ -165,16 +161,11 @@ func WithBuildOutput(dst io.Writer) BuildOption {
 }
 
 type Build struct {
-	Image        string
-	Dockerfile   string
-	ContextDir   string
-	BuildArgs    map[string]*string
-	Platform     string
-	Env          map[string]string
-	Cmd          []string
-	Entrypoint   []string
-	ExposedPorts []string
-	Waiter       *Waiter
+	Image      string
+	Dockerfile string
+	ContextDir string
+	BuildArgs  map[string]*string
+	Platform   string
 }
 
 // Build creates new image from given Dockerfile and context directory.
@@ -202,12 +193,20 @@ func (cft *Confort) Build(tb testing.TB, ctx context.Context, b *Build, opts ...
 		}
 	}
 
+	tarball, relDockerfile, err := createArchive(b.ContextDir, b.Dockerfile)
+	if err != nil {
+		tb.Fatalf("confort: %s", err)
+	}
+	defer func() {
+		_, _ = io.Copy(io.Discard, tarball)
+	}()
+
 	buildOption := types.ImageBuildOptions{
 		Tags:           []string{b.Image},
 		SuppressOutput: buildOut == io.Discard,
 		Remove:         true,
 		PullParent:     true,
-		Dockerfile:     b.Dockerfile,
+		Dockerfile:     relDockerfile,
 		BuildArgs:      b.BuildArgs,
 		Target:         "",
 		SessionID:      "",
@@ -217,7 +216,7 @@ func (cft *Confort) Build(tb testing.TB, ctx context.Context, b *Build, opts ...
 		modifyBuildOptions(&buildOption)
 	}
 
-	err := cft.backend.BuildImage(ctx, b.ContextDir, buildOption, force, buildOut)
+	err = cft.backend.BuildImage(ctx, tarball, buildOption, force, buildOut)
 	if err != nil {
 		tb.Fatalf("confort: %s", err)
 	}

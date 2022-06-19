@@ -5,20 +5,24 @@ import (
 	"log"
 	"net"
 
+	"github.com/daichitakahashi/confort"
 	"github.com/daichitakahashi/confort/proto/beacon"
 	"github.com/daichitakahashi/workerctl"
-	"github.com/docker/docker/client"
 	"google.golang.org/grpc"
 	health "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 type Server struct {
-	addr string
+	addr   string
+	be     confort.Backend
+	health HealthChecker
 }
 
-func New(addr string) *Server {
+func New(addr string, be confort.Backend, h HealthChecker) *Server {
 	return &Server{
-		addr: addr,
+		addr:   addr,
+		be:     be,
+		health: h,
 	}
 }
 
@@ -29,17 +33,16 @@ func (s *Server) LaunchWorker(ctx context.Context) (stop func(ctx context.Contex
 	}
 	s.addr = ln.Addr().String() // set actual address
 
-	// docker client
-	cli, err := client.NewClientWithOpts(client.FromEnv) // TODO: option
-	if err != nil {
-		return nil, err
-	}
-
 	serv := grpc.NewServer()
-	beacon.RegisterBeaconServiceServer(serv, &beaconServer{})
+	beaconSvr := &beaconServer{
+		be:               s.be,
+		namespaces:       map[string]*namespace{},
+		clientsNamespace: map[string]*namespace{},
+	}
+	beacon.RegisterBeaconServiceServer(serv, beaconSvr)
 	beacon.RegisterUniqueValueServiceServer(serv, &uniqueValueServer{})
 	health.RegisterHealthServer(serv, &healthServer{
-		cli: cli,
+		checker: s.health,
 	})
 
 	go func() {
@@ -49,8 +52,12 @@ func (s *Server) LaunchWorker(ctx context.Context) (stop func(ctx context.Contex
 			workerctl.Abort(ctx)
 		}
 	}()
-	return func(_ context.Context) {
+	return func(ctx context.Context) {
 		serv.GracefulStop()
+		err := beaconSvr.Shutdown(ctx)
+		if err != nil {
+			log.Printf("error on shutdown beacon server: %s", err)
+		}
 	}, nil
 }
 

@@ -4,17 +4,28 @@ import (
 	"context"
 	"log"
 
-	"github.com/docker/docker/client"
 	health "google.golang.org/grpc/health/grpc_health_v1"
 )
 
+type HealthChecker interface {
+	HealthCheck(ctx context.Context) error
+}
+
+type HealthCheckFunc func(ctx context.Context) error
+
+func (f HealthCheckFunc) HealthCheck(ctx context.Context) error {
+	return f(ctx)
+}
+
+var _ HealthChecker = (HealthCheckFunc)(nil)
+
 type healthServer struct {
 	health.UnimplementedHealthServer
-	cli *client.Client
+	checker HealthChecker
 }
 
 func (h *healthServer) Check(ctx context.Context, _ *health.HealthCheckRequest) (*health.HealthCheckResponse, error) {
-	_, err := h.cli.Ping(ctx)
+	err := h.checker.HealthCheck(ctx)
 	if err != nil {
 		log.Println("health check failed:", err)
 		return &health.HealthCheckResponse{
