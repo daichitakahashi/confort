@@ -8,7 +8,7 @@ import (
 
 func main() {
 	ctx := context.Background()
-	const addr = ":8443"
+	const addr = ":8080"
 
 	app.Run(ctx, addr)
 }
