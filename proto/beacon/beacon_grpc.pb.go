@@ -25,7 +25,7 @@ const _ = grpc.SupportPackageIsVersion7
 type BeaconServiceClient interface {
 	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
 	Deregister(ctx context.Context, in *DeregisterRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	BuildImage(ctx context.Context, in *BuildImageRequest, opts ...grpc.CallOption) (BeaconService_BuildImageClient, error)
+	BuildImage(ctx context.Context, opts ...grpc.CallOption) (BeaconService_BuildImageClient, error)
 	CreateContainer(ctx context.Context, in *CreateContainerRequest, opts ...grpc.CallOption) (BeaconService_CreateContainerClient, error)
 	AcquireContainerEndpoint(ctx context.Context, in *AcquireContainerEndpointRequest, opts ...grpc.CallOption) (BeaconService_AcquireContainerEndpointClient, error)
 	ReleaseContainer(ctx context.Context, in *ReleaseContainerRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -57,28 +57,27 @@ func (c *beaconServiceClient) Deregister(ctx context.Context, in *DeregisterRequ
 	return out, nil
 }
 
-func (c *beaconServiceClient) BuildImage(ctx context.Context, in *BuildImageRequest, opts ...grpc.CallOption) (BeaconService_BuildImageClient, error) {
+func (c *beaconServiceClient) BuildImage(ctx context.Context, opts ...grpc.CallOption) (BeaconService_BuildImageClient, error) {
 	stream, err := c.cc.NewStream(ctx, &BeaconService_ServiceDesc.Streams[0], "/beacon.BeaconService/BuildImage", opts...)
 	if err != nil {
 		return nil, err
 	}
 	x := &beaconServiceBuildImageClient{stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
 	return x, nil
 }
 
 type BeaconService_BuildImageClient interface {
+	Send(*BuildImageRequest) error
 	Recv() (*BuildImageResponse, error)
 	grpc.ClientStream
 }
 
 type beaconServiceBuildImageClient struct {
 	grpc.ClientStream
+}
+
+func (x *beaconServiceBuildImageClient) Send(m *BuildImageRequest) error {
+	return x.ClientStream.SendMsg(m)
 }
 
 func (x *beaconServiceBuildImageClient) Recv() (*BuildImageResponse, error) {
@@ -168,7 +167,7 @@ func (c *beaconServiceClient) ReleaseContainer(ctx context.Context, in *ReleaseC
 type BeaconServiceServer interface {
 	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
 	Deregister(context.Context, *DeregisterRequest) (*emptypb.Empty, error)
-	BuildImage(*BuildImageRequest, BeaconService_BuildImageServer) error
+	BuildImage(BeaconService_BuildImageServer) error
 	CreateContainer(*CreateContainerRequest, BeaconService_CreateContainerServer) error
 	AcquireContainerEndpoint(*AcquireContainerEndpointRequest, BeaconService_AcquireContainerEndpointServer) error
 	ReleaseContainer(context.Context, *ReleaseContainerRequest) (*emptypb.Empty, error)
@@ -185,7 +184,7 @@ func (UnimplementedBeaconServiceServer) Register(context.Context, *RegisterReque
 func (UnimplementedBeaconServiceServer) Deregister(context.Context, *DeregisterRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Deregister not implemented")
 }
-func (UnimplementedBeaconServiceServer) BuildImage(*BuildImageRequest, BeaconService_BuildImageServer) error {
+func (UnimplementedBeaconServiceServer) BuildImage(BeaconService_BuildImageServer) error {
 	return status.Errorf(codes.Unimplemented, "method BuildImage not implemented")
 }
 func (UnimplementedBeaconServiceServer) CreateContainer(*CreateContainerRequest, BeaconService_CreateContainerServer) error {
@@ -247,15 +246,12 @@ func _BeaconService_Deregister_Handler(srv interface{}, ctx context.Context, dec
 }
 
 func _BeaconService_BuildImage_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(BuildImageRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(BeaconServiceServer).BuildImage(m, &beaconServiceBuildImageServer{stream})
+	return srv.(BeaconServiceServer).BuildImage(&beaconServiceBuildImageServer{stream})
 }
 
 type BeaconService_BuildImageServer interface {
 	Send(*BuildImageResponse) error
+	Recv() (*BuildImageRequest, error)
 	grpc.ServerStream
 }
 
@@ -265,6 +261,14 @@ type beaconServiceBuildImageServer struct {
 
 func (x *beaconServiceBuildImageServer) Send(m *BuildImageResponse) error {
 	return x.ServerStream.SendMsg(m)
+}
+
+func (x *beaconServiceBuildImageServer) Recv() (*BuildImageRequest, error) {
+	m := new(BuildImageRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 func _BeaconService_CreateContainer_Handler(srv interface{}, stream grpc.ServerStream) error {
@@ -352,6 +356,7 @@ var BeaconService_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "BuildImage",
 			Handler:       _BeaconService_BuildImage_Handler,
 			ServerStreams: true,
+			ClientStreams: true,
 		},
 		{
 			StreamName:    "CreateContainer",
