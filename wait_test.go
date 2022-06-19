@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/daichitakahashi/confort/internal/mock"
 	"github.com/docker/docker/api/types"
 )
 
@@ -16,7 +17,7 @@ func TestCheckLogOccurrence(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	f := &FetcherMock{
+	f := &mock.FetcherMock{
 		LogFunc: func(ctx context.Context) (io.ReadCloser, error) {
 			var log string
 
@@ -58,7 +59,7 @@ func TestCheckHealthy(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	f := &FetcherMock{
+	f := &mock.FetcherMock{
 		StatusFunc: func(ctx context.Context) (*types.ContainerState, error) {
 			status := "unhealthy"
 
@@ -110,7 +111,7 @@ func TestWaiter_Wait(t *testing.T) {
 		t.Parallel()
 
 		var count int
-		f := &FetcherMock{
+		f := &mock.FetcherMock{
 			StatusFunc: func(ctx context.Context) (*types.ContainerState, error) {
 				status := "created"
 				count++
@@ -139,7 +140,7 @@ func TestWaiter_Wait(t *testing.T) {
 		t.Parallel()
 
 		var count int
-		f := &FetcherMock{
+		f := &mock.FetcherMock{
 			StatusFunc: func(ctx context.Context) (*types.ContainerState, error) {
 				count++
 				return &types.ContainerState{
