@@ -174,10 +174,7 @@ var _ confort.Namespace = &NamespaceMock{}
 // 			ReleaseFunc: func(ctx context.Context) error {
 // 				panic("mock out the Release method")
 // 			},
-// 			ReleaseContainerFunc: func(ctx context.Context, name string, exclusive bool) error {
-// 				panic("mock out the ReleaseContainer method")
-// 			},
-// 			StartContainerFunc: func(ctx context.Context, name string, exclusive bool) (nat.PortMap, error) {
+// 			StartContainerFunc: func(ctx context.Context, name string) (nat.PortMap, error) {
 // 				panic("mock out the StartContainer method")
 // 			},
 // 		}
@@ -199,11 +196,8 @@ type NamespaceMock struct {
 	// ReleaseFunc mocks the Release method.
 	ReleaseFunc func(ctx context.Context) error
 
-	// ReleaseContainerFunc mocks the ReleaseContainer method.
-	ReleaseContainerFunc func(ctx context.Context, name string, exclusive bool) error
-
 	// StartContainerFunc mocks the StartContainer method.
-	StartContainerFunc func(ctx context.Context, name string, exclusive bool) (nat.PortMap, error)
+	StartContainerFunc func(ctx context.Context, name string) (nat.PortMap, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -237,31 +231,19 @@ type NamespaceMock struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 		}
-		// ReleaseContainer holds details about calls to the ReleaseContainer method.
-		ReleaseContainer []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-			// Name is the name argument value.
-			Name string
-			// Exclusive is the exclusive argument value.
-			Exclusive bool
-		}
 		// StartContainer holds details about calls to the StartContainer method.
 		StartContainer []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// Name is the name argument value.
 			Name string
-			// Exclusive is the exclusive argument value.
-			Exclusive bool
 		}
 	}
-	lockCreateContainer  sync.RWMutex
-	lockNamespace        sync.RWMutex
-	lockNetwork          sync.RWMutex
-	lockRelease          sync.RWMutex
-	lockReleaseContainer sync.RWMutex
-	lockStartContainer   sync.RWMutex
+	lockCreateContainer sync.RWMutex
+	lockNamespace       sync.RWMutex
+	lockNetwork         sync.RWMutex
+	lockRelease         sync.RWMutex
+	lockStartContainer  sync.RWMutex
 }
 
 // CreateContainer calls CreateContainerFunc.
@@ -406,77 +388,34 @@ func (mock *NamespaceMock) ReleaseCalls() []struct {
 	return calls
 }
 
-// ReleaseContainer calls ReleaseContainerFunc.
-func (mock *NamespaceMock) ReleaseContainer(ctx context.Context, name string, exclusive bool) error {
-	if mock.ReleaseContainerFunc == nil {
-		panic("NamespaceMock.ReleaseContainerFunc: method is nil but Namespace.ReleaseContainer was just called")
-	}
-	callInfo := struct {
-		Ctx       context.Context
-		Name      string
-		Exclusive bool
-	}{
-		Ctx:       ctx,
-		Name:      name,
-		Exclusive: exclusive,
-	}
-	mock.lockReleaseContainer.Lock()
-	mock.calls.ReleaseContainer = append(mock.calls.ReleaseContainer, callInfo)
-	mock.lockReleaseContainer.Unlock()
-	return mock.ReleaseContainerFunc(ctx, name, exclusive)
-}
-
-// ReleaseContainerCalls gets all the calls that were made to ReleaseContainer.
-// Check the length with:
-//     len(mockedNamespace.ReleaseContainerCalls())
-func (mock *NamespaceMock) ReleaseContainerCalls() []struct {
-	Ctx       context.Context
-	Name      string
-	Exclusive bool
-} {
-	var calls []struct {
-		Ctx       context.Context
-		Name      string
-		Exclusive bool
-	}
-	mock.lockReleaseContainer.RLock()
-	calls = mock.calls.ReleaseContainer
-	mock.lockReleaseContainer.RUnlock()
-	return calls
-}
-
 // StartContainer calls StartContainerFunc.
-func (mock *NamespaceMock) StartContainer(ctx context.Context, name string, exclusive bool) (nat.PortMap, error) {
+func (mock *NamespaceMock) StartContainer(ctx context.Context, name string) (nat.PortMap, error) {
 	if mock.StartContainerFunc == nil {
 		panic("NamespaceMock.StartContainerFunc: method is nil but Namespace.StartContainer was just called")
 	}
 	callInfo := struct {
-		Ctx       context.Context
-		Name      string
-		Exclusive bool
+		Ctx  context.Context
+		Name string
 	}{
-		Ctx:       ctx,
-		Name:      name,
-		Exclusive: exclusive,
+		Ctx:  ctx,
+		Name: name,
 	}
 	mock.lockStartContainer.Lock()
 	mock.calls.StartContainer = append(mock.calls.StartContainer, callInfo)
 	mock.lockStartContainer.Unlock()
-	return mock.StartContainerFunc(ctx, name, exclusive)
+	return mock.StartContainerFunc(ctx, name)
 }
 
 // StartContainerCalls gets all the calls that were made to StartContainer.
 // Check the length with:
 //     len(mockedNamespace.StartContainerCalls())
 func (mock *NamespaceMock) StartContainerCalls() []struct {
-	Ctx       context.Context
-	Name      string
-	Exclusive bool
+	Ctx  context.Context
+	Name string
 } {
 	var calls []struct {
-		Ctx       context.Context
-		Name      string
-		Exclusive bool
+		Ctx  context.Context
+		Name string
 	}
 	mock.lockStartContainer.RLock()
 	calls = mock.calls.StartContainer

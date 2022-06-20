@@ -116,6 +116,21 @@ func TestKeyedLock(t *testing.T) {
 		}
 	})
 
+	t.Run("unlocked Downgrade", func(t *testing.T) {
+		t.Parallel()
+
+		recovered := func() (r any) {
+			defer func() {
+				r = recover()
+			}()
+			m.Downgrade(t.Name())
+			return nil
+		}()
+		if recovered == nil {
+			t.Fatal("unexpected success")
+		}
+	})
+
 	t.Run("unlocked RUnlock", func(t *testing.T) {
 		t.Parallel()
 

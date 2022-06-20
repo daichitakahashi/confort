@@ -63,6 +63,13 @@ func WithResourcePolicy(s ResourcePolicy) NewOption {
 func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func()) {
 	tb.Helper()
 
+	ex := NewExclusionControl()
+	unlock, err := ex.NamespaceLock(ctx)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	defer unlock()
+
 	clientOps := []client.Opt{
 		client.FromEnv,
 	}
@@ -109,6 +116,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 		backend:        backend,
 		namespace:      ns,
 		defaultTimeout: defaultTimeout,
+		ex:             ex, // TODO: beacon
 	}, term
 }
 
@@ -116,6 +124,7 @@ type Confort struct {
 	backend        Backend
 	namespace      Namespace
 	defaultTimeout time.Duration
+	ex             ExclusionControl
 }
 
 func (cft *Confort) applyTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -216,6 +225,15 @@ func (cft *Confort) Build(tb testing.TB, ctx context.Context, b *Build, opts ...
 		modifyBuildOptions(&buildOption)
 	}
 
+	if len(buildOption.Tags) == 0 {
+		tb.Fatal("image tag not specified")
+	}
+	unlock, err := cft.ex.BuildLock(ctx, buildOption.Tags[0])
+	if err != nil {
+		tb.Fatal(err)
+	}
+	defer unlock()
+
 	err = cft.backend.BuildImage(ctx, tarball, buildOption, force, buildOut)
 	if err != nil {
 		tb.Fatalf("confort: %s", err)
@@ -231,7 +249,7 @@ type Container struct {
 	Waiter       *Waiter
 }
 
-func (cft *Confort) createContainer(ctx context.Context, name string, c *Container, opts ...RunOption) error {
+func (cft *Confort) createContainer(ctx context.Context, name, alias string, c *Container, opts ...RunOption) error {
 	var modifyContainer func(config *container.Config)
 	var modifyHost func(config *container.HostConfig)
 	var modifyNetworking func(config *network.NetworkingConfig)
@@ -290,7 +308,7 @@ func (cft *Confort) createContainer(ctx context.Context, name string, c *Contain
 		EndpointsConfig: map[string]*network.EndpointSettings{
 			networkID: {
 				NetworkID: networkID,
-				Aliases:   []string{name},
+				Aliases:   []string{alias},
 			},
 		},
 	}
@@ -361,11 +379,19 @@ func WithPullOptions(opts *types.ImagePullOptions, out io.Writer) RunOption {
 // store container info. It makes no error.
 func (cft *Confort) LazyRun(tb testing.TB, ctx context.Context, name string, c *Container, opts ...RunOption) {
 	tb.Helper()
+	alias := name
+	name = cft.namespace.Namespace() + name
 
 	ctx, cancel := cft.applyTimeout(ctx)
 	defer cancel()
 
-	err := cft.createContainer(ctx, name, c, opts...)
+	unlock, err := cft.ex.InitContainerLock(ctx, name)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	defer unlock()
+
+	err = cft.createContainer(ctx, name, alias, c, opts...)
 	if err != nil {
 		tb.Fatalf("confort: %s", err)
 	}
@@ -382,20 +408,24 @@ func (cft *Confort) LazyRun(tb testing.TB, ctx context.Context, name string, c *
 // and encounter such trouble, give it a try.
 func (cft *Confort) Run(tb testing.TB, ctx context.Context, name string, c *Container, opts ...RunOption) {
 	tb.Helper()
+	alias := name
+	name = cft.namespace.Namespace() + name
 
 	ctx, cancel := cft.applyTimeout(ctx)
 	defer cancel()
 
-	err := cft.createContainer(ctx, name, c, opts...)
+	unlock, err := cft.ex.InitContainerLock(ctx, name)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	defer unlock()
+
+	err = cft.createContainer(ctx, name, alias, c, opts...)
 	if err != nil {
 		tb.Fatalf("confort: %s", err)
 	}
 
-	_, err = cft.namespace.StartContainer(ctx, name, false)
-	if err != nil {
-		tb.Fatalf("confort: %s", err)
-	}
-	err = cft.namespace.ReleaseContainer(ctx, name, false)
+	_, err = cft.namespace.StartContainer(ctx, name)
 	if err != nil {
 		tb.Fatalf("confort: %s", err)
 	}
@@ -417,6 +447,7 @@ type (
 		use()
 	}
 	identOptionReleaseFunc struct{}
+	identOptionInitFunc    struct{}
 	useOption              struct {
 		option.Interface
 	}
@@ -430,21 +461,43 @@ func WithReleaseFunc(f *func()) UseOption {
 	}
 }
 
+func WithInitFunc(init InitFunc) UseOption {
+	return useOption{
+		Interface: option.New(identOptionInitFunc{}, init),
+	}
+}
+
 func (cft *Confort) use(tb testing.TB, ctx context.Context, name string, exclusive bool, opts ...UseOption) Ports {
 	tb.Helper()
+	name = cft.namespace.Namespace() + name
 
 	var releaseFunc *func()
+	var initFunc InitFunc
 	for _, opt := range opts {
 		switch opt.Ident() {
 		case identOptionReleaseFunc{}:
 			releaseFunc = opt.Value().(*func())
+		case identOptionInitFunc{}:
+			initFunc = opt.Value().(InitFunc)
 		}
 	}
 
-	ports, err := cft.namespace.StartContainer(ctx, name, exclusive)
+	unlock, err := cft.ex.InitContainerLock(ctx, name)
 	if err != nil {
+		tb.Fatal(err)
+	}
+
+	ports, err := cft.namespace.StartContainer(ctx, name)
+	if err != nil {
+		unlock()
 		tb.Fatalf("confort: %s", err)
 	}
+	release, err := cft.ex.AcquireContainerLock(ctx, name, exclusive, initFunc)
+	unlock()
+	if err != nil {
+		tb.Fatal(err)
+	}
+
 	p := make(Ports, len(ports))
 	for port, bindings := range ports {
 		endpoints := make([]string, len(bindings))
@@ -453,9 +506,7 @@ func (cft *Confort) use(tb testing.TB, ctx context.Context, name string, exclusi
 		}
 		p[port] = endpoints
 	}
-	release := func() {
-		_ = cft.namespace.ReleaseContainer(ctx, name, exclusive)
-	}
+
 	if releaseFunc != nil {
 		*releaseFunc = release
 	} else {
