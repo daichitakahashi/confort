@@ -648,7 +648,7 @@ func TestWithResourcePolicy(t *testing.T) {
 				)
 				t.Cleanup(termPrecedes)
 
-				precedingContainerID, err := precedes.namespace.CreateContainer(ctx, containerNameSuffix, &container.Config{
+				precedingContainerID, err := precedes.namespace.CreateContainer(ctx, precedes.namespace.Namespace()+containerNameSuffix, &container.Config{
 					Image: imageEcho,
 				}, &container.HostConfig{}, &network.NetworkingConfig{}, true, nil, io.Discard)
 				if err != nil {
@@ -669,7 +669,7 @@ func TestWithResourcePolicy(t *testing.T) {
 						WithNamespace(namespacePrefix, true),
 						WithResourcePolicy(tc.policy),
 					)
-					containerID, err = cft.namespace.CreateContainer(ctx, fmt.Sprintf("%s-%s", middleName, containerNameSuffix), &container.Config{
+					containerID, err = cft.namespace.CreateContainer(ctx, fmt.Sprintf("%s%s-%s", cft.namespace.Namespace(), middleName, containerNameSuffix), &container.Config{
 						Image: imageEcho,
 					}, &container.HostConfig{}, &network.NetworkingConfig{}, true, nil, io.Discard)
 					if err != nil {

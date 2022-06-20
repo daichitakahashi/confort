@@ -36,8 +36,7 @@ type (
 		CreateContainer(ctx context.Context, name string, container *container.Config, host *container.HostConfig,
 			network *network.NetworkingConfig, configConsistency bool,
 			pullOptions *types.ImagePullOptions, pullOut io.Writer) (string, error)
-		StartContainer(ctx context.Context, name string, exclusive bool) (nat.PortMap, error)
-		ReleaseContainer(ctx context.Context, name string, exclusive bool) error
+		StartContainer(ctx context.Context, name string) (nat.PortMap, error)
 		Release(ctx context.Context) error
 	}
 )
@@ -55,24 +54,18 @@ func (p ResourcePolicy) Equals(s string) bool {
 }
 
 type dockerBackend struct {
-	networkMu sync.Mutex
-	buildMu   *keyedLock
-	cli       *client.Client // inject
-	policy    ResourcePolicy
+	cli    *client.Client // inject
+	policy ResourcePolicy
 }
 
 func NewDockerBackend(cli *client.Client, policy ResourcePolicy) Backend {
 	return &dockerBackend{
-		buildMu: newKeyedLock(),
-		cli:     cli,
-		policy:  policy,
+		cli:    cli,
+		policy: policy,
 	}
 }
 
 func (d *dockerBackend) Namespace(ctx context.Context, namespace string) (Namespace, error) {
-	d.networkMu.Lock()
-	defer d.networkMu.Unlock()
-
 	networkName := namespace
 	namespace += "-"
 
@@ -120,7 +113,6 @@ func (d *dockerBackend) Namespace(ctx context.Context, namespace string) (Namesp
 
 	return &dockerNamespace{
 		dockerBackend: d,
-		acquireMu:     newKeyedLock(),
 		namespace:     namespace,
 		network:       nw,
 		terminate:     term,
@@ -129,16 +121,7 @@ func (d *dockerBackend) Namespace(ctx context.Context, namespace string) (Namesp
 }
 
 func (d *dockerBackend) BuildImage(ctx context.Context, buildContext io.Reader, buildOptions types.ImageBuildOptions, force bool, buildOut io.Writer) (err error) {
-	if len(buildOptions.Tags) == 0 {
-		return errors.New("image tag not specified")
-	}
 	image := buildOptions.Tags[0]
-
-	err = d.buildMu.Lock(ctx, image)
-	if err != nil {
-		return err
-	}
-	defer d.buildMu.Unlock(image)
 
 	if !force {
 		// check if the same image already exists
@@ -207,7 +190,6 @@ type dockerNamespace struct {
 	network   *types.NetworkResource
 
 	m          sync.RWMutex
-	acquireMu  *keyedLock
 	terminate  []func(ctx context.Context) error
 	containers map[string]*containerInfo
 }
@@ -239,7 +221,6 @@ func (d *dockerNamespace) CreateContainer(
 	d.m.Lock()
 	defer d.m.Unlock()
 
-	name = d.namespace + name
 	fullName := "/" + name
 	c, ok := d.containers[name]
 	if ok {
@@ -412,28 +393,7 @@ retry:
 	return nil, errors.New("cannot get endpoints")
 }
 
-func (d *dockerNamespace) StartContainer(ctx context.Context, name string, exclusive bool) (portMap nat.PortMap, err error) {
-	name = d.namespace + name
-
-	if exclusive {
-		err = d.acquireMu.Lock(ctx, name)
-	} else {
-		err = d.acquireMu.RLock(ctx, name)
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if err == nil {
-			return
-		}
-		if exclusive {
-			d.acquireMu.Unlock(name)
-		} else {
-			d.acquireMu.RUnlock(name)
-		}
-	}()
-
+func (d *dockerNamespace) StartContainer(ctx context.Context, name string) (portMap nat.PortMap, err error) {
 	d.m.RLock()
 	c, ok := d.containers[name]
 	d.m.RUnlock()
@@ -459,16 +419,6 @@ func (d *dockerNamespace) StartContainer(ctx context.Context, name string, exclu
 
 func containerNotFound(name string) string {
 	return fmt.Sprintf("dockerBackend: container %q not found", name)
-}
-
-func (d *dockerNamespace) ReleaseContainer(_ context.Context, name string, exclusive bool) error {
-	name = d.namespace + name
-	if exclusive {
-		d.acquireMu.Unlock(name)
-	} else {
-		d.acquireMu.RUnlock(name)
-	}
-	return nil
 }
 
 func (d *dockerNamespace) Release(ctx context.Context) error {
