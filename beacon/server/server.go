@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net"
+	"time"
 
 	"github.com/daichitakahashi/confort"
 	"github.com/daichitakahashi/confort/proto/beacon"
@@ -14,14 +15,14 @@ import (
 
 type Server struct {
 	addr   string
-	be     confort.Backend
+	ex     confort.ExclusionControl
 	health HealthChecker
 }
 
-func New(addr string, be confort.Backend, h HealthChecker) *Server {
+func New(addr string, ex confort.ExclusionControl, h HealthChecker) *Server {
 	return &Server{
 		addr:   addr,
-		be:     be,
+		ex:     ex,
 		health: h,
 	}
 }
@@ -33,11 +34,11 @@ func (s *Server) LaunchWorker(ctx context.Context) (stop func(ctx context.Contex
 	}
 	s.addr = ln.Addr().String() // set actual address
 
-	serv := grpc.NewServer()
+	serv := grpc.NewServer(
+		grpc.ConnectionTimeout(time.Minute * 5), // TODO: configure
+	)
 	beaconSvr := &beaconServer{
-		be:               s.be,
-		namespaces:       map[string]*namespace{},
-		clientsNamespace: map[string]*namespace{},
+		ex: s.ex,
 	}
 	beacon.RegisterBeaconServiceServer(serv, beaconSvr)
 	beacon.RegisterUniqueValueServiceServer(serv, &uniqueValueServer{})
@@ -54,11 +55,11 @@ func (s *Server) LaunchWorker(ctx context.Context) (stop func(ctx context.Contex
 	}()
 	return func(ctx context.Context) {
 		serv.GracefulStop()
-		err := beaconSvr.Shutdown(ctx)
-		if err != nil {
-			log.Printf("error on shutdown beacon server: %s", err)
-		}
 	}, nil
+}
+
+func (s *Server) Addr() string {
+	return s.addr
 }
 
 var _ workerctl.WorkerLauncher = (*Server)(nil)

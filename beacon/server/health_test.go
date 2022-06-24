@@ -12,7 +12,10 @@ func TestHealthServer_Check(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	_, _, _, cli := startServer(t)
+	connect := startServer(t, nil, nil)
+	cli := health.NewHealthClient(connect(t))
+
+	// TODO: table driven testでunhealthyパターンも追加する
 
 	for i := 0; i < 10; i++ {
 		resp, err := cli.Check(ctx, &health.HealthCheckRequest{

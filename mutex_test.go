@@ -1,177 +1,124 @@
-package confort
+package confort_test
 
 import (
 	"context"
 	"testing"
-	"time"
+
+	"github.com/daichitakahashi/confort"
+	"github.com/daichitakahashi/confort/beacon/server"
+	"github.com/daichitakahashi/confort/internal/mutextest"
+	"github.com/daichitakahashi/confort/proto/beacon"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
-func TestKeyedLock(t *testing.T) {
+func newBeaconControl(t *testing.T) confort.ExclusionControl {
+	t.Helper()
+	ctx := context.Background()
+
+	svr := server.New(":0", confort.NewExclusionControl(), nil)
+	stop, err := svr.LaunchWorker(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		stop(ctx)
+	})
+
+	conn, err := grpc.Dial(svr.Addr(), grpc.WithTransportCredentials(
+		insecure.NewCredentials(),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = conn.Close()
+	})
+
+	return confort.NewBeaconControl(beacon.NewBeaconServiceClient(conn))
+}
+
+func TestExclusionControl_NamespaceLock(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
-	m := newKeyedLock()
-
-	timeout := func(t *testing.T, ctx context.Context, timeout time.Duration) context.Context {
-		ctx, cancel := context.WithTimeout(ctx, timeout)
-		t.Cleanup(cancel)
-		return ctx
-	}
-
-	t.Run("timeout on Lock during RLock", func(t *testing.T) {
+	t.Run("without beacon", func(t *testing.T) {
 		t.Parallel()
-
-		key := t.Name()
-
-		err := m.RLock(ctx, key)
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = m.RLock(ctx, key)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		err = m.Lock(
-			timeout(t, ctx, time.Millisecond*100),
-			key,
-		)
-		if err == nil {
-			t.Fatal("Lock succeeded unexpectedly")
-		}
-
-		m.RUnlock(key)
-
-		err = m.Lock(
-			timeout(t, ctx, time.Millisecond*100),
-			key,
-		)
-		if err == nil {
-			t.Fatal("Lock succeeded unexpectedly")
-		}
-
-		m.RUnlock(key)
-
-		err = m.Lock(
-			timeout(t, ctx, time.Millisecond*100),
-			key,
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-		m.Unlock(key)
+		ex := confort.NewExclusionControl()
+		mutextest.TestNamespaceLock(t, ex)
 	})
-
-	t.Run("timeout on RLock during Lock", func(t *testing.T) {
+	t.Run("with beacon", func(t *testing.T) {
 		t.Parallel()
-
-		key := t.Name()
-
-		err := m.Lock(ctx, key)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		err = m.Lock(
-			timeout(t, ctx, time.Millisecond*100),
-			key,
-		)
-		if err == nil {
-			t.Fatal("Lock succeeded unexpectedly")
-		}
-
-		err = m.RLock(
-			timeout(t, ctx, time.Millisecond*100),
-			key,
-		)
-		if err == nil {
-			t.Fatal("RLock succeeded unexpectedly")
-		}
-
-		m.Unlock(key)
-
-		err = m.RLock(
-			timeout(t, ctx, time.Millisecond*100),
-			key,
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		m.RUnlock(key)
-	})
-
-	t.Run("unlocked Unlock", func(t *testing.T) {
-		t.Parallel()
-
-		recovered := func() (r any) {
-			defer func() {
-				r = recover()
-			}()
-			m.Unlock(t.Name())
-			return nil
-		}()
-		if recovered == nil {
-			t.Fatal("unexpected success")
-		}
-	})
-
-	t.Run("unlocked Downgrade", func(t *testing.T) {
-		t.Parallel()
-
-		recovered := func() (r any) {
-			defer func() {
-				r = recover()
-			}()
-			m.Downgrade(t.Name())
-			return nil
-		}()
-		if recovered == nil {
-			t.Fatal("unexpected success")
-		}
-	})
-
-	t.Run("unlocked RUnlock", func(t *testing.T) {
-		t.Parallel()
-
-		recovered := func() (r any) {
-			defer func() {
-				r = recover()
-			}()
-			m.RUnlock(t.Name())
-			return nil
-		}()
-		if recovered == nil {
-			t.Fatal("unexpected success")
-		}
+		ex := newBeaconControl(t)
+		mutextest.TestNamespaceLock(t, ex)
 	})
 }
 
-func BenchmarkKeyedLock(b *testing.B) {
-	ctx := context.Background()
-	m := newKeyedLock()
+func TestExclusionControl_BuildLock(t *testing.T) {
+	t.Parallel()
 
-	key := b.Name()
+	t.Run("without beacon", func(t *testing.T) {
+		t.Parallel()
+		ex := confort.NewExclusionControl()
+		mutextest.TestBuildLock(t, ex)
+	})
+	t.Run("with beacon", func(t *testing.T) {
+		t.Parallel()
+		ex := newBeaconControl(t)
+		mutextest.TestBuildLock(t, ex)
+	})
+}
 
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		if i%5 == 0 {
-			err := m.Lock(ctx, key)
-			if err != nil {
-				b.Fatal(err)
-			}
-			time.Sleep(time.Millisecond * 50)
-			m.Unlock(key)
-		} else {
-			err := m.RLock(ctx, key)
-			if err != nil {
-				b.Fatal(err)
-			}
-			go func() {
-				time.Sleep(time.Millisecond * 75)
-				m.RUnlock(key)
-			}()
-		}
-	}
+func TestExclusionControl_InitContainerLock(t *testing.T) {
+	t.Parallel()
+
+	t.Run("without beacon", func(t *testing.T) {
+		t.Parallel()
+		ex := confort.NewExclusionControl()
+		mutextest.TestInitContainerLock(t, ex)
+	})
+	t.Run("with beacon", func(t *testing.T) {
+		t.Parallel()
+		ex := newBeaconControl(t)
+		mutextest.TestInitContainerLock(t, ex)
+	})
+}
+
+func TestExclusionControl_AcquireContainerLock(t *testing.T) {
+	t.Parallel()
+
+	t.Run("without beacon", func(t *testing.T) {
+		t.Parallel()
+		ex := confort.NewExclusionControl()
+		mutextest.TestAcquireContainerLock(t, ex)
+	})
+	t.Run("with beacon", func(t *testing.T) {
+		t.Parallel()
+		ex := newBeaconControl(t)
+		mutextest.TestAcquireContainerLock(t, ex)
+	})
+}
+
+func TestExclusionControl_TryAcquireContainerInitLock(t *testing.T) {
+	t.Parallel()
+
+	t.Run("acquire without beacon", func(t *testing.T) {
+		t.Parallel()
+		ex := confort.NewExclusionControl()
+		mutextest.TestTryAcquireContainerInitLock(t, ex, true)
+	})
+	t.Run("acquire with beacon", func(t *testing.T) {
+		t.Parallel()
+		ex := newBeaconControl(t)
+		mutextest.TestTryAcquireContainerInitLock(t, ex, true)
+	})
+	t.Run("no acquire without beacon", func(t *testing.T) {
+		t.Parallel()
+		ex := confort.NewExclusionControl()
+		mutextest.TestTryAcquireContainerInitLock(t, ex, false)
+	})
+	t.Run("no acquire with beacon", func(t *testing.T) {
+		t.Parallel()
+		ex := newBeaconControl(t)
+		mutextest.TestTryAcquireContainerInitLock(t, ex, false)
+	})
 }

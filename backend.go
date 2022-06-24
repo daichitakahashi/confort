@@ -58,13 +58,6 @@ type dockerBackend struct {
 	policy ResourcePolicy
 }
 
-func NewDockerBackend(cli *client.Client, policy ResourcePolicy) Backend {
-	return &dockerBackend{
-		cli:    cli,
-		policy: policy,
-	}
-}
-
 func (d *dockerBackend) Namespace(ctx context.Context, namespace string) (Namespace, error) {
 	networkName := namespace
 	namespace += "-"

@@ -2,83 +2,33 @@ package confort
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
-	"golang.org/x/sync/semaphore"
+	"github.com/daichitakahashi/confort/internal/keyedlock"
+	"github.com/daichitakahashi/confort/proto/beacon"
 )
-
-type keyedLock struct {
-	m *sync.Map
-}
-
-func newKeyedLock() *keyedLock {
-	return &keyedLock{
-		m: new(sync.Map),
-	}
-}
-
-const max = 1<<63 - 1
-
-func (k *keyedLock) Lock(ctx context.Context, key string) error {
-	v, _ := k.m.LoadOrStore(key, semaphore.NewWeighted(max))
-	return v.(*semaphore.Weighted).Acquire(ctx, max)
-}
-
-func (k *keyedLock) Unlock(key string) {
-	v, ok := k.m.Load(key)
-	if !ok {
-		panic("Unlock of unlocked mutex")
-	}
-	v.(*semaphore.Weighted).Release(max)
-}
-
-func (k *keyedLock) TryLock(key string) bool {
-	v, _ := k.m.LoadOrStore(key, semaphore.NewWeighted(max))
-	return v.(*semaphore.Weighted).TryAcquire(max)
-}
-
-func (k *keyedLock) Downgrade(key string) {
-	v, ok := k.m.Load(key)
-	if !ok {
-		panic("Downgrade of unlocked mutex")
-	}
-	v.(*semaphore.Weighted).Release(max - 1)
-}
-
-func (k *keyedLock) RLock(ctx context.Context, key string) error {
-	v, _ := k.m.LoadOrStore(key, semaphore.NewWeighted(max))
-	return v.(*semaphore.Weighted).Acquire(ctx, 1)
-}
-
-func (k *keyedLock) RUnlock(key string) {
-	v, ok := k.m.Load(key)
-	if !ok {
-		panic("RUnlock of unlocked mutex")
-	}
-	v.(*semaphore.Weighted).Release(1)
-}
 
 type ExclusionControl interface {
 	NamespaceLock(ctx context.Context) (func(), error)
 	BuildLock(ctx context.Context, image string) (func(), error)
 	InitContainerLock(ctx context.Context, name string) (func(), error)
-	AcquireContainerLock(ctx context.Context, name string, exclusive bool, initFunc InitFunc) (func(), error)
+	AcquireContainerLock(ctx context.Context, name string, exclusive bool) (func(), error)
+	TryAcquireContainerInitLock(ctx context.Context, name string) (downgrade func() (func(), error), cancel func(), ok bool, _ error)
 }
-
-type InitFunc func(ctx context.Context) error
 
 type exclusionControl struct {
 	namespace sync.Mutex
-	build     *keyedLock
-	init      *keyedLock
-	container *keyedLock
+	build     *keyedlock.KeyedLock
+	init      *keyedlock.KeyedLock
+	container *keyedlock.KeyedLock
 }
 
-func NewExclusionControl() ExclusionControl {
+func NewExclusionControl() *exclusionControl {
 	return &exclusionControl{
-		build:     newKeyedLock(),
-		init:      newKeyedLock(),
-		container: newKeyedLock(),
+		build:     keyedlock.New(),
+		init:      keyedlock.New(),
+		container: keyedlock.New(),
 	}
 }
 
@@ -107,7 +57,7 @@ func (c *exclusionControl) InitContainerLock(ctx context.Context, name string) (
 	}, nil
 }
 
-func (c *exclusionControl) AcquireContainerLock(ctx context.Context, name string, exclusive bool, initFunc InitFunc) (func(), error) {
+func (c *exclusionControl) AcquireContainerLock(ctx context.Context, name string, exclusive bool) (func(), error) {
 	if exclusive {
 		err := c.container.Lock(ctx, name)
 		if err != nil {
@@ -117,24 +67,218 @@ func (c *exclusionControl) AcquireContainerLock(ctx context.Context, name string
 			c.container.Unlock(name)
 		}, nil
 	}
-	if initFunc != nil {
-		if c.container.TryLock(name) {
-			err := initFunc(ctx)
-			if err != nil {
-				c.container.Unlock(name)
-				return nil, err
-			}
-			c.container.Downgrade(name)
-		}
-	} else {
-		err := c.container.RLock(ctx, name)
-		if err != nil {
-			return nil, err
-		}
+
+	err := c.container.RLock(ctx, name)
+	if err != nil {
+		return nil, err
 	}
 	return func() {
 		c.container.RUnlock(name)
 	}, nil
 }
 
+func (c *exclusionControl) TryAcquireContainerInitLock(ctx context.Context, name string) (downgrade func() (func(), error), cancel func(), ok bool, _ error) {
+	ok = c.container.TryLock(name)
+	if ok {
+		return func() (func(), error) {
+				c.container.Downgrade(name)
+				return func() {
+					c.container.RUnlock(name)
+				}, nil
+			}, func() {
+				c.container.Unlock(name)
+			}, ok, nil
+	}
+	return func() (func(), error) {
+		err := c.container.RLock(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		return func() {
+			c.container.RUnlock(name)
+		}, nil
+	}, func() {}, ok, nil
+}
+
 var _ ExclusionControl = (*exclusionControl)(nil)
+
+type beaconControl struct {
+	cli beacon.BeaconServiceClient
+}
+
+func NewBeaconControl(cli beacon.BeaconServiceClient) *beaconControl {
+	return &beaconControl{
+		cli: cli,
+	}
+}
+
+func (b *beaconControl) NamespaceLock(ctx context.Context) (func(), error) {
+	stream, err := b.cli.NamespaceLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	err = stream.Send(&beacon.LockRequest{
+		Operation: beacon.LockOp_LOCK_OP_LOCK,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = stream.Recv()
+	if err != nil {
+		return nil, err
+	}
+	return func() {
+		err := stream.Send(&beacon.LockRequest{
+			Operation: beacon.LockOp_LOCK_OP_UNLOCK,
+		})
+		_ = err // TODO: error handling
+		_ = stream.CloseSend()
+	}, nil
+}
+
+func (b *beaconControl) BuildLock(ctx context.Context, image string) (func(), error) {
+	stream, err := b.cli.BuildLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	err = stream.Send(&beacon.KeyedLockRequest{
+		Key:       image,
+		Operation: beacon.LockOp_LOCK_OP_LOCK,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = stream.Recv()
+	if err != nil {
+		return nil, err
+	}
+	return func() {
+		err := stream.Send(&beacon.KeyedLockRequest{
+			Key:       image,
+			Operation: beacon.LockOp_LOCK_OP_UNLOCK,
+		})
+		_ = err // TODO: error handling
+		_ = stream.CloseSend()
+	}, nil
+}
+
+func (b *beaconControl) InitContainerLock(ctx context.Context, name string) (func(), error) {
+	stream, err := b.cli.InitContainerLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	err = stream.Send(&beacon.KeyedLockRequest{
+		Key:       name,
+		Operation: beacon.LockOp_LOCK_OP_LOCK,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = stream.Recv()
+	if err != nil {
+		return nil, err
+	}
+	return func() {
+		err := stream.Send(&beacon.KeyedLockRequest{
+			Key:       name,
+			Operation: beacon.LockOp_LOCK_OP_UNLOCK,
+		})
+		_ = err // TODO: error handling
+		_ = stream.CloseSend()
+	}, nil
+}
+
+func (b *beaconControl) AcquireContainerLock(ctx context.Context, name string, exclusive bool) (func(), error) {
+	stream, err := b.cli.AcquireContainerLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	operation := beacon.AcquireOp_ACQUIRE_OP_LOCK
+	if !exclusive {
+		operation = beacon.AcquireOp_ACQUIRE_OP_SHARED_LOCK
+	}
+	err = stream.Send(&beacon.AcquireLockRequest{
+		Key:       name,
+		Operation: operation,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = stream.Recv()
+	if err != nil {
+		return nil, err
+	}
+	return func() {
+		err := stream.Send(&beacon.AcquireLockRequest{
+			Key:       name,
+			Operation: beacon.AcquireOp_ACQUIRE_OP_UNLOCK,
+		})
+		_ = err // TODO: error handling
+		_ = stream.CloseSend()
+	}, nil
+}
+
+func (b *beaconControl) TryAcquireContainerInitLock(ctx context.Context, name string) (downgrade func() (func(), error), cancel func(), ok bool, _ error) {
+	stream, err := b.cli.AcquireContainerLock(ctx)
+	if err != nil {
+		return nil, nil, false, err
+	}
+
+	err = stream.Send(&beacon.AcquireLockRequest{
+		Key:       name,
+		Operation: beacon.AcquireOp_ACQUIRE_OP_INIT_SHARED_LOCK,
+	})
+	if err != nil {
+		return nil, nil, false, err
+	}
+
+	resp, err := stream.Recv()
+	if err != nil {
+		return nil, nil, false, err
+	}
+
+	var init bool
+	unlock := func() {
+		_ = stream.Send(&beacon.AcquireLockRequest{
+			Key:       name,
+			Operation: beacon.AcquireOp_ACQUIRE_OP_UNLOCK,
+		})
+	}
+
+	switch resp.GetState() {
+	case beacon.LockState_LOCK_STATE_LOCKED:
+		downgrade = func() (func(), error) {
+			err := stream.Send(&beacon.AcquireLockRequest{
+				Key:       name,
+				Operation: beacon.AcquireOp_ACQUIRE_OP_DOWNGRADE,
+			})
+			if err != nil {
+				return nil, err
+			}
+			resp, err = stream.Recv()
+			if err != nil {
+				return nil, err
+			}
+			if resp.GetState() != beacon.LockState_LOCK_STATE_SHARED_LOCKED {
+				return nil, fmt.Errorf("beaconControl: unexpected state(%s)", resp.GetState())
+			}
+			return unlock, nil
+		}
+		init = true
+	case beacon.LockState_LOCK_STATE_SHARED_LOCKED:
+		downgrade = func() (func(), error) {
+			return unlock, nil
+		}
+	}
+	return downgrade, unlock, init, nil
+}
+
+var _ ExclusionControl = (*beaconControl)(nil)

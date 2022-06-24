@@ -99,7 +99,10 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 	}
 	cli.NegotiateAPIVersion(ctx)
 
-	backend := NewDockerBackend(cli, policy)
+	backend := &dockerBackend{
+		cli:    cli,
+		policy: policy,
+	}
 	ns, err := backend.Namespace(ctx, namespace)
 	if err != nil {
 		tb.Fatalf("confort: %s", err)
@@ -461,6 +464,8 @@ func WithReleaseFunc(f *func()) UseOption {
 	}
 }
 
+type InitFunc func(ctx context.Context) error
+
 func WithInitFunc(init InitFunc) UseOption {
 	return useOption{
 		Interface: option.New(identOptionInitFunc{}, init),
@@ -486,17 +491,51 @@ func (cft *Confort) use(tb testing.TB, ctx context.Context, name string, exclusi
 	if err != nil {
 		tb.Fatal(err)
 	}
+	var unlocked bool
+	defer func() {
+		if !unlocked {
+			unlock()
+		}
+	}()
 
 	ports, err := cft.namespace.StartContainer(ctx, name)
 	if err != nil {
-		unlock()
 		tb.Fatalf("confort: %s", err)
 	}
-	release, err := cft.ex.AcquireContainerLock(ctx, name, exclusive, initFunc)
-	unlock()
-	if err != nil {
-		tb.Fatal(err)
+	var release func()
+	if !exclusive && initFunc != nil {
+		downgrade, cancel, ok, err := cft.ex.TryAcquireContainerInitLock(ctx, name)
+		if err != nil {
+			tb.Fatal(err)
+		}
+		if ok {
+			err = initFunc(ctx)
+			if err != nil {
+				cancel()
+				tb.Fatal(err)
+			}
+		}
+		release, err = downgrade()
+		if err != nil {
+			cancel()
+			tb.Fatal(err)
+		}
+	} else {
+		release, err = cft.ex.AcquireContainerLock(ctx, name, exclusive)
+		if err != nil {
+			tb.Fatal(err)
+		}
+		if initFunc != nil {
+			err = initFunc(ctx)
+			if err != nil {
+				release()
+				tb.Fatalf("initFunc: %s", err)
+			}
+		}
 	}
+
+	unlock()
+	unlocked = true
 
 	p := make(Ports, len(ports))
 	for port, bindings := range ports {
