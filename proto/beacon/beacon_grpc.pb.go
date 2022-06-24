@@ -11,7 +11,6 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -23,12 +22,10 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type BeaconServiceClient interface {
-	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
-	Deregister(ctx context.Context, in *DeregisterRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	BuildImage(ctx context.Context, opts ...grpc.CallOption) (BeaconService_BuildImageClient, error)
-	CreateContainer(ctx context.Context, in *CreateContainerRequest, opts ...grpc.CallOption) (BeaconService_CreateContainerClient, error)
-	AcquireContainerEndpoint(ctx context.Context, in *AcquireContainerEndpointRequest, opts ...grpc.CallOption) (BeaconService_AcquireContainerEndpointClient, error)
-	ReleaseContainer(ctx context.Context, in *ReleaseContainerRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	NamespaceLock(ctx context.Context, opts ...grpc.CallOption) (BeaconService_NamespaceLockClient, error)
+	BuildLock(ctx context.Context, opts ...grpc.CallOption) (BeaconService_BuildLockClient, error)
+	InitContainerLock(ctx context.Context, opts ...grpc.CallOption) (BeaconService_InitContainerLockClient, error)
+	AcquireContainerLock(ctx context.Context, opts ...grpc.CallOption) (BeaconService_AcquireContainerLockClient, error)
 }
 
 type beaconServiceClient struct {
@@ -39,138 +36,138 @@ func NewBeaconServiceClient(cc grpc.ClientConnInterface) BeaconServiceClient {
 	return &beaconServiceClient{cc}
 }
 
-func (c *beaconServiceClient) Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error) {
-	out := new(RegisterResponse)
-	err := c.cc.Invoke(ctx, "/beacon.BeaconService/Register", in, out, opts...)
+func (c *beaconServiceClient) NamespaceLock(ctx context.Context, opts ...grpc.CallOption) (BeaconService_NamespaceLockClient, error) {
+	stream, err := c.cc.NewStream(ctx, &BeaconService_ServiceDesc.Streams[0], "/beacon.BeaconService/NamespaceLock", opts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
-}
-
-func (c *beaconServiceClient) Deregister(ctx context.Context, in *DeregisterRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/beacon.BeaconService/Deregister", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *beaconServiceClient) BuildImage(ctx context.Context, opts ...grpc.CallOption) (BeaconService_BuildImageClient, error) {
-	stream, err := c.cc.NewStream(ctx, &BeaconService_ServiceDesc.Streams[0], "/beacon.BeaconService/BuildImage", opts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &beaconServiceBuildImageClient{stream}
+	x := &beaconServiceNamespaceLockClient{stream}
 	return x, nil
 }
 
-type BeaconService_BuildImageClient interface {
-	Send(*BuildImageRequest) error
-	Recv() (*BuildImageResponse, error)
+type BeaconService_NamespaceLockClient interface {
+	Send(*LockRequest) error
+	Recv() (*LockResponse, error)
 	grpc.ClientStream
 }
 
-type beaconServiceBuildImageClient struct {
+type beaconServiceNamespaceLockClient struct {
 	grpc.ClientStream
 }
 
-func (x *beaconServiceBuildImageClient) Send(m *BuildImageRequest) error {
+func (x *beaconServiceNamespaceLockClient) Send(m *LockRequest) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *beaconServiceBuildImageClient) Recv() (*BuildImageResponse, error) {
-	m := new(BuildImageResponse)
+func (x *beaconServiceNamespaceLockClient) Recv() (*LockResponse, error) {
+	m := new(LockResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
 	return m, nil
 }
 
-func (c *beaconServiceClient) CreateContainer(ctx context.Context, in *CreateContainerRequest, opts ...grpc.CallOption) (BeaconService_CreateContainerClient, error) {
-	stream, err := c.cc.NewStream(ctx, &BeaconService_ServiceDesc.Streams[1], "/beacon.BeaconService/CreateContainer", opts...)
+func (c *beaconServiceClient) BuildLock(ctx context.Context, opts ...grpc.CallOption) (BeaconService_BuildLockClient, error) {
+	stream, err := c.cc.NewStream(ctx, &BeaconService_ServiceDesc.Streams[1], "/beacon.BeaconService/BuildLock", opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &beaconServiceCreateContainerClient{stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
+	x := &beaconServiceBuildLockClient{stream}
 	return x, nil
 }
 
-type BeaconService_CreateContainerClient interface {
-	Recv() (*CreateContainerResponse, error)
+type BeaconService_BuildLockClient interface {
+	Send(*KeyedLockRequest) error
+	Recv() (*LockResponse, error)
 	grpc.ClientStream
 }
 
-type beaconServiceCreateContainerClient struct {
+type beaconServiceBuildLockClient struct {
 	grpc.ClientStream
 }
 
-func (x *beaconServiceCreateContainerClient) Recv() (*CreateContainerResponse, error) {
-	m := new(CreateContainerResponse)
+func (x *beaconServiceBuildLockClient) Send(m *KeyedLockRequest) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *beaconServiceBuildLockClient) Recv() (*LockResponse, error) {
+	m := new(LockResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
 	return m, nil
 }
 
-func (c *beaconServiceClient) AcquireContainerEndpoint(ctx context.Context, in *AcquireContainerEndpointRequest, opts ...grpc.CallOption) (BeaconService_AcquireContainerEndpointClient, error) {
-	stream, err := c.cc.NewStream(ctx, &BeaconService_ServiceDesc.Streams[2], "/beacon.BeaconService/AcquireContainerEndpoint", opts...)
+func (c *beaconServiceClient) InitContainerLock(ctx context.Context, opts ...grpc.CallOption) (BeaconService_InitContainerLockClient, error) {
+	stream, err := c.cc.NewStream(ctx, &BeaconService_ServiceDesc.Streams[2], "/beacon.BeaconService/InitContainerLock", opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &beaconServiceAcquireContainerEndpointClient{stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
+	x := &beaconServiceInitContainerLockClient{stream}
 	return x, nil
 }
 
-type BeaconService_AcquireContainerEndpointClient interface {
-	Recv() (*AcquireContainerEndpointResponse, error)
+type BeaconService_InitContainerLockClient interface {
+	Send(*KeyedLockRequest) error
+	Recv() (*LockResponse, error)
 	grpc.ClientStream
 }
 
-type beaconServiceAcquireContainerEndpointClient struct {
+type beaconServiceInitContainerLockClient struct {
 	grpc.ClientStream
 }
 
-func (x *beaconServiceAcquireContainerEndpointClient) Recv() (*AcquireContainerEndpointResponse, error) {
-	m := new(AcquireContainerEndpointResponse)
+func (x *beaconServiceInitContainerLockClient) Send(m *KeyedLockRequest) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *beaconServiceInitContainerLockClient) Recv() (*LockResponse, error) {
+	m := new(LockResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
 	return m, nil
 }
 
-func (c *beaconServiceClient) ReleaseContainer(ctx context.Context, in *ReleaseContainerRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/beacon.BeaconService/ReleaseContainer", in, out, opts...)
+func (c *beaconServiceClient) AcquireContainerLock(ctx context.Context, opts ...grpc.CallOption) (BeaconService_AcquireContainerLockClient, error) {
+	stream, err := c.cc.NewStream(ctx, &BeaconService_ServiceDesc.Streams[3], "/beacon.BeaconService/AcquireContainerLock", opts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &beaconServiceAcquireContainerLockClient{stream}
+	return x, nil
+}
+
+type BeaconService_AcquireContainerLockClient interface {
+	Send(*AcquireLockRequest) error
+	Recv() (*LockResponse, error)
+	grpc.ClientStream
+}
+
+type beaconServiceAcquireContainerLockClient struct {
+	grpc.ClientStream
+}
+
+func (x *beaconServiceAcquireContainerLockClient) Send(m *AcquireLockRequest) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *beaconServiceAcquireContainerLockClient) Recv() (*LockResponse, error) {
+	m := new(LockResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // BeaconServiceServer is the server API for BeaconService service.
 // All implementations must embed UnimplementedBeaconServiceServer
 // for forward compatibility
 type BeaconServiceServer interface {
-	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
-	Deregister(context.Context, *DeregisterRequest) (*emptypb.Empty, error)
-	BuildImage(BeaconService_BuildImageServer) error
-	CreateContainer(*CreateContainerRequest, BeaconService_CreateContainerServer) error
-	AcquireContainerEndpoint(*AcquireContainerEndpointRequest, BeaconService_AcquireContainerEndpointServer) error
-	ReleaseContainer(context.Context, *ReleaseContainerRequest) (*emptypb.Empty, error)
+	NamespaceLock(BeaconService_NamespaceLockServer) error
+	BuildLock(BeaconService_BuildLockServer) error
+	InitContainerLock(BeaconService_InitContainerLockServer) error
+	AcquireContainerLock(BeaconService_AcquireContainerLockServer) error
 	mustEmbedUnimplementedBeaconServiceServer()
 }
 
@@ -178,23 +175,17 @@ type BeaconServiceServer interface {
 type UnimplementedBeaconServiceServer struct {
 }
 
-func (UnimplementedBeaconServiceServer) Register(context.Context, *RegisterRequest) (*RegisterResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Register not implemented")
+func (UnimplementedBeaconServiceServer) NamespaceLock(BeaconService_NamespaceLockServer) error {
+	return status.Errorf(codes.Unimplemented, "method NamespaceLock not implemented")
 }
-func (UnimplementedBeaconServiceServer) Deregister(context.Context, *DeregisterRequest) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Deregister not implemented")
+func (UnimplementedBeaconServiceServer) BuildLock(BeaconService_BuildLockServer) error {
+	return status.Errorf(codes.Unimplemented, "method BuildLock not implemented")
 }
-func (UnimplementedBeaconServiceServer) BuildImage(BeaconService_BuildImageServer) error {
-	return status.Errorf(codes.Unimplemented, "method BuildImage not implemented")
+func (UnimplementedBeaconServiceServer) InitContainerLock(BeaconService_InitContainerLockServer) error {
+	return status.Errorf(codes.Unimplemented, "method InitContainerLock not implemented")
 }
-func (UnimplementedBeaconServiceServer) CreateContainer(*CreateContainerRequest, BeaconService_CreateContainerServer) error {
-	return status.Errorf(codes.Unimplemented, "method CreateContainer not implemented")
-}
-func (UnimplementedBeaconServiceServer) AcquireContainerEndpoint(*AcquireContainerEndpointRequest, BeaconService_AcquireContainerEndpointServer) error {
-	return status.Errorf(codes.Unimplemented, "method AcquireContainerEndpoint not implemented")
-}
-func (UnimplementedBeaconServiceServer) ReleaseContainer(context.Context, *ReleaseContainerRequest) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ReleaseContainer not implemented")
+func (UnimplementedBeaconServiceServer) AcquireContainerLock(BeaconService_AcquireContainerLockServer) error {
+	return status.Errorf(codes.Unimplemented, "method AcquireContainerLock not implemented")
 }
 func (UnimplementedBeaconServiceServer) mustEmbedUnimplementedBeaconServiceServer() {}
 
@@ -209,126 +200,108 @@ func RegisterBeaconServiceServer(s grpc.ServiceRegistrar, srv BeaconServiceServe
 	s.RegisterService(&BeaconService_ServiceDesc, srv)
 }
 
-func _BeaconService_Register_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RegisterRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(BeaconServiceServer).Register(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/beacon.BeaconService/Register",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BeaconServiceServer).Register(ctx, req.(*RegisterRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+func _BeaconService_NamespaceLock_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(BeaconServiceServer).NamespaceLock(&beaconServiceNamespaceLockServer{stream})
 }
 
-func _BeaconService_Deregister_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DeregisterRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(BeaconServiceServer).Deregister(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/beacon.BeaconService/Deregister",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BeaconServiceServer).Deregister(ctx, req.(*DeregisterRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _BeaconService_BuildImage_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(BeaconServiceServer).BuildImage(&beaconServiceBuildImageServer{stream})
-}
-
-type BeaconService_BuildImageServer interface {
-	Send(*BuildImageResponse) error
-	Recv() (*BuildImageRequest, error)
+type BeaconService_NamespaceLockServer interface {
+	Send(*LockResponse) error
+	Recv() (*LockRequest, error)
 	grpc.ServerStream
 }
 
-type beaconServiceBuildImageServer struct {
+type beaconServiceNamespaceLockServer struct {
 	grpc.ServerStream
 }
 
-func (x *beaconServiceBuildImageServer) Send(m *BuildImageResponse) error {
+func (x *beaconServiceNamespaceLockServer) Send(m *LockResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *beaconServiceBuildImageServer) Recv() (*BuildImageRequest, error) {
-	m := new(BuildImageRequest)
+func (x *beaconServiceNamespaceLockServer) Recv() (*LockRequest, error) {
+	m := new(LockRequest)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
 	return m, nil
 }
 
-func _BeaconService_CreateContainer_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(CreateContainerRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(BeaconServiceServer).CreateContainer(m, &beaconServiceCreateContainerServer{stream})
+func _BeaconService_BuildLock_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(BeaconServiceServer).BuildLock(&beaconServiceBuildLockServer{stream})
 }
 
-type BeaconService_CreateContainerServer interface {
-	Send(*CreateContainerResponse) error
+type BeaconService_BuildLockServer interface {
+	Send(*LockResponse) error
+	Recv() (*KeyedLockRequest, error)
 	grpc.ServerStream
 }
 
-type beaconServiceCreateContainerServer struct {
+type beaconServiceBuildLockServer struct {
 	grpc.ServerStream
 }
 
-func (x *beaconServiceCreateContainerServer) Send(m *CreateContainerResponse) error {
+func (x *beaconServiceBuildLockServer) Send(m *LockResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func _BeaconService_AcquireContainerEndpoint_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(AcquireContainerEndpointRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(BeaconServiceServer).AcquireContainerEndpoint(m, &beaconServiceAcquireContainerEndpointServer{stream})
-}
-
-type BeaconService_AcquireContainerEndpointServer interface {
-	Send(*AcquireContainerEndpointResponse) error
-	grpc.ServerStream
-}
-
-type beaconServiceAcquireContainerEndpointServer struct {
-	grpc.ServerStream
-}
-
-func (x *beaconServiceAcquireContainerEndpointServer) Send(m *AcquireContainerEndpointResponse) error {
-	return x.ServerStream.SendMsg(m)
-}
-
-func _BeaconService_ReleaseContainer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ReleaseContainerRequest)
-	if err := dec(in); err != nil {
+func (x *beaconServiceBuildLockServer) Recv() (*KeyedLockRequest, error) {
+	m := new(KeyedLockRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
-	if interceptor == nil {
-		return srv.(BeaconServiceServer).ReleaseContainer(ctx, in)
+	return m, nil
+}
+
+func _BeaconService_InitContainerLock_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(BeaconServiceServer).InitContainerLock(&beaconServiceInitContainerLockServer{stream})
+}
+
+type BeaconService_InitContainerLockServer interface {
+	Send(*LockResponse) error
+	Recv() (*KeyedLockRequest, error)
+	grpc.ServerStream
+}
+
+type beaconServiceInitContainerLockServer struct {
+	grpc.ServerStream
+}
+
+func (x *beaconServiceInitContainerLockServer) Send(m *LockResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *beaconServiceInitContainerLockServer) Recv() (*KeyedLockRequest, error) {
+	m := new(KeyedLockRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
 	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/beacon.BeaconService/ReleaseContainer",
+	return m, nil
+}
+
+func _BeaconService_AcquireContainerLock_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(BeaconServiceServer).AcquireContainerLock(&beaconServiceAcquireContainerLockServer{stream})
+}
+
+type BeaconService_AcquireContainerLockServer interface {
+	Send(*LockResponse) error
+	Recv() (*AcquireLockRequest, error)
+	grpc.ServerStream
+}
+
+type beaconServiceAcquireContainerLockServer struct {
+	grpc.ServerStream
+}
+
+func (x *beaconServiceAcquireContainerLockServer) Send(m *LockResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *beaconServiceAcquireContainerLockServer) Recv() (*AcquireLockRequest, error) {
+	m := new(AcquireLockRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
 	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BeaconServiceServer).ReleaseContainer(ctx, req.(*ReleaseContainerRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return m, nil
 }
 
 // BeaconService_ServiceDesc is the grpc.ServiceDesc for BeaconService service.
@@ -337,36 +310,31 @@ func _BeaconService_ReleaseContainer_Handler(srv interface{}, ctx context.Contex
 var BeaconService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "beacon.BeaconService",
 	HandlerType: (*BeaconServiceServer)(nil),
-	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "Register",
-			Handler:    _BeaconService_Register_Handler,
-		},
-		{
-			MethodName: "Deregister",
-			Handler:    _BeaconService_Deregister_Handler,
-		},
-		{
-			MethodName: "ReleaseContainer",
-			Handler:    _BeaconService_ReleaseContainer_Handler,
-		},
-	},
+	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "BuildImage",
-			Handler:       _BeaconService_BuildImage_Handler,
+			StreamName:    "NamespaceLock",
+			Handler:       _BeaconService_NamespaceLock_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},
 		{
-			StreamName:    "CreateContainer",
-			Handler:       _BeaconService_CreateContainer_Handler,
+			StreamName:    "BuildLock",
+			Handler:       _BeaconService_BuildLock_Handler,
 			ServerStreams: true,
+			ClientStreams: true,
 		},
 		{
-			StreamName:    "AcquireContainerEndpoint",
-			Handler:       _BeaconService_AcquireContainerEndpoint_Handler,
+			StreamName:    "InitContainerLock",
+			Handler:       _BeaconService_InitContainerLock_Handler,
 			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "AcquireContainerLock",
+			Handler:       _BeaconService_AcquireContainerLock_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "beacon.proto",

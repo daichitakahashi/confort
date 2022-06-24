@@ -29,12 +29,11 @@ func Run(ctx context.Context, addr string) {
 		log.Fatal(err)
 	}
 
-	be := confort.NewDockerBackend(cli, confort.ResourcePolicyReuse) // TODO: policy
 	hc := server.HealthCheckFunc(func(ctx context.Context) error {
 		_, err := cli.Ping(ctx)
 		return err
 	})
-	svr := server.New(addr, be, hc)
+	svr := server.New(addr, confort.NewExclusionControl(), hc)
 	err = ctl.Launch(ctx, svr)
 	if err != nil {
 		log.Fatal(err)

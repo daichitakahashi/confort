@@ -2,171 +2,55 @@ syntax = "proto3";
 
 option go_package = "proto/beacon";
 
-import "google/protobuf/empty.proto";
-
 package beacon;
 
 service BeaconService {
-  rpc Register(RegisterRequest)
-      returns (RegisterResponse);
+  rpc NamespaceLock(stream LockRequest)
+      returns (stream LockResponse);
 
-  rpc Deregister(DeregisterRequest)
-      returns (google.protobuf.Empty);
+  rpc BuildLock(stream KeyedLockRequest)
+      returns (stream LockResponse);
 
-  rpc BuildImage(stream BuildImageRequest)
-      returns (stream BuildImageResponse);
+  rpc InitContainerLock(stream KeyedLockRequest)
+      returns (stream LockResponse);
 
-  rpc CreateContainer(CreateContainerRequest)
-      returns (stream CreateContainerResponse);
-
-  rpc AcquireContainerEndpoint(AcquireContainerEndpointRequest)
-      returns (stream AcquireContainerEndpointResponse);
-
-  rpc ReleaseContainer(ReleaseContainerRequest)
-      returns (google.protobuf.Empty);
+  rpc AcquireContainerLock(stream AcquireLockRequest)
+      returns (stream LockResponse);
 }
 
-message RegisterRequest {
-  string namespace = 1;
+enum LockOp {
+  LOCK_OP_LOCK = 0;
+  LOCK_OP_UNLOCK = 1;
 }
 
-message RegisterResponse {
-  string client_id = 1;
-  bytes network_resource = 2;
+enum AcquireOp {
+  ACQUIRE_OP_LOCK = 0;
+  ACQUIRE_OP_UNLOCK = 1;
+  ACQUIRE_OP_SHARED_LOCK = 2;
+  ACQUIRE_OP_INIT_SHARED_LOCK = 3;
+  ACQUIRE_OP_DOWNGRADE = 4;
 }
 
-message DeregisterRequest {
-  string client_id = 1;
+enum LockState {
+  LOCK_STATE_LOCKED = 0;
+  LOCK_STATE_SHARED_LOCKED = 1;
+  LOCK_STATE_UNLOCKED = 2;
 }
 
-message Ulimit {
-  string name = 1;
-  int64 hard = 2;
-  int64 soft = 3;
+message LockRequest {
+  LockOp operation = 1;
 }
 
-message BuildArg {
-  string name = 1;
-  optional string value = 2;
+message LockResponse {
+  LockState state = 1;
 }
 
-message AuthConfig {
-  string user_name = 1;
-  string password = 2;
-  string auth = 3;
-  string email = 4;
-  string server_address = 5;
-  string identity_token = 6;
-  string registry_token = 7;
+message KeyedLockRequest {
+  string key = 1;
+  LockOp operation = 2;
 }
 
-message BuildOptions {
-  repeated string tags = 1;
-  bool suppress_output = 2;
-  string remote_context = 3;
-  bool no_cache = 4;
-  bool remove = 5;
-  bool force_remove = 6;
-  bool pull_parent = 7;
-  string isolation = 8;
-  string cpu_set_cpus = 9;
-  string cpu_set_mems = 10;
-  int64 cpu_shares = 11;
-  int64 cpu_quota = 12;
-  int64 cpu_period = 13;
-  int64 memory = 14;
-  int64 memory_swap = 15;
-  string cgroup_parent = 16;
-  string network_mode = 17;
-  int64 shm_size = 18;
-  string dockerfile = 19;
-  repeated Ulimit ulimits = 20;
-  repeated BuildArg build_args = 21;
-  map<string, AuthConfig> auth_configs = 22;
-  map<string, string> labels = 23;
-  bool squash = 24;
-  repeated string cache_from = 25;
-  repeated string security_opt = 26;
-  repeated string extra_hosts = 27;
-  string target = 28;
-  string session_id = 29;
-  string platform = 30;
-}
-
-message BuildInfo {
-  BuildOptions build_options = 1;
-  bool force = 2;
-}
-
-message BuildImageRequest {
-  oneof build {
-    BuildInfo build_info = 1;
-    bytes context = 2;
-  }
-}
-
-message Message {
-  bytes message = 1;
-}
-
-message BuiltImage {
-  repeated string image_tags = 1;
-}
-
-message BuildImageResponse {
-  oneof processing {
-    Message building = 1;
-    BuiltImage built = 2;
-  }
-}
-
-message PullOptions {
-  bool all = 1;
-  string registry_auth = 2;
-  string platform = 3;
-}
-
-message CreateContainerRequest {
-  string client_id = 1;
-  string name = 2;
-  bytes container_config = 3;
-  bytes host_config = 4;
-  bytes networking_config = 5;
-  bool check_config_consistency = 6;
-  optional PullOptions pull_options = 7;
-}
-
-message CreatedContainer {
-  string container_id = 1;
-}
-
-message CreateContainerResponse {
-  oneof processing {
-    Message pulling = 1;
-    CreatedContainer created = 2;
-  }
-}
-
-message AcquireContainerEndpointRequest {
-  string client_id = 1;
-  string container_name = 2;
-  bool exclusive = 3;
-}
-
-message PortBinding {
-  string host_ip = 1;
-  string host_port = 2;
-}
-
-message Endpoints {
-  repeated PortBinding bindings = 1;
-}
-
-message AcquireContainerEndpointResponse {
-  map<string, Endpoints> endpoints = 1;
-}
-
-message ReleaseContainerRequest {
-  string client_id = 1;
-  string container_name = 2;
+message AcquireLockRequest {
+  string key = 1;
+  AcquireOp operation = 2;
 }
