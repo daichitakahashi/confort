@@ -319,7 +319,7 @@ func (cft *Confort) createContainer(ctx context.Context, name, alias string, c *
 		modifyNetworking(nc)
 	}
 
-	_, err = cft.namespace.CreateContainer(ctx, name, cc, hc, nc, checkConsistency, pullOpts, pullOut)
+	_, err = cft.namespace.CreateContainer(ctx, name, cc, hc, nc, checkConsistency, c.Waiter, pullOpts, pullOut)
 	return err
 }
 
@@ -434,16 +434,6 @@ func (cft *Confort) Run(tb testing.TB, ctx context.Context, name string, c *Cont
 	}
 }
 
-type Ports map[nat.Port][]string
-
-func (p Ports) Binding(port nat.Port) (string, bool) {
-	bindings, ok := p[port]
-	if !ok || len(bindings) == 0 {
-		return "", false
-	}
-	return bindings[0], true
-}
-
 type (
 	UseOption interface {
 		option.Interface
@@ -537,22 +527,13 @@ func (cft *Confort) use(tb testing.TB, ctx context.Context, name string, exclusi
 	unlock()
 	unlocked = true
 
-	p := make(Ports, len(ports))
-	for port, bindings := range ports {
-		endpoints := make([]string, len(bindings))
-		for i, b := range bindings {
-			endpoints[i] = b.HostIP + ":" + b.HostPort // TODO: specify host ip ???
-		}
-		p[port] = endpoints
-	}
-
 	if releaseFunc != nil {
 		*releaseFunc = release
 	} else {
 		tb.Cleanup(release)
 	}
 
-	return p
+	return ports
 }
 
 // UseShared tries to start container created by Run or LazyRun and returns endpoint info.

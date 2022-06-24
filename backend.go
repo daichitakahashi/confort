@@ -35,11 +35,33 @@ type (
 
 		CreateContainer(ctx context.Context, name string, container *container.Config, host *container.HostConfig,
 			network *network.NetworkingConfig, configConsistency bool,
-			pullOptions *types.ImagePullOptions, pullOut io.Writer) (string, error)
-		StartContainer(ctx context.Context, name string) (nat.PortMap, error)
+			wait *Waiter, pullOptions *types.ImagePullOptions, pullOut io.Writer) (string, error)
+		StartContainer(ctx context.Context, name string) (Ports, error)
 		Release(ctx context.Context) error
 	}
 )
+
+type Ports map[nat.Port][]string
+
+func fromPortMap(ports nat.PortMap) Ports {
+	p := make(Ports, len(ports))
+	for port, bindings := range ports {
+		endpoints := make([]string, len(bindings))
+		for i, b := range bindings {
+			endpoints[i] = b.HostIP + ":" + b.HostPort // TODO: specify host ip ???
+		}
+		p[port] = endpoints
+	}
+	return p
+}
+
+func (p Ports) Binding(port nat.Port) (string, bool) {
+	bindings, ok := p[port]
+	if !ok || len(bindings) == 0 {
+		return "", false
+	}
+	return bindings[0], true
+}
 
 type ResourcePolicy string
 
@@ -192,7 +214,8 @@ type containerInfo struct {
 	container   *container.Config
 	host        *container.HostConfig
 	network     *network.NetworkingConfig
-	portMap     nat.PortMap
+	ports       Ports
+	wait        *Waiter
 	running     bool
 }
 
@@ -207,7 +230,7 @@ func (d *dockerNamespace) Network() *types.NetworkResource {
 func (d *dockerNamespace) CreateContainer(
 	ctx context.Context, name string, container *container.Config,
 	host *container.HostConfig, networking *network.NetworkingConfig, configConsistency bool,
-	pullOptions *types.ImagePullOptions, pullOut io.Writer,
+	wait *Waiter, pullOptions *types.ImagePullOptions, pullOut io.Writer,
 ) (string, error) {
 	var err error
 
@@ -331,6 +354,7 @@ LOOP:
 		container:   container,
 		host:        host,
 		network:     networking,
+		wait:        wait,
 		running:     false,
 	}
 	return containerID, nil
@@ -386,28 +410,41 @@ retry:
 	return nil, errors.New("cannot get endpoints")
 }
 
-func (d *dockerNamespace) StartContainer(ctx context.Context, name string) (portMap nat.PortMap, err error) {
+func (d *dockerNamespace) StartContainer(ctx context.Context, name string) (Ports, error) {
 	d.m.RLock()
 	c, ok := d.containers[name]
 	d.m.RUnlock()
 	if !ok {
 		return nil, errors.New(containerNotFound(name))
 	} else if c.running {
-		return c.portMap, nil
+		return c.ports, nil
 	}
 
-	err = d.cli.ContainerStart(ctx, c.containerID, types.ContainerStartOptions{})
+	err := d.cli.ContainerStart(ctx, c.containerID, types.ContainerStartOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	portMap, err = d.containerPortMap(ctx, c.containerID, c.container.ExposedPorts)
+	portMap, err := d.containerPortMap(ctx, c.containerID, c.container.ExposedPorts)
 	if err != nil {
 		return nil, err
 	}
+
+	p := fromPortMap(portMap)
+	if c.wait != nil {
+		err = c.wait.Wait(ctx, &fetcher{
+			cli:         d.cli,
+			containerID: c.containerID,
+			ports:       p,
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	c.running = true
-	c.portMap = portMap
-	return portMap, nil
+	c.ports = p
+	return p, nil
 }
 
 func containerNotFound(name string) string {

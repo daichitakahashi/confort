@@ -8,7 +8,6 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
-	"github.com/docker/go-connections/nat"
 	"github.com/lestrrat-go/option"
 )
 
@@ -20,26 +19,23 @@ type Waiter struct {
 
 type Fetcher interface {
 	Status(ctx context.Context) (*types.ContainerState, error)
-	Endpoints() map[nat.Port]string
+	Ports() Ports
 	Log(ctx context.Context) (io.ReadCloser, error)
 }
 
 type fetcher struct {
 	cli         *client.Client
 	containerID string
-	endpoints   map[nat.Port]string
+	ports       Ports
 }
 
 func (f *fetcher) Status(ctx context.Context) (*types.ContainerState, error) {
 	i, err := f.cli.ContainerInspect(ctx, f.containerID)
-	if err != nil {
-		return nil, err
-	}
-	return i.State, nil
+	return i.State, err
 }
 
-func (f *fetcher) Endpoints() map[nat.Port]string {
-	return f.endpoints
+func (f *fetcher) Ports() Ports {
+	return f.ports
 }
 
 func (f *fetcher) Log(ctx context.Context) (io.ReadCloser, error) {

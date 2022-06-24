@@ -7,7 +7,6 @@ import (
 	"context"
 	"github.com/daichitakahashi/confort"
 	"github.com/docker/docker/api/types"
-	"github.com/docker/go-connections/nat"
 	"io"
 	"sync"
 )
@@ -22,11 +21,11 @@ var _ confort.Fetcher = &Fetcher{}
 //
 // 		// make and configure a mocked confort.Fetcher
 // 		mockedFetcher := &Fetcher{
-// 			EndpointsFunc: func() map[nat.Port]string {
-// 				panic("mock out the Endpoints method")
-// 			},
 // 			LogFunc: func(ctx context.Context) (io.ReadCloser, error) {
 // 				panic("mock out the Log method")
+// 			},
+// 			PortsFunc: func() confort.Ports {
+// 				panic("mock out the Ports method")
 // 			},
 // 			StatusFunc: func(ctx context.Context) (*types.ContainerState, error) {
 // 				panic("mock out the Status method")
@@ -38,24 +37,24 @@ var _ confort.Fetcher = &Fetcher{}
 //
 // 	}
 type Fetcher struct {
-	// EndpointsFunc mocks the Endpoints method.
-	EndpointsFunc func() map[nat.Port]string
-
 	// LogFunc mocks the Log method.
 	LogFunc func(ctx context.Context) (io.ReadCloser, error)
+
+	// PortsFunc mocks the Ports method.
+	PortsFunc func() confort.Ports
 
 	// StatusFunc mocks the Status method.
 	StatusFunc func(ctx context.Context) (*types.ContainerState, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// Endpoints holds details about calls to the Endpoints method.
-		Endpoints []struct {
-		}
 		// Log holds details about calls to the Log method.
 		Log []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+		}
+		// Ports holds details about calls to the Ports method.
+		Ports []struct {
 		}
 		// Status holds details about calls to the Status method.
 		Status []struct {
@@ -63,35 +62,9 @@ type Fetcher struct {
 			Ctx context.Context
 		}
 	}
-	lockEndpoints sync.RWMutex
-	lockLog       sync.RWMutex
-	lockStatus    sync.RWMutex
-}
-
-// Endpoints calls EndpointsFunc.
-func (mock *Fetcher) Endpoints() map[nat.Port]string {
-	if mock.EndpointsFunc == nil {
-		panic("Fetcher.EndpointsFunc: method is nil but Fetcher.Endpoints was just called")
-	}
-	callInfo := struct {
-	}{}
-	mock.lockEndpoints.Lock()
-	mock.calls.Endpoints = append(mock.calls.Endpoints, callInfo)
-	mock.lockEndpoints.Unlock()
-	return mock.EndpointsFunc()
-}
-
-// EndpointsCalls gets all the calls that were made to Endpoints.
-// Check the length with:
-//     len(mockedFetcher.EndpointsCalls())
-func (mock *Fetcher) EndpointsCalls() []struct {
-} {
-	var calls []struct {
-	}
-	mock.lockEndpoints.RLock()
-	calls = mock.calls.Endpoints
-	mock.lockEndpoints.RUnlock()
-	return calls
+	lockLog    sync.RWMutex
+	lockPorts  sync.RWMutex
+	lockStatus sync.RWMutex
 }
 
 // Log calls LogFunc.
@@ -122,6 +95,32 @@ func (mock *Fetcher) LogCalls() []struct {
 	mock.lockLog.RLock()
 	calls = mock.calls.Log
 	mock.lockLog.RUnlock()
+	return calls
+}
+
+// Ports calls PortsFunc.
+func (mock *Fetcher) Ports() confort.Ports {
+	if mock.PortsFunc == nil {
+		panic("Fetcher.PortsFunc: method is nil but Fetcher.Ports was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockPorts.Lock()
+	mock.calls.Ports = append(mock.calls.Ports, callInfo)
+	mock.lockPorts.Unlock()
+	return mock.PortsFunc()
+}
+
+// PortsCalls gets all the calls that were made to Ports.
+// Check the length with:
+//     len(mockedFetcher.PortsCalls())
+func (mock *Fetcher) PortsCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockPorts.RLock()
+	calls = mock.calls.Ports
+	mock.lockPorts.RUnlock()
 	return calls
 }
 
