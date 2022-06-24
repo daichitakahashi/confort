@@ -12,16 +12,16 @@ import (
 	"sync"
 )
 
-// Ensure, that FetcherMock does implement confort.Fetcher.
+// Ensure, that Fetcher does implement confort.Fetcher.
 // If this is not the case, regenerate this file with moq.
-var _ confort.Fetcher = &FetcherMock{}
+var _ confort.Fetcher = &Fetcher{}
 
-// FetcherMock is a mock implementation of confort.Fetcher.
+// Fetcher is a mock implementation of confort.Fetcher.
 //
 // 	func TestSomethingThatUsesFetcher(t *testing.T) {
 //
 // 		// make and configure a mocked confort.Fetcher
-// 		mockedFetcher := &FetcherMock{
+// 		mockedFetcher := &Fetcher{
 // 			EndpointsFunc: func() map[nat.Port]string {
 // 				panic("mock out the Endpoints method")
 // 			},
@@ -37,7 +37,7 @@ var _ confort.Fetcher = &FetcherMock{}
 // 		// and then make assertions.
 //
 // 	}
-type FetcherMock struct {
+type Fetcher struct {
 	// EndpointsFunc mocks the Endpoints method.
 	EndpointsFunc func() map[nat.Port]string
 
@@ -69,9 +69,9 @@ type FetcherMock struct {
 }
 
 // Endpoints calls EndpointsFunc.
-func (mock *FetcherMock) Endpoints() map[nat.Port]string {
+func (mock *Fetcher) Endpoints() map[nat.Port]string {
 	if mock.EndpointsFunc == nil {
-		panic("FetcherMock.EndpointsFunc: method is nil but Fetcher.Endpoints was just called")
+		panic("Fetcher.EndpointsFunc: method is nil but Fetcher.Endpoints was just called")
 	}
 	callInfo := struct {
 	}{}
@@ -84,7 +84,7 @@ func (mock *FetcherMock) Endpoints() map[nat.Port]string {
 // EndpointsCalls gets all the calls that were made to Endpoints.
 // Check the length with:
 //     len(mockedFetcher.EndpointsCalls())
-func (mock *FetcherMock) EndpointsCalls() []struct {
+func (mock *Fetcher) EndpointsCalls() []struct {
 } {
 	var calls []struct {
 	}
@@ -95,9 +95,9 @@ func (mock *FetcherMock) EndpointsCalls() []struct {
 }
 
 // Log calls LogFunc.
-func (mock *FetcherMock) Log(ctx context.Context) (io.ReadCloser, error) {
+func (mock *Fetcher) Log(ctx context.Context) (io.ReadCloser, error) {
 	if mock.LogFunc == nil {
-		panic("FetcherMock.LogFunc: method is nil but Fetcher.Log was just called")
+		panic("Fetcher.LogFunc: method is nil but Fetcher.Log was just called")
 	}
 	callInfo := struct {
 		Ctx context.Context
@@ -113,7 +113,7 @@ func (mock *FetcherMock) Log(ctx context.Context) (io.ReadCloser, error) {
 // LogCalls gets all the calls that were made to Log.
 // Check the length with:
 //     len(mockedFetcher.LogCalls())
-func (mock *FetcherMock) LogCalls() []struct {
+func (mock *Fetcher) LogCalls() []struct {
 	Ctx context.Context
 } {
 	var calls []struct {
@@ -126,9 +126,9 @@ func (mock *FetcherMock) LogCalls() []struct {
 }
 
 // Status calls StatusFunc.
-func (mock *FetcherMock) Status(ctx context.Context) (*types.ContainerState, error) {
+func (mock *Fetcher) Status(ctx context.Context) (*types.ContainerState, error) {
 	if mock.StatusFunc == nil {
-		panic("FetcherMock.StatusFunc: method is nil but Fetcher.Status was just called")
+		panic("Fetcher.StatusFunc: method is nil but Fetcher.Status was just called")
 	}
 	callInfo := struct {
 		Ctx context.Context
@@ -144,7 +144,7 @@ func (mock *FetcherMock) Status(ctx context.Context) (*types.ContainerState, err
 // StatusCalls gets all the calls that were made to Status.
 // Check the length with:
 //     len(mockedFetcher.StatusCalls())
-func (mock *FetcherMock) StatusCalls() []struct {
+func (mock *Fetcher) StatusCalls() []struct {
 	Ctx context.Context
 } {
 	var calls []struct {

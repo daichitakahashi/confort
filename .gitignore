@@ -3,4 +3,5 @@ go.work
 go.work.sum
 .DS_Store
 
+coverage.out.tmp
 coverage.out

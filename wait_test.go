@@ -18,7 +18,7 @@ func TestCheckLogOccurrence(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	f := &mock.FetcherMock{
+	f := &mock.Fetcher{
 		LogFunc: func(ctx context.Context) (io.ReadCloser, error) {
 			var log string
 
@@ -60,7 +60,7 @@ func TestCheckHealthy(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	f := &mock.FetcherMock{
+	f := &mock.Fetcher{
 		StatusFunc: func(ctx context.Context) (*types.ContainerState, error) {
 			status := "unhealthy"
 
@@ -112,7 +112,7 @@ func TestWaiter_Wait(t *testing.T) {
 		t.Parallel()
 
 		var count int
-		f := &mock.FetcherMock{
+		f := &mock.Fetcher{
 			StatusFunc: func(ctx context.Context) (*types.ContainerState, error) {
 				status := "created"
 				count++
@@ -141,7 +141,7 @@ func TestWaiter_Wait(t *testing.T) {
 		t.Parallel()
 
 		var count int
-		f := &mock.FetcherMock{
+		f := &mock.Fetcher{
 			StatusFunc: func(ctx context.Context) (*types.ContainerState, error) {
 				count++
 				return &types.ContainerState{
