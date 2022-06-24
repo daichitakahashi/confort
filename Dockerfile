@@ -1,12 +1,11 @@
 FROM golang:1.18.3-alpine AS builder
 
 COPY go.mod go.sum /go/src/
-COPY ./beacon/go.mod ./beacon/go.sum /go/src/beacon/
-WORKDIR /go/src/beacon
+WORKDIR /go/src
 RUN go mod download
 
 COPY . /go/src
-RUN go build -o /go/bin/beacon .
+RUN go build -o /go/bin/beacon ./beacon
 
 FROM alpine:3.16.0
 
