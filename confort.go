@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/daichitakahashi/confort/proto/beacon"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
@@ -28,6 +29,7 @@ type (
 	}
 	identOptionDefaultTimeout struct{}
 	identOptionResourcePolicy struct{}
+	identOptionBeacon         struct{}
 	newOption                 struct{ option.Interface }
 )
 
@@ -60,10 +62,17 @@ func WithResourcePolicy(s ResourcePolicy) NewOption {
 	}
 }
 
+func WithBeacon(conn *Connection) NewOption {
+	return newOption{
+		Interface: option.New(identOptionBeacon{}, conn),
+	}
+}
+
 func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func()) {
 	tb.Helper()
 
-	ex := NewExclusionControl()
+	var ex ExclusionControl = NewExclusionControl()
+
 	unlock, err := ex.NamespaceLock(ctx)
 	if err != nil {
 		tb.Fatal(err)
@@ -90,6 +99,13 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 			defaultTimeout = opt.Value().(time.Duration)
 		case identOptionResourcePolicy{}:
 			policy = opt.Value().(ResourcePolicy)
+		case identOptionBeacon{}:
+			conn := opt.Value().(*Connection).conn
+			if conn != nil {
+				ex = &beaconControl{
+					cli: beacon.NewBeaconServiceClient(conn),
+				}
+			}
 		}
 	}
 
@@ -119,7 +135,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 		backend:        backend,
 		namespace:      ns,
 		defaultTimeout: defaultTimeout,
-		ex:             ex, // TODO: beacon
+		ex:             ex,
 	}, term
 }
 

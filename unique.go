@@ -12,7 +12,6 @@ import (
 
 	"github.com/daichitakahashi/confort/proto/beacon"
 	"github.com/lestrrat-go/option"
-	"google.golang.org/grpc"
 )
 
 type Unique[T comparable] struct {
@@ -33,7 +32,7 @@ type (
 	identOptionGlobalUniqueness struct{}
 	globalUniquenessOptions     struct {
 		store string
-		conn  *grpc.ClientConn
+		c     *Connection
 	}
 	uniqueOption struct{ option.Interface }
 )
@@ -49,11 +48,11 @@ func WithRetry(n uint) UniqueOption {
 	}
 }
 
-func WithGlobalUniqueness(conn *grpc.ClientConn, beaconStore string) UniqueOption {
+func WithGlobalUniqueness(conn *Connection, beaconStore string) UniqueOption {
 	return uniqueOption{
 		Interface: option.New(identOptionGlobalUniqueness{}, globalUniquenessOptions{
 			store: beaconStore,
-			conn:  conn,
+			c:     conn,
 		}),
 	}
 }
@@ -77,10 +76,10 @@ func NewUnique[T comparable](f func() (T, error), opts ...UniqueOption) *Unique[
 		}
 	}
 
-	if options.store != "" && options.conn != nil {
+	if options.store != "" && options.c.conn != nil {
 		u.g = &globalGenerator[T]{
 			f:     f,
-			cli:   beacon.NewUniqueValueServiceClient(options.conn),
+			cli:   beacon.NewUniqueValueServiceClient(options.c.conn),
 			store: options.store,
 		}
 	}
