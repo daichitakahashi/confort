@@ -9,7 +9,6 @@ import (
 	"github.com/daichitakahashi/confort"
 	"github.com/daichitakahashi/confort/beacon/server"
 	"github.com/daichitakahashi/workerctl"
-	"github.com/docker/docker/client"
 )
 
 func Run(ctx context.Context, addr string) {
@@ -23,18 +22,11 @@ func Run(ctx context.Context, addr string) {
 	a := &workerctl.Aborter{}
 	ctx = workerctl.WithAbort(ctx, a)
 
-	// init docker client
-	cli, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	hc := server.HealthCheckFunc(func(ctx context.Context) error {
-		_, err := cli.Ping(ctx)
-		return err
+		return nil
 	})
 	svr := server.New(addr, confort.NewExclusionControl(), hc)
-	err = ctl.Launch(ctx, svr)
+	err := ctl.Launch(ctx, svr)
 	if err != nil {
 		log.Fatal(err)
 	}
