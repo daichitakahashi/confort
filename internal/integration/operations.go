@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -21,7 +24,7 @@ type Operation interface {
 	StartBeaconServer(ctx context.Context, image string) (string, error)
 	StopBeaconServer(ctx context.Context, endpoint string) error
 	CleanupResources(ctx context.Context) error
-	ExecuteTest(ctx context.Context, args []string, environments []string) (int, error)
+	ExecuteTest(ctx context.Context, args []string, environments []string) error
 }
 
 type operation struct {
@@ -132,9 +135,18 @@ func (o *operation) CleanupResources(ctx context.Context) error {
 	return nil
 }
 
-func (o *operation) ExecuteTest(ctx context.Context, args []string, environments []string) (int, error) {
-	// TODO: implement
-	return 0, nil
+func (o *operation) ExecuteTest(ctx context.Context, args, environments []string) error {
+	goCmd := "go"
+	goRoot := os.Getenv("GOROOT")
+	if goRoot != "" {
+		goCmd = filepath.Join(goRoot, "bin/go")
+	}
+
+	cmd := exec.CommandContext(ctx, goCmd, append([]string{"test"}, args...)...)
+	cmd.Env = environments
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 var _ Operation = (*operation)(nil)

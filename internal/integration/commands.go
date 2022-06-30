@@ -2,11 +2,13 @@ package integration
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"os/exec"
 
 	"github.com/google/subcommands"
 )
@@ -159,7 +161,11 @@ func (t *TestCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interfa
 		env = append(env, "CFT_NAMESPACE="+t.Namespace)
 	}
 
-	code, err := t.Operation.ExecuteTest(ctx, os.Args[:sepIdx+1], env)
+	err = t.Operation.ExecuteTest(ctx, os.Args[:sepIdx+1], env)
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return subcommands.ExitStatus(ee.ExitCode())
+	}
 	if err != nil {
 		_, _ = fmt.Fprintln(t.Stderr, err.Error())
 		return subcommands.ExitFailure
@@ -178,7 +184,7 @@ func (t *TestCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interfa
 		return subcommands.ExitFailure
 	}
 
-	return subcommands.ExitStatus(code)
+	return subcommands.ExitSuccess
 }
 
 var _ subcommands.Command = (*TestCommand)(nil)
