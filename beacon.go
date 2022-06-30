@@ -34,7 +34,7 @@ func ConnectBeacon(tb testing.TB, ctx context.Context) *Connection {
 		tb.Cleanup(func() {
 			err := conn.Close()
 			if err != nil {
-				tb.Log("confort: %s", err)
+				tb.Logf("confort: %s", err)
 			}
 		})
 

@@ -2,6 +2,8 @@ package integration
 
 import (
 	"context"
+	"os"
+	"runtime"
 	"testing"
 
 	"github.com/docker/docker/api/types"
@@ -104,4 +106,41 @@ func TestOperation_StopBeaconServer(t *testing.T) {
 	if err == nil {
 		t.Fatal("error expected but succeeded")
 	}
+}
+
+func TestExecuteProcess(t *testing.T) {
+	expect := os.Getenv("BEACON_INTEGRATION_EXECUTE_TEST")
+	switch expect {
+	case "success":
+		t.Log(runtime.Version())
+	case "fail":
+		t.Error("intended error")
+	default:
+		t.Skip()
+	}
+}
+
+func TestOperation_ExecuteTest(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	op := &operation{
+		cli: initClient(),
+	}
+	args := []string{"-run", "TestExecuteProcess", "-v"}
+	env := os.Environ()
+
+	t.Run("success", func(t *testing.T) {
+		err := op.ExecuteTest(ctx, args, append(env, "BEACON_INTEGRATION_EXECUTE_TEST=success"))
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("fail", func(t *testing.T) {
+		err := op.ExecuteTest(ctx, args, append(env, "BEACON_INTEGRATION_EXECUTE_TEST=fail"))
+		if err == nil {
+			t.Fatal("error expected but succeeded")
+		}
+	})
 }
