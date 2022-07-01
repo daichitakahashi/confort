@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -22,7 +23,7 @@ import (
 )
 
 type Operation interface {
-	StartBeaconServer(ctx context.Context, image string) (string, error)
+	StartBeaconServer(ctx context.Context, image string, forcePull bool) (string, error)
 	StopBeaconServer(ctx context.Context, endpoint string) error
 	CleanupResources(ctx context.Context, label, value string) error
 	ExecuteTest(ctx context.Context, args []string, environments []string) error
@@ -42,8 +43,39 @@ func NewOperation() (Operation, error) {
 	}, nil
 }
 
-func (o *operation) StartBeaconServer(ctx context.Context, image string) (string, error) {
-	// TODO: pull image if not exists
+func (o *operation) pullImageIfNotExists(ctx context.Context, image string, force bool) error {
+	if !force {
+		images, err := o.cli.ImageList(ctx, types.ImageListOptions{
+			All: true,
+		})
+		if err != nil {
+			return err
+		}
+		for _, img := range images {
+			for _, tag := range img.RepoTags {
+				if tag == image {
+					return nil
+				}
+			}
+		}
+	}
+
+	rc, err := o.cli.ImagePull(ctx, image, types.ImagePullOptions{
+		All: true,
+	})
+	if err != nil {
+		return err
+	}
+	_, _ = io.ReadAll(rc)
+	_ = rc.Close()
+	return nil
+}
+
+func (o *operation) StartBeaconServer(ctx context.Context, image string, forcePull bool) (string, error) {
+	err := o.pullImageIfNotExists(ctx, image, forcePull)
+	if err != nil {
+		return "", err
+	}
 
 	created, err := o.cli.ContainerCreate(ctx, &container.Config{
 		Image: image,
