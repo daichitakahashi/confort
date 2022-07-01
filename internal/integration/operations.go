@@ -18,12 +18,13 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	"github.com/lestrrat-go/backoff/v2"
+	"go.uber.org/multierr"
 )
 
 type Operation interface {
 	StartBeaconServer(ctx context.Context, image string) (string, error)
 	StopBeaconServer(ctx context.Context, endpoint string) error
-	CleanupResources(ctx context.Context) error
+	CleanupResources(ctx context.Context, label, value string) error
 	ExecuteTest(ctx context.Context, args []string, environments []string) error
 }
 
@@ -130,9 +131,63 @@ find:
 	})
 }
 
-func (o *operation) CleanupResources(ctx context.Context) error {
-	// TODO: implement
-	return nil
+func (o *operation) CleanupResources(ctx context.Context, label, value string) error {
+	f := filters.NewArgs(
+		filters.Arg("label", label+"="+value),
+	)
+
+	var errs []error
+
+	// remove container
+	containers, err := o.cli.ContainerList(ctx, types.ContainerListOptions{
+		All:     true,
+		Filters: f,
+	})
+	if err != nil {
+		errs = append(errs, err)
+	}
+	for _, c := range containers {
+		err := o.cli.ContainerRemove(ctx, c.ID, types.ContainerRemoveOptions{
+			RemoveVolumes: true,
+			Force:         true,
+		})
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	// remove image
+	images, err := o.cli.ImageList(ctx, types.ImageListOptions{
+		All:     true,
+		Filters: f,
+	})
+	if err != nil {
+		errs = append(errs, err)
+	}
+	for _, img := range images {
+		_, err := o.cli.ImageRemove(ctx, img.ID, types.ImageRemoveOptions{
+			Force: true,
+		})
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	// remove network
+	networks, err := o.cli.NetworkList(ctx, types.NetworkListOptions{
+		Filters: f,
+	})
+	if err != nil {
+		errs = append(errs, err)
+	}
+	for _, n := range networks {
+		err := o.cli.NetworkRemove(ctx, n.ID)
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	return multierr.Combine(errs...)
 }
 
 func (o *operation) ExecuteTest(ctx context.Context, args, environments []string) error {

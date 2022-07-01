@@ -3,11 +3,15 @@ package integration
 import (
 	"context"
 	"os"
+	"os/exec"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
+	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	health "google.golang.org/grpc/health/grpc_health_v1"
@@ -108,7 +112,87 @@ func TestOperation_StopBeaconServer(t *testing.T) {
 	}
 }
 
+func TestOperation_CleanupResources(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	op := &operation{
+		cli: initClient(),
+	}
+
+	image := uuid.NewString() + ":latest"
+
+	// create image
+	cmd := exec.Command("docker", "build", "-t", image, "-")
+	cmd.Stdin = strings.NewReader(`FROM alpine:3.15.4
+LABEL confort="hoge"
+`)
+	err := cmd.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create container
+	cmd = exec.Command("docker", "run", "-itd", image, "/bin/sh")
+	err = cmd.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create network
+	cmd = exec.Command("docker", "network", "create", "--label", "confort=hoge", uuid.NewString())
+	err = cmd.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// do cleanup
+	err = op.CleanupResources(ctx, "confort", "hoge")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// check
+	f := filters.NewArgs(
+		filters.Arg("label", "confort=hoge"),
+	)
+
+	containers, err := op.cli.ContainerList(ctx, types.ContainerListOptions{
+		All:     true,
+		Filters: f,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(containers) > 0 {
+		t.Error("container is not removed")
+	}
+
+	images, err := op.cli.ImageList(ctx, types.ImageListOptions{
+		All:     true,
+		Filters: f,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(images) > 0 {
+		t.Error("image is not removed")
+	}
+
+	networks, err := op.cli.NetworkList(ctx, types.NetworkListOptions{
+		Filters: f,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(networks) > 0 {
+		t.Error("network is not removed")
+	}
+}
+
 func TestExecuteProcess(t *testing.T) {
+	t.Parallel()
+
 	expect := os.Getenv("BEACON_INTEGRATION_EXECUTE_TEST")
 	switch expect {
 	case "success":

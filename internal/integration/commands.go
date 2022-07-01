@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/daichitakahashi/confort/internal/dockerutil"
 	"github.com/google/subcommands"
 )
 
@@ -104,7 +105,7 @@ func (s *StopCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interfa
 	}
 
 	// delete all docker resources created in TestCommand
-	err = s.Operation.CleanupResources(ctx)
+	err = s.Operation.CleanupResources(ctx, dockerutil.LabelEndpoint, endpoint)
 	if err != nil {
 		_, _ = fmt.Fprintln(s.Stderr, err.Error())
 		return subcommands.ExitFailure
@@ -178,7 +179,7 @@ func (t *TestCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interfa
 	}
 
 	// delete all docker resources created in TestCommand
-	err = t.Operation.CleanupResources(ctx)
+	err = t.Operation.CleanupResources(ctx, dockerutil.LabelEndpoint, endpoint)
 	if err != nil {
 		log.Println(err)
 		return subcommands.ExitFailure
