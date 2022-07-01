@@ -37,6 +37,7 @@ func NewCommands(set *flag.FlagSet, name string, op Operation, stdout, stderr io
 type StartCommand struct {
 	Operation Operation
 	Image     string
+	ForcePull bool
 	Stdout    io.Writer
 	Stderr    io.Writer
 }
@@ -57,10 +58,11 @@ func (s *StartCommand) Usage() string {
 
 func (s *StartCommand) SetFlags(set *flag.FlagSet) {
 	set.StringVar(&s.Image, "image", "ghcr.io/daichitakahashi/confort/beacon:latest", "")
+	set.BoolVar(&s.ForcePull, "forcePull", false, "")
 }
 
 func (s *StartCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
-	endpoint, err := s.Operation.StartBeaconServer(ctx, s.Image)
+	endpoint, err := s.Operation.StartBeaconServer(ctx, s.Image, s.ForcePull)
 	if err != nil {
 		_, _ = fmt.Fprintln(s.Stderr, err.Error())
 		return subcommands.ExitFailure
@@ -118,6 +120,7 @@ var _ subcommands.Command = (*StopCommand)(nil)
 type TestCommand struct {
 	Operation Operation
 	Image     string
+	ForcePull bool
 	Namespace string
 	Stderr    io.Writer
 }
@@ -139,11 +142,12 @@ func (t *TestCommand) Usage() string {
 func (t *TestCommand) SetFlags(set *flag.FlagSet) {
 	flag.Parse()
 	set.StringVar(&t.Image, "image", "ghcr.io/daichitakahashi/confort/beacon:latest", "")
+	set.BoolVar(&t.ForcePull, "forcePull", false, "")
 	set.StringVar(&t.Namespace, "namespace", "", "")
 }
 
 func (t *TestCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
-	endpoint, err := t.Operation.StartBeaconServer(ctx, t.Image)
+	endpoint, err := t.Operation.StartBeaconServer(ctx, t.Image, t.ForcePull)
 	if err != nil {
 		_, _ = fmt.Fprintln(t.Stderr, err.Error())
 		return subcommands.ExitFailure
