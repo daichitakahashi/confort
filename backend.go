@@ -78,6 +78,7 @@ func (p ResourcePolicy) Equals(s string) bool {
 type dockerBackend struct {
 	cli    *client.Client // inject
 	policy ResourcePolicy
+	labels map[string]string
 }
 
 func (d *dockerBackend) Namespace(ctx context.Context, namespace string) (Namespace, error) {
@@ -105,6 +106,7 @@ func (d *dockerBackend) Namespace(ctx context.Context, namespace string) (Namesp
 		resp, err := d.cli.NetworkCreate(ctx, networkName, types.NetworkCreate{
 			Driver:         "bridge",
 			CheckDuplicate: true,
+			Labels:         d.labels,
 		})
 		if err != nil {
 			return nil, err
@@ -130,6 +132,7 @@ func (d *dockerBackend) Namespace(ctx context.Context, namespace string) (Namesp
 		dockerBackend: d,
 		namespace:     namespace,
 		network:       nw,
+		labels:        d.labels,
 		terminate:     term,
 		containers:    map[string]*containerInfo{},
 	}, nil
@@ -203,6 +206,7 @@ type dockerNamespace struct {
 	*dockerBackend
 	namespace string
 	network   *types.NetworkResource
+	labels    map[string]string
 
 	m          sync.RWMutex
 	terminate  []func(ctx context.Context) error
@@ -233,6 +237,9 @@ func (d *dockerNamespace) CreateContainer(
 	wait *Waiter, pullOptions *types.ImagePullOptions, pullOut io.Writer,
 ) (string, error) {
 	var err error
+
+	// inject labels
+	container.Labels = d.labels
 
 	d.m.Lock()
 	defer d.m.Unlock()

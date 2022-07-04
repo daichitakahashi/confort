@@ -13,7 +13,8 @@ import (
 )
 
 type Connection struct {
-	conn *grpc.ClientConn
+	conn     *grpc.ClientConn
+	endpoint string
 }
 
 func (c *Connection) Enabled() bool {
@@ -62,6 +63,7 @@ func ConnectBeacon(tb testing.TB, ctx context.Context) *Connection {
 		}
 	}
 	return &Connection{
-		conn: conn,
+		conn:     conn,
+		endpoint: beaconEndpoint,
 	}
 }

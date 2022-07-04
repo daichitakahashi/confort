@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/docker/docker/api/types"
@@ -120,21 +119,23 @@ func TestOperation_CleanupResources(t *testing.T) {
 		cli: initClient(),
 	}
 
-	image := uuid.NewString() + ":latest"
+	/*
+			image := uuid.NewString() + ":latest"
 
-	// create image
-	cmd := exec.Command("docker", "build", "-t", image, "-")
-	cmd.Stdin = strings.NewReader(`FROM alpine:3.15.4
-LABEL confort="hoge"
-`)
-	err := cmd.Run()
-	if err != nil {
-		t.Fatal(err)
-	}
+			// create image
+			cmd := exec.Command("docker", "build", "-t", image, "-")
+			cmd.Stdin = strings.NewReader(`FROM alpine:3.15.4
+		LABEL confort="hoge"
+		`)
+			err := cmd.Run()
+			if err != nil {
+				t.Fatal(err)
+			}
+	*/
 
 	// create container
-	cmd = exec.Command("docker", "run", "-itd", image, "/bin/sh")
-	err = cmd.Run()
+	cmd := exec.Command("docker", "run", "-itd", "--label", "confort=hoge", image, "/bin/sh")
+	err := cmd.Run()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,16 +169,18 @@ LABEL confort="hoge"
 		t.Error("container is not removed")
 	}
 
-	images, err := op.cli.ImageList(ctx, types.ImageListOptions{
-		All:     true,
-		Filters: f,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(images) > 0 {
-		t.Error("image is not removed")
-	}
+	/*
+		images, err := op.cli.ImageList(ctx, types.ImageListOptions{
+			All:     true,
+			Filters: f,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(images) > 0 {
+			t.Error("image is not removed")
+		}
+	*/
 
 	networks, err := op.cli.NetworkList(ctx, types.NetworkListOptions{
 		Filters: f,

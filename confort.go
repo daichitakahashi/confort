@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/daichitakahashi/confort/internal/dockerutil"
 	"github.com/daichitakahashi/confort/proto/beacon"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -72,6 +73,8 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 	tb.Helper()
 
 	var ex ExclusionControl = NewExclusionControl()
+	var skipDeletion bool
+	var beaconEndpoint string
 
 	unlock, err := ex.NamespaceLock(ctx)
 	if err != nil {
@@ -100,13 +103,18 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 		case identOptionResourcePolicy{}:
 			policy = opt.Value().(ResourcePolicy)
 		case identOptionBeacon{}:
-			conn := opt.Value().(*Connection).conn
-			if conn != nil {
+			c := opt.Value().(*Connection)
+			if c.conn != nil {
 				ex = &beaconControl{
-					cli: beacon.NewBeaconServiceClient(conn),
+					cli: beacon.NewBeaconServiceClient(c.conn),
 				}
+				skipDeletion = true
+				beaconEndpoint = c.endpoint
 			}
 		}
+	}
+	if namespace == "" {
+		tb.Fatal("confort: empty namespace")
 	}
 
 	cli, err := client.NewClientWithOpts(clientOps...)
@@ -118,6 +126,9 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 	backend := &dockerBackend{
 		cli:    cli,
 		policy: policy,
+		labels: map[string]string{
+			dockerutil.LabelEndpoint: beaconEndpoint,
+		},
 	}
 	ns, err := backend.Namespace(ctx, namespace)
 	if err != nil {
@@ -125,6 +136,11 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 	}
 	term := func() {
 		tb.Helper()
+		if skipDeletion {
+			// if beacon is enabled, do not delete
+			return
+		}
+		// release all resources
 		err := ns.Release(context.Background())
 		if err != nil {
 			tb.Log(err)
