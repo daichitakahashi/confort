@@ -69,7 +69,7 @@ func TestOperation_StartBeaconServer(t *testing.T) {
 		cli: initClient(),
 	}
 
-	endpoint, err := op.StartBeaconServer(ctx, image)
+	endpoint, err := op.StartBeaconServer(ctx, image, false)
 	if err != nil {
 		t.Fatal(err)
 	}
