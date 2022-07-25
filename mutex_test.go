@@ -1,11 +1,11 @@
 package confort_test
 
 import (
-	"context"
+	"net"
 	"testing"
 
 	"github.com/daichitakahashi/confort"
-	"github.com/daichitakahashi/confort/beacon/server"
+	"github.com/daichitakahashi/confort/beaconserver"
 	"github.com/daichitakahashi/confort/internal/mutextest"
 	"github.com/daichitakahashi/confort/proto/beacon"
 	"google.golang.org/grpc"
@@ -14,18 +14,25 @@ import (
 
 func newBeaconControl(t *testing.T) confort.ExclusionControl {
 	t.Helper()
-	ctx := context.Background()
 
-	svr := server.New(":0", confort.NewExclusionControl(), nil)
-	stop, err := svr.LaunchWorker(ctx)
+	srv := grpc.NewServer()
+	beaconserver.Register(srv, func() error {
+		return nil
+	})
+
+	ln, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatal(err)
 	}
+	go func() {
+		_ = srv.Serve(ln)
+		_ = ln.Close()
+	}()
 	t.Cleanup(func() {
-		stop(ctx)
+		srv.Stop()
 	})
 
-	conn, err := grpc.Dial(svr.Addr(), grpc.WithTransportCredentials(
+	conn, err := grpc.Dial(ln.Addr().String(), grpc.WithTransportCredentials(
 		insecure.NewCredentials(),
 	))
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
@@ -16,59 +17,13 @@ import (
 	health "google.golang.org/grpc/health/grpc_health_v1"
 )
 
-// const image = "ghcr.io/daichitakahashi/confort/beacon:latest"
-const image = "beacon:dev"
-
-func TestMain(m *testing.M) {
-	m.Run()
-
-	ctx := context.Background()
-	cli := initClient()
-	images, err := cli.ImageList(ctx, types.ImageListOptions{
-		All: true,
-	})
-	if err != nil {
-		panic(err)
-	}
-
-	var imageID string
-find:
-	for _, img := range images {
-		for _, tag := range img.RepoTags {
-			if tag == image {
-				// imageID = img.ID // do not remove currently
-				break find
-			}
-		}
-	}
-	if imageID == "" {
-		return
-	}
-	_, err = cli.ImageRemove(ctx, imageID, types.ImageRemoveOptions{
-		Force: true,
-	})
-	if err != nil {
-		panic(err)
-	}
-}
-
-func initClient() *client.Client {
-	cli, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		panic(err)
-	}
-	return cli
-}
-
 func TestOperation_StartBeaconServer(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	op := &operation{
-		cli: initClient(),
-	}
+	op := NewOperation()
 
-	endpoint, err := op.StartBeaconServer(ctx, image, false)
+	endpoint, done, err := op.StartBeaconServer(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,15 +50,20 @@ func TestOperation_StartBeaconServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	select {
+	case <-done:
+	// ok
+	case <-time.After(time.Second):
+		t.Fatal("beacon server haven't shut down correctly")
+	}
 }
 
 func TestOperation_StopBeaconServer(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	op := &operation{
-		cli: initClient(),
-	}
+	op := NewOperation()
 
 	err := op.StopBeaconServer(ctx, "0.0.0.0:0")
 	if err == nil {
@@ -115,8 +75,11 @@ func TestOperation_CleanupResources(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	op := &operation{
-		cli: initClient(),
+	op := NewOperation()
+
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	/*
@@ -134,8 +97,8 @@ func TestOperation_CleanupResources(t *testing.T) {
 	*/
 
 	// create container
-	cmd := exec.Command("docker", "run", "-itd", "--label", "confort=hoge", image, "/bin/sh")
-	err := cmd.Run()
+	cmd := exec.Command("docker", "run", "-itd", "--label", "confort=hoge", "ghcr.io/daichitakahashi/confort/testdata/echo:test", "/bin/sh")
+	err = cmd.Run()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +121,7 @@ func TestOperation_CleanupResources(t *testing.T) {
 		filters.Arg("label", "confort=hoge"),
 	)
 
-	containers, err := op.cli.ContainerList(ctx, types.ContainerListOptions{
+	containers, err := cli.ContainerList(ctx, types.ContainerListOptions{
 		All:     true,
 		Filters: f,
 	})
@@ -182,7 +145,7 @@ func TestOperation_CleanupResources(t *testing.T) {
 		}
 	*/
 
-	networks, err := op.cli.NetworkList(ctx, types.NetworkListOptions{
+	networks, err := cli.NetworkList(ctx, types.NetworkListOptions{
 		Filters: f,
 	})
 	if err != nil {
@@ -211,9 +174,7 @@ func TestOperation_ExecuteTest(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	op := &operation{
-		cli: initClient(),
-	}
+	op := NewOperation()
 	args := []string{"-run", "TestExecuteProcess", "-v"}
 	env := os.Environ()
 

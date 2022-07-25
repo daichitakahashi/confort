@@ -1,17 +1,20 @@
-package server
+package beaconserver
 
 import (
+	"context"
 	"io"
 
 	"github.com/daichitakahashi/confort"
 	"github.com/daichitakahashi/confort/proto/beacon"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type beaconServer struct {
 	beacon.UnimplementedBeaconServiceServer
-	ex confort.ExclusionControl
+	ex        confort.ExclusionControl
+	interrupt func() error
 }
 
 func (b *beaconServer) NamespaceLock(stream beacon.BeaconService_NamespaceLockServer) error {
@@ -290,6 +293,11 @@ func (b *beaconServer) AcquireContainerLock(stream beacon.BeaconService_AcquireC
 			}
 		}
 	}
+}
+
+func (b *beaconServer) Interrupt(_ context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
+	err := b.interrupt()
+	return &emptypb.Empty{}, err
 }
 
 var _ beacon.BeaconServiceServer = (*beaconServer)(nil)

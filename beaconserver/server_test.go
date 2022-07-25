@@ -1,7 +1,8 @@
-package server
+package beaconserver
 
 import (
 	"context"
+	"net"
 	"testing"
 
 	"github.com/daichitakahashi/confort"
@@ -10,7 +11,6 @@ import (
 )
 
 func startServer(t *testing.T, ex confort.ExclusionControl, hc HealthChecker) func(t *testing.T) *grpc.ClientConn {
-	ctx := context.Background()
 	exclusionCtl := ex
 	if exclusionCtl == nil {
 		exclusionCtl = confort.NewExclusionControl()
@@ -22,19 +22,26 @@ func startServer(t *testing.T, ex confort.ExclusionControl, hc HealthChecker) fu
 		})
 	}
 
-	srv := New(":0", exclusionCtl, healthChecker) // use ephemeral port
-	stop, err := srv.LaunchWorker(ctx)
+	srv := grpc.NewServer()
+	Register(srv, func() error {
+		return nil
+	})
+	ln, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatal(err)
 	}
+	go func() {
+		_ = srv.Serve(ln)
+		_ = ln.Close()
+	}()
 	t.Cleanup(func() {
-		stop(ctx)
+		srv.Stop()
 	})
 
 	return func(t *testing.T) *grpc.ClientConn {
 		t.Helper()
 
-		conn, err := grpc.Dial(srv.addr, grpc.WithTransportCredentials(
+		conn, err := grpc.Dial(ln.Addr().String(), grpc.WithTransportCredentials(
 			insecure.NewCredentials(),
 		))
 		if err != nil {

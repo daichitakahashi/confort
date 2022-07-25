@@ -2,6 +2,8 @@ syntax = "proto3";
 
 option go_package = "proto/beacon";
 
+import "google/protobuf/empty.proto";
+
 package beacon;
 
 service BeaconService {
@@ -16,6 +18,9 @@ service BeaconService {
 
   rpc AcquireContainerLock(stream AcquireLockRequest)
       returns (stream LockResponse);
+
+  rpc Interrupt(google.protobuf.Empty)
+      returns (google.protobuf.Empty);
 }
 
 enum LockOp {

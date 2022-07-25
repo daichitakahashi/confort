@@ -3,167 +3,131 @@ package integration
 import (
 	"context"
 	"errors"
-	"fmt"
-	"io"
+	"log"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"time"
 
+	"github.com/daichitakahashi/confort/beaconserver"
+	"github.com/daichitakahashi/confort/proto/beacon"
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
-	"github.com/docker/go-connections/nat"
 	"github.com/lestrrat-go/backoff/v2"
 	"go.uber.org/multierr"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	health "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type Operation interface {
-	StartBeaconServer(ctx context.Context, image string, forcePull bool) (string, error)
-	StopBeaconServer(ctx context.Context, endpoint string) error
+	StartBeaconServer(ctx context.Context) (string, <-chan struct{}, error)
+	StopBeaconServer(ctx context.Context, addr string) error
 	CleanupResources(ctx context.Context, label, value string) error
 	ExecuteTest(ctx context.Context, args []string, environments []string) error
 }
 
 type operation struct {
-	cli *client.Client
+	srv *grpc.Server
+	ln  net.Listener
 }
 
-func NewOperation() (Operation, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		return nil, err
-	}
-	return &operation{
-		cli: cli,
-	}, nil
-}
+func NewOperation() Operation {
+	srv := grpc.NewServer(
+		grpc.ConnectionTimeout(time.Minute * 5), // TODO: configure
+	)
 
-func (o *operation) pullImageIfNotExists(ctx context.Context, image string, force bool) error {
-	if !force {
-		images, err := o.cli.ImageList(ctx, types.ImageListOptions{
-			All: true,
-		})
-		if err != nil {
-			return err
-		}
-		for _, img := range images {
-			for _, tag := range img.RepoTags {
-				if tag == image {
-					return nil
-				}
-			}
-		}
+	op := &operation{
+		srv: srv,
 	}
-
-	rc, err := o.cli.ImagePull(ctx, image, types.ImagePullOptions{
-		All: true,
+	beaconserver.Register(srv, func() error {
+		go func() {
+			<-time.After(time.Millisecond * 500)
+			op.srv.Stop()
+			_ = op.ln.Close()
+		}()
+		return nil
 	})
-	if err != nil {
-		return err
-	}
-	_, _ = io.ReadAll(rc)
-	_ = rc.Close()
-	return nil
+	return op
 }
 
-func (o *operation) StartBeaconServer(ctx context.Context, image string, forcePull bool) (string, error) {
-	err := o.pullImageIfNotExists(ctx, image, forcePull)
+func (o *operation) StartBeaconServer(ctx context.Context) (_ string, _ <-chan struct{}, err error) {
+	ln, err := net.Listen("tcp", ":0")
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
+	o.ln = ln
 
-	created, err := o.cli.ContainerCreate(ctx, &container.Config{
-		Image: image,
-		ExposedPorts: nat.PortSet{
-			"8080/tcp": struct{}{},
-		},
-	}, &container.HostConfig{
-		PortBindings: nat.PortMap{
-			"8080/tcp": []nat.PortBinding{
-				{},
-			},
-		},
-		AutoRemove: true,
-	}, &network.NetworkingConfig{}, nil, "")
-	if err != nil {
-		return "", err
-	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		err := o.srv.Serve(ln)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
+	defer func() {
+		if err != nil { // failed
+			o.srv.Stop()
+			_ = ln.Close()
+		}
+	}()
 
-	err = o.cli.ContainerStart(ctx, created.ID, types.ContainerStartOptions{})
+	conn, err := grpc.DialContext(ctx, ln.Addr().String(), grpc.WithTransportCredentials(
+		insecure.NewCredentials(),
+	))
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
+	defer func() {
+		_ = conn.Close()
+	}()
+	cli := health.NewHealthClient(conn)
 
 	b := backoff.Constant(
 		backoff.WithInterval(200*time.Millisecond),
 		backoff.WithMaxRetries(150),
 	).Start(ctx)
 	for backoff.Continue(b) {
-		i, err := o.cli.ContainerInspect(ctx, created.ID)
+		resp, err := cli.Check(ctx, &health.HealthCheckRequest{
+			Service: "beacon",
+		})
 		if err != nil {
-			return "", err
-		}
-
-		if i.State.Health.Status != "healthy" {
 			continue
 		}
-
-		port, ok := i.NetworkSettings.Ports["8080/tcp"]
-		if !ok {
-			continue
+		if resp.Status == health.HealthCheckResponse_SERVING {
+			return ln.Addr().String(), done, nil
 		}
-		if len(port) == 0 {
-			// endpoint not bound yet
-			continue
-		}
-		return fmt.Sprintf("%s:%s", port[0].HostIP, port[0].HostPort), nil
 	}
-	return "", errors.New("cannot obtain beacon endpoint")
+
+	return "", nil, errors.New("cannot obtain beacon endpoint")
 }
 
-func (o *operation) StopBeaconServer(ctx context.Context, endpoint string) error {
-	_, port, err := net.SplitHostPort(endpoint)
+func (o *operation) StopBeaconServer(ctx context.Context, addr string) error {
+	conn, err := grpc.DialContext(ctx, addr, grpc.WithTransportCredentials(
+		insecure.NewCredentials(),
+	))
 	if err != nil {
 		return err
 	}
+	defer func() {
+		_ = conn.Close()
+	}()
 
-	containers, err := o.cli.ContainerList(ctx, types.ContainerListOptions{
-		All: true,
-		Filters: filters.NewArgs(
-			filters.Arg("expose", "8080"),
-		),
-	})
-	if err != nil {
-		return err
-	}
-
-	var target string
-find:
-	for _, c := range containers {
-		for _, p := range c.Ports {
-			pp := strconv.FormatUint(uint64(p.PublicPort), 10)
-			if pp == port {
-				target = c.ID
-				break find
-			}
-		}
-	}
-	if target == "" {
-		return errors.New("container not found")
-	}
-
-	return o.cli.ContainerRemove(ctx, target, types.ContainerRemoveOptions{
-		RemoveVolumes: true,
-		Force:         true,
-	})
+	cli := beacon.NewBeaconServiceClient(conn)
+	_, err = cli.Interrupt(ctx, &emptypb.Empty{})
+	return err
 }
 
 func (o *operation) CleanupResources(ctx context.Context, label, value string) error {
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		return err
+	}
+
 	f := filters.NewArgs(
 		filters.Arg("label", label+"="+value),
 	)
@@ -171,7 +135,7 @@ func (o *operation) CleanupResources(ctx context.Context, label, value string) e
 	var errs []error
 
 	// remove container
-	containers, err := o.cli.ContainerList(ctx, types.ContainerListOptions{
+	containers, err := cli.ContainerList(ctx, types.ContainerListOptions{
 		All:     true,
 		Filters: f,
 	})
@@ -179,7 +143,7 @@ func (o *operation) CleanupResources(ctx context.Context, label, value string) e
 		errs = append(errs, err)
 	}
 	for _, c := range containers {
-		err := o.cli.ContainerRemove(ctx, c.ID, types.ContainerRemoveOptions{
+		err := cli.ContainerRemove(ctx, c.ID, types.ContainerRemoveOptions{
 			RemoveVolumes: true,
 			Force:         true,
 		})
@@ -208,14 +172,14 @@ func (o *operation) CleanupResources(ctx context.Context, label, value string) e
 	*/
 
 	// remove network
-	networks, err := o.cli.NetworkList(ctx, types.NetworkListOptions{
+	networks, err := cli.NetworkList(ctx, types.NetworkListOptions{
 		Filters: f,
 	})
 	if err != nil {
 		errs = append(errs, err)
 	}
 	for _, n := range networks {
-		err := o.cli.NetworkRemove(ctx, n.ID)
+		err := cli.NetworkRemove(ctx, n.ID)
 		if err != nil {
 			errs = append(errs, err)
 		}

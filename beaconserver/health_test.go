@@ -1,4 +1,4 @@
-package server
+package beaconserver
 
 import (
 	"context"
