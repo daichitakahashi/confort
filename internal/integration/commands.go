@@ -8,7 +8,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/daichitakahashi/confort/internal/dockerutil"
+	"github.com/daichitakahashi/confort/internal/beaconutil"
 	"github.com/google/subcommands"
 )
 
@@ -99,7 +99,7 @@ func (s *StopCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interfa
 	}
 
 	// delete all docker resources created in TestCommand
-	err = s.Operation.CleanupResources(ctx, dockerutil.LabelEndpoint, endpoint)
+	err = s.Operation.CleanupResources(ctx, beaconutil.LabelEndpoint, endpoint)
 	if err != nil {
 		log.Println(err)
 		return subcommands.ExitFailure
@@ -172,7 +172,7 @@ func (t *TestCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interfa
 	}
 
 	// delete all docker resources created in TestCommand
-	err = t.Operation.CleanupResources(ctx, dockerutil.LabelEndpoint, endpoint)
+	err = t.Operation.CleanupResources(ctx, beaconutil.LabelEndpoint, endpoint)
 	if err != nil {
 		log.Println(err)
 		return subcommands.ExitFailure

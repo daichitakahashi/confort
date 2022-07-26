@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daichitakahashi/confort/internal/dockerutil"
+	"github.com/daichitakahashi/confort/internal/beaconutil"
 	"github.com/daichitakahashi/confort/proto/beacon"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -127,7 +127,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 		cli:    cli,
 		policy: policy,
 		labels: map[string]string{
-			dockerutil.LabelEndpoint: beaconEndpoint,
+			beaconutil.LabelEndpoint: beaconEndpoint,
 		},
 	}
 	ns, err := backend.Namespace(ctx, namespace)
