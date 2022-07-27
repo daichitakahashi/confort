@@ -74,7 +74,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 
 	var ex ExclusionControl = NewExclusionControl()
 	var skipDeletion bool
-	var beaconEndpoint string
+	var beaconAddr string
 
 	unlock, err := ex.NamespaceLock(ctx)
 	if err != nil {
@@ -85,7 +85,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 	clientOps := []client.Opt{
 		client.FromEnv,
 	}
-	namespace := os.Getenv("CFT_NAMESPACE")
+	namespace := os.Getenv(beaconutil.NamespaceEnv)
 	defaultTimeout := time.Second * 30
 	policy := ResourcePolicyReuse
 
@@ -109,7 +109,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 					cli: beacon.NewBeaconServiceClient(c.conn),
 				}
 				skipDeletion = true
-				beaconEndpoint = c.endpoint
+				beaconAddr = c.addr
 			}
 		}
 	}
@@ -127,7 +127,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 		cli:    cli,
 		policy: policy,
 		labels: map[string]string{
-			beaconutil.LabelEndpoint: beaconEndpoint,
+			beaconutil.LabelAddr: beaconAddr,
 		},
 	}
 	ns, err := backend.Namespace(ctx, namespace)

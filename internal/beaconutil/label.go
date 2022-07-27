@@ -1,3 +1,3 @@
 package beaconutil
 
-const LabelEndpoint = "daichitakahashi.confort.endpoint"
+const LabelAddr = "daichitakahashi.confort.beacon.addr"

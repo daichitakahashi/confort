@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
@@ -40,7 +41,7 @@ func (s *StartCommand) Name() string {
 func (s *StartCommand) Synopsis() string {
 	return `Start beacon server and output its endpoint to stdout.
 If image is not specified, use "ghcr.io/daichitakahashi/confort/beacon:latest".
-Set endpoint to environment variable "CFT_BEACON_ENDPOINT", confort.ConnectBeacon detects it and connect server.`
+Set endpoint to environment variable "CFT_BEACON_ADDR", confort.ConnectBeacon detects it and connect server.`
 }
 
 func (s *StartCommand) Usage() string {
@@ -50,14 +51,40 @@ func (s *StartCommand) Usage() string {
 func (s *StartCommand) SetFlags(*flag.FlagSet) {}
 
 func (s *StartCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
-	endpoint, done, err := s.Operation.StartBeaconServer(ctx)
-	if err != nil {
+	const lock = beaconutil.LockFile
+
+	// check lock file
+	// if the file already exists, "confort start" fails
+	_, err := os.Stat(lock)
+	if err == nil {
+		log.Printf(`Lock file %q already exists. Please wait until the test finishes or run "confort stop".`, lock)
+		log.Printf(`* If your test has already finished, you can delete %q directly.`, lock)
+		return subcommands.ExitFailure
+	} else if !errors.Is(err, fs.ErrNotExist) {
 		log.Println(err)
 		return subcommands.ExitFailure
 	}
-	// TODO: ファイルにエンドポイントを書き込む
-	_ = endpoint
 
+	// start server asynchronously
+	addr, done, err := s.Operation.StartBeaconServer(ctx)
+	if err != nil {
+		log.Println("failed to start beacon server:", err)
+		return subcommands.ExitFailure
+	}
+
+	// write address into lock file
+	err = beaconutil.StoreAddressToLockFile(lock, addr)
+	if err != nil {
+		log.Printf("failed to create lock file: %q", lock)
+		log.Println(err)
+		err = s.Operation.StopBeaconServer(ctx, addr)
+		if err != nil {
+			log.Println("failed to stop beacon server:", err)
+		}
+		return subcommands.ExitFailure
+	}
+
+	// wait until finished
 	<-done
 	return subcommands.ExitSuccess
 }
@@ -74,7 +101,7 @@ func (s *StopCommand) Name() string {
 
 func (s *StopCommand) Synopsis() string {
 	return `Stop beacon server.
-This specifies target container by CFT_BEACON_ENDPOINT environment variable.`
+This specifies target container by CFT_BEACON_ADDR environment variable.`
 }
 
 func (s *StopCommand) Usage() string {
@@ -84,28 +111,36 @@ func (s *StopCommand) Usage() string {
 func (s *StopCommand) SetFlags(_ *flag.FlagSet) {}
 
 func (s *StopCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
-	endpoint := os.Getenv("CFT_BEACON_ENDPOINT")
-	if endpoint == "" {
-		log.Println("CFT_BEACON_ENDPOINT not set")
+	const lock = beaconutil.LockFile
+
+	// read address from env or lock file
+	addr, err := beaconutil.Address(lock)
+	if err != nil {
+		log.Printf("failed to read lock file %q", lock)
+		log.Println(err)
 		return subcommands.ExitFailure
 	}
 
-	// TODO: 環境変数がなければファイルに保存したエンドポイントをチェックする
-
-	err := s.Operation.StopBeaconServer(ctx, endpoint)
+	err = s.Operation.StopBeaconServer(ctx, addr)
 	if err != nil {
 		log.Println(err)
 		return subcommands.ExitFailure
 	}
 
-	// delete all docker resources created in TestCommand
-	err = s.Operation.CleanupResources(ctx, beaconutil.LabelEndpoint, endpoint)
+	// delete all docker resources created in test
+	err = s.Operation.CleanupResources(ctx, beaconutil.LabelAddr, addr)
 	if err != nil {
 		log.Println(err)
 		return subcommands.ExitFailure
 	}
 
-	// TODO: エンドポイントを保存したファイルがあれば削除する
+	// delete lock file if it exists
+	err = beaconutil.DeleteLockFile(lock)
+	if err != nil {
+		log.Printf("failed to delete lock file %q", lock)
+		log.Println(err)
+		return subcommands.ExitFailure
+	}
 
 	return subcommands.ExitSuccess
 }
@@ -136,26 +171,30 @@ func (t *TestCommand) SetFlags(set *flag.FlagSet) {
 }
 
 func (t *TestCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
+	// start server asynchronously
 	endpoint, _, err := t.Operation.StartBeaconServer(ctx)
 	if err != nil {
-		log.Println(err)
+		log.Println("failed to start beacon server", err)
 		return subcommands.ExitFailure
 	}
 
-	var sepIdx int
+	// get args after "--" as test args
+	var testArgs []string
 	for i, arg := range os.Args {
-		sepIdx = i
 		if arg == "--" {
+			testArgs = os.Args[i+1:]
 			break
 		}
 	}
 
-	env := append(os.Environ(), "CFT_BEACON_ENDPOINT="+endpoint)
+	// prepare environment variables
+	env := append(os.Environ(), beaconutil.AddressEnv+"="+endpoint)
 	if t.Namespace != "" {
-		env = append(env, "CFT_NAMESPACE="+t.Namespace)
+		env = append(env, beaconutil.NamespaceEnv+"="+t.Namespace)
 	}
 
-	err = t.Operation.ExecuteTest(ctx, os.Args[:sepIdx+1], env)
+	// execute test
+	err = t.Operation.ExecuteTest(ctx, testArgs, env)
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {
 		return subcommands.ExitStatus(ee.ExitCode())
@@ -172,7 +211,7 @@ func (t *TestCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interfa
 	}
 
 	// delete all docker resources created in TestCommand
-	err = t.Operation.CleanupResources(ctx, beaconutil.LabelEndpoint, endpoint)
+	err = t.Operation.CleanupResources(ctx, beaconutil.LabelAddr, endpoint)
 	if err != nil {
 		log.Println(err)
 		return subcommands.ExitFailure
