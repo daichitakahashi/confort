@@ -32,6 +32,9 @@ func NewCommands(set *flag.FlagSet, name string, op Operation) *subcommands.Comm
 
 type StartCommand struct {
 	Operation Operation
+
+	// flags
+	lockFile string
 }
 
 func (s *StartCommand) Name() string {
@@ -45,20 +48,21 @@ Set endpoint to environment variable "CFT_BEACON_ADDR", confort.ConnectBeacon de
 }
 
 func (s *StartCommand) Usage() string {
-	return "confort start"
+	return `confort start (-lock-file <filename>)
+`
 }
 
-func (s *StartCommand) SetFlags(*flag.FlagSet) {}
+func (s *StartCommand) SetFlags(f *flag.FlagSet) {
+	f.StringVar(&s.lockFile, "lock-file", beaconutil.LockFile, "user defined lock file name)")
+}
 
 func (s *StartCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
-	const lock = beaconutil.LockFile
-
 	// check lock file
 	// if the file already exists, "confort start" fails
-	_, err := os.Stat(lock)
+	_, err := os.Stat(s.lockFile)
 	if err == nil {
-		log.Printf(`Lock file %q already exists. Please wait until the test finishes or run "confort stop".`, lock)
-		log.Printf(`* If your test has already finished, you can delete %q directly.`, lock)
+		log.Printf(`Lock file %q already exists. Please wait until the test finishes or run "confort stop".`, s.lockFile)
+		log.Printf(`* If your test has already finished, you can delete %q directly.`, s.lockFile)
 		return subcommands.ExitFailure
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		log.Println(err)
@@ -73,9 +77,9 @@ func (s *StartCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interf
 	}
 
 	// write address into lock file
-	err = beaconutil.StoreAddressToLockFile(lock, addr)
+	err = beaconutil.StoreAddressToLockFile(s.lockFile, addr)
 	if err != nil {
-		log.Printf("failed to create lock file: %q", lock)
+		log.Printf("failed to create lock file: %q", s.lockFile)
 		log.Println(err)
 		err = s.Operation.StopBeaconServer(ctx, addr)
 		if err != nil {
@@ -93,6 +97,9 @@ var _ subcommands.Command = (*StartCommand)(nil)
 
 type StopCommand struct {
 	Operation Operation
+
+	// flags
+	lockFile string
 }
 
 func (s *StopCommand) Name() string {
@@ -105,18 +112,19 @@ This specifies target container by CFT_BEACON_ADDR environment variable.`
 }
 
 func (s *StopCommand) Usage() string {
-	return "confort stop"
+	return `confort stop (-lock-file <filename>)
+`
 }
 
-func (s *StopCommand) SetFlags(_ *flag.FlagSet) {}
+func (s *StopCommand) SetFlags(f *flag.FlagSet) {
+	f.StringVar(&s.lockFile, "lock-file", beaconutil.LockFile, "user defined lock file name")
+}
 
 func (s *StopCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
-	const lock = beaconutil.LockFile
-
 	// read address from env or lock file
-	addr, err := beaconutil.Address(lock)
+	addr, err := beaconutil.Address(s.lockFile)
 	if err != nil {
-		log.Printf("failed to read lock file %q", lock)
+		log.Printf("failed to read lock file %q", s.lockFile)
 		log.Println(err)
 		return subcommands.ExitFailure
 	}
@@ -135,9 +143,9 @@ func (s *StopCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interfa
 	}
 
 	// delete lock file if it exists
-	err = beaconutil.DeleteLockFile(lock)
+	err = beaconutil.DeleteLockFile(s.lockFile)
 	if err != nil {
-		log.Printf("failed to delete lock file %q", lock)
+		log.Printf("failed to delete lock file %q", s.lockFile)
 		log.Println(err)
 		return subcommands.ExitFailure
 	}
@@ -163,7 +171,8 @@ If you want to use "go test" option, specify them after "--".`
 }
 
 func (t *TestCommand) Usage() string {
-	return "confort test (-namespace NS) (-- -p=4 -shuffle=on)"
+	return `confort test (-namespace NS) (-- -p=4 -shuffle=on)
+`
 }
 
 func (t *TestCommand) SetFlags(set *flag.FlagSet) {
