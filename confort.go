@@ -88,6 +88,9 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 	namespace := os.Getenv(beaconutil.NamespaceEnv)
 	defaultTimeout := time.Second * 30
 	policy := ResourcePolicyReuse
+	if s := os.Getenv(beaconutil.ResourcePolicyEnv); s != "" {
+		policy = ResourcePolicy(s)
+	}
 
 	for _, opt := range opts {
 		switch opt.Ident() {
@@ -115,6 +118,9 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 	}
 	if namespace == "" {
 		tb.Fatal("confort: empty namespace")
+	}
+	if !beaconutil.ValidResourcePolicy(string(policy)) {
+		tb.Fatalf("confort: invalid resource policy %q", policy)
 	}
 
 	cli, err := client.NewClientWithOpts(clientOps...)

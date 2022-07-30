@@ -157,7 +157,10 @@ var _ subcommands.Command = (*StopCommand)(nil)
 
 type TestCommand struct {
 	Operation Operation
-	Namespace string
+
+	// flags
+	namespace string
+	policy    string
 }
 
 func (t *TestCommand) Name() string {
@@ -171,21 +174,28 @@ If you want to use "go test" option, specify them after "--".`
 }
 
 func (t *TestCommand) Usage() string {
-	return `confort test (-namespace NS) (-- -p=4 -shuffle=on)
+	return `confort test (-namespace <namespace> -policy <resource policy>) (-- -p=4 -shuffle=on)
 `
 }
 
-func (t *TestCommand) SetFlags(set *flag.FlagSet) {
-	set.StringVar(&t.Namespace, "namespace", "", "")
+func (t *TestCommand) SetFlags(f *flag.FlagSet) {
+	f.StringVar(&t.namespace, "namespace", "", "namespace")
+	f.StringVar(&t.policy, "policy", beaconutil.ResourcePolicyReuse, `resource policy("error", "reuse" or "takeover")`)
 }
 
 func (t *TestCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
 	// start server asynchronously
-	endpoint, _, err := t.Operation.StartBeaconServer(ctx)
+	addr, _, err := t.Operation.StartBeaconServer(ctx)
 	if err != nil {
-		log.Println("failed to start beacon server", err)
+		log.Println("failed to start beacon server:", err)
 		return subcommands.ExitFailure
 	}
+	defer func() {
+		err = t.Operation.StopBeaconServer(ctx, addr)
+		if err != nil {
+			log.Println("(CAUTION) error occurred in stopping beacon server:", err)
+		}
+	}()
 
 	// get args after "--" as test args
 	var testArgs []string
@@ -197,13 +207,32 @@ func (t *TestCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interfa
 	}
 
 	// prepare environment variables
-	env := append(os.Environ(), beaconutil.AddressEnv+"="+endpoint)
-	if t.Namespace != "" {
-		env = append(env, beaconutil.NamespaceEnv+"="+t.Namespace)
+	err = os.Setenv(beaconutil.AddressEnv, addr)
+	if err != nil {
+		log.Println(err)
+		return subcommands.ExitFailure
+	}
+	if t.namespace != "" {
+		err = os.Setenv(beaconutil.NamespaceEnv, t.namespace)
+		if err != nil {
+			log.Println(err)
+			return subcommands.ExitFailure
+		}
+	}
+	if t.policy != "" {
+		if !beaconutil.ValidResourcePolicy(t.policy) {
+			log.Printf("invalid resource policy %q", t.policy)
+			return subcommands.ExitFailure
+		}
+		err = os.Setenv(beaconutil.ResourcePolicyEnv, t.policy)
+		if err != nil {
+			log.Println(err)
+			return subcommands.ExitFailure
+		}
 	}
 
 	// execute test
-	err = t.Operation.ExecuteTest(ctx, testArgs, env)
+	err = t.Operation.ExecuteTest(ctx, testArgs, os.Environ())
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {
 		return subcommands.ExitStatus(ee.ExitCode())
@@ -213,14 +242,8 @@ func (t *TestCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interfa
 		return subcommands.ExitFailure
 	}
 
-	err = t.Operation.StopBeaconServer(ctx, endpoint)
-	if err != nil {
-		log.Println(err)
-		return subcommands.ExitFailure
-	}
-
 	// delete all docker resources created in TestCommand
-	err = t.Operation.CleanupResources(ctx, beaconutil.LabelAddr, endpoint)
+	err = t.Operation.CleanupResources(ctx, beaconutil.LabelAddr, addr)
 	if err != nil {
 		log.Println(err)
 		return subcommands.ExitFailure

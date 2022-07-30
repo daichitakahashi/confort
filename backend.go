@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/daichitakahashi/confort/internal/beaconutil"
 	"github.com/docker/cli/cli/command/image/build"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -66,14 +67,10 @@ func (p Ports) Binding(port nat.Port) (string, bool) {
 type ResourcePolicy string
 
 const (
-	ResourcePolicyError    ResourcePolicy = "error"
-	ResourcePolicyReuse    ResourcePolicy = "reuse"
-	ResourcePolicyTakeOver ResourcePolicy = "takeover"
+	ResourcePolicyError    ResourcePolicy = beaconutil.ResourcePolicyError
+	ResourcePolicyReuse    ResourcePolicy = beaconutil.ResourcePolicyReuse
+	ResourcePolicyTakeOver ResourcePolicy = beaconutil.ResourcePolicyTakeOver
 )
-
-func (p ResourcePolicy) Equals(s string) bool {
-	return strings.EqualFold(string(p), s)
-}
 
 type dockerBackend struct {
 	cli    *client.Client // inject
