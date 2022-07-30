@@ -152,25 +152,6 @@ func (o *operation) CleanupResources(ctx context.Context, label, value string) e
 		}
 	}
 
-	/*
-		// remove image
-		images, err := o.cli.ImageList(ctx, types.ImageListOptions{
-			All:     true,
-			Filters: f,
-		})
-		if err != nil {
-			errs = append(errs, err)
-		}
-		for _, img := range images {
-			_, err := o.cli.ImageRemove(ctx, img.ID, types.ImageRemoveOptions{
-				Force: true,
-			})
-			if err != nil {
-				errs = append(errs, err)
-			}
-		}
-	*/
-
 	// remove network
 	networks, err := cli.NetworkList(ctx, types.NetworkListOptions{
 		Filters: f,
