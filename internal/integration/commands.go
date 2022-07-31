@@ -42,9 +42,13 @@ func (s *StartCommand) Name() string {
 }
 
 func (s *StartCommand) Synopsis() string {
-	return `Start beacon server and output its endpoint to stdout.
-If image is not specified, use "ghcr.io/daichitakahashi/confort/beacon:latest".
-Set endpoint to environment variable "CFT_BEACON_ADDR", confort.ConnectBeacon detects it and connect server.`
+	return `Start beacon server and output its endpoint to lock file.
+Use "confort stop" command to stop beacon server.
+
+By using "-lock-file" option, you can use a user-defined file name as a lock file.
+Default file name is ".confort.lock".
+
+If lock file already exists, this command fails.`
 }
 
 func (s *StartCommand) Usage() string {
@@ -107,8 +111,9 @@ func (s *StopCommand) Name() string {
 }
 
 func (s *StopCommand) Synopsis() string {
-	return `Stop beacon server.
-This specifies target container by CFT_BEACON_ADDR environment variable.`
+	return `Stop beacon server run by "confort start" command.
+The target server address will be read from lock file(".confort.lock"), and the lock file will be removed.
+If "confort start" has accompanied by "-lock-file" option, this command requires the same.`
 }
 
 func (s *StopCommand) Usage() string {
@@ -169,8 +174,8 @@ func (t *TestCommand) Name() string {
 
 func (t *TestCommand) Synopsis() string {
 	return `Start beacon server and execute tests.
-After test finished, stop beacon server automatically.
-If you want to use "go test" option, specify them after "--".`
+After tests are finished, beacon server will be stopped automatically.
+If you want to use options of "go test", put them after "--".`
 }
 
 func (t *TestCommand) Usage() string {
