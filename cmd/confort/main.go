@@ -5,13 +5,18 @@ import (
 	"flag"
 	"os"
 
-	"github.com/daichitakahashi/confort/internal/integration"
+	"github.com/daichitakahashi/confort/internal/cmd"
 )
 
 func main() {
 	flag.Parse()
 	ctx := context.Background()
 
-	cmd := integration.NewCommands(flag.CommandLine, os.Args[0], integration.NewOperation())
-	os.Exit(int(cmd.Execute(ctx)))
+	status := cmd.NewCommands(
+		flag.CommandLine,
+		os.Args[0],
+		cmd.NewOperation(),
+	).Execute(ctx)
+
+	os.Exit(int(status))
 }
