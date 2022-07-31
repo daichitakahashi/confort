@@ -19,12 +19,12 @@ jobs:
         uses: actions/upload-pages-artifact@v1
         with:
           path: './.cov'
-        if: github.ref == 'refs/heads/actions'
+        if: github.ref == 'refs/heads/main'
 
   deploy-coverage:
     runs-on: ubuntu-latest
     needs: test
-    if: github.ref == 'refs/heads/actions'
+    if: github.ref == 'refs/heads/main'
     permissions:
       contents: read
       pages: write
