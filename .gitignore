@@ -5,3 +5,5 @@ go.work.sum
 
 coverage.out.tmp
 coverage.out
+coverage.html
+/.cov
