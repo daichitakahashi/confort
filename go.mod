@@ -3,7 +3,6 @@ module github.com/daichitakahashi/confort
 go 1.18
 
 require (
-	github.com/daichitakahashi/workerctl v0.0.5
 	github.com/docker/cli v20.10.16+incompatible
 	github.com/docker/docker v20.10.11+incompatible
 	github.com/docker/go-connections v0.4.0
@@ -11,6 +10,8 @@ require (
 	github.com/google/go-cmp v0.5.7
 	github.com/google/subcommands v1.2.0
 	github.com/google/uuid v1.3.0
+	github.com/jackc/pgconn v1.12.1
+	github.com/jackc/pgx/v4 v4.16.1
 	github.com/lestrrat-go/backoff/v2 v2.0.8
 	github.com/lestrrat-go/option v1.0.0
 	go.uber.org/multierr v1.8.0
@@ -30,6 +31,12 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
+	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
+	github.com/jackc/pgio v1.0.0 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgproto3/v2 v2.3.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20200714003250-2b9c44734f2b // indirect
+	github.com/jackc/pgtype v1.11.0 // indirect
 	github.com/moby/buildkit v0.10.3 // indirect
 	github.com/moby/sys/mount v0.3.2 // indirect
 	github.com/moby/sys/mountinfo v0.6.1 // indirect
@@ -43,6 +50,7 @@ require (
 	github.com/sirupsen/logrus v1.8.1 // indirect
 	go.opencensus.io v0.23.0 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
+	golang.org/x/crypto v0.0.0-20211202192323-5770296d904e // indirect
 	golang.org/x/net v0.0.0-20211216030914-fe4d6282115f // indirect
 	golang.org/x/sys v0.0.0-20220114195835-da31bd327af9 // indirect
 	golang.org/x/text v0.3.7 // indirect
