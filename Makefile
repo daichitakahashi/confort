@@ -1,6 +1,9 @@
 proto:
 	protoc -I./proto/beacon --go_out=. --go-grpc_out=. ./proto/beacon/*.proto
 
+sqlc:
+	go generate ./integrationtest/database
+
 test:
 	go test -coverprofile=coverage.out.tmp -p 1 -coverpkg=./... ./...
 	cat coverage.out.tmp | grep -v ".pb." | grep -v ".gen." | grep -v ".testutil." > coverage.out

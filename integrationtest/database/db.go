@@ -4,22 +4,32 @@ package database
 
 import (
 	"context"
-	"testing"
+	_ "embed"
+	"regexp"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
 )
 
-func Connect(tb testing.TB, ctx context.Context, c pgconn.Config) *pgx.Conn {
+func Connect(ctx context.Context, c pgconn.Config) (*pgx.Conn, error) {
 	cc := pgx.ConnConfig{
 		Config: c,
 	}
-	conn, err := pgx.Connect(ctx, cc.ConnString())
-	if err != nil {
-		tb.Fatal("database.Connect", err)
+	return pgx.Connect(ctx, cc.ConnString())
+}
+
+//go:embed schema.sql
+var createTables string
+
+var r = regexp.MustCompile(`(?sU)create table .+ \(.+\);`)
+
+func CreateTableIfNotExists(ctx context.Context, conn *pgx.Conn) error {
+	rr := r.FindAllString(createTables, -1)
+	for _, sql := range rr {
+		_, err := conn.Exec(ctx, sql)
+		if err != nil {
+			return err
+		}
 	}
-	tb.Cleanup(func() {
-		_ = conn.Close(context.Background())
-	})
-	return conn
+	return nil
 }
