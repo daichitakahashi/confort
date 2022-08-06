@@ -41,3 +41,6 @@ select * from employees where tenant_id = $1;
 
 -- name: GetEmployees :one
 select * from employees where tenant_id = $1 and id = $2 limit 1;
+
+-- name: ClearEmployees :exec
+delete from employees;

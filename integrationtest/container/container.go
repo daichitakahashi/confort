@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,21 +13,25 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/jackc/pgconn"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
 )
 
-type ConnectFunc func(tb testing.TB, ctx context.Context, exclusive bool) *pgx.Conn
+type ConnectFunc func(tb testing.TB, ctx context.Context, exclusive bool) *pgxpool.Pool
 
 const (
 	dbUser     = "confort_test"
 	dbPassword = "confort_pass"
+	Database   = dbUser
 )
 
 func InitDatabase(tb testing.TB, ctx context.Context) ConnectFunc {
 	tb.Helper()
 
 	beacon := confort.ConnectBeacon(tb, ctx)
-	cft, cleanup := confort.New(tb, ctx, confort.WithBeacon(beacon))
+	cft, cleanup := confort.New(tb, ctx,
+		confort.WithBeacon(beacon),
+		confort.WithNamespace("integrationtest", false),
+	)
 	tb.Cleanup(cleanup)
 
 	cft.Run(tb, ctx, "db", &confort.Container{
@@ -41,7 +46,7 @@ func InitDatabase(tb testing.TB, ctx context.Context) ConnectFunc {
 		confort.WithPullOptions(&types.ImagePullOptions{}, os.Stderr),
 		confort.WithContainerConfig(func(config *container.Config) {
 			config.Healthcheck = &container.HealthConfig{
-				Test:     []string{"pg_isready"},
+				Test:     []string{"CMD-SHELL", "pg_isready"},
 				Interval: 5 * time.Second,
 				Timeout:  3 * time.Second,
 			}
@@ -52,10 +57,11 @@ func InitDatabase(tb testing.TB, ctx context.Context) ConnectFunc {
 	ports := cft.UseExclusive(tb, ctx, "db", confort.WithReleaseFunc(&release))
 	defer release()
 
-	port, ok := ports.Binding("5432/tcp")
+	endpoint, ok := ports.Binding("5432/tcp")
 	if !ok {
 		tb.Fatal("port not found")
 	}
+	_, port, _ := strings.Cut(endpoint, ":")
 	p, err := strconv.ParseUint(port, 10, 16)
 	if err != nil {
 		tb.Fatal(err)
@@ -66,24 +72,20 @@ func InitDatabase(tb testing.TB, ctx context.Context) ConnectFunc {
 		Port:     uint16(p),
 		User:     dbUser,
 		Password: dbPassword,
-		Database: dbUser,
+		Database: Database,
 	}
 
-	conn, err := database.Connect(ctx, connCfg)
+	pool, err := database.Connect(ctx, connCfg)
 	if err != nil {
 		tb.Fatal(err)
 	}
-
-	err = database.CreateTableIfNotExists(ctx, conn)
+	err = database.CreateTableIfNotExists(ctx, pool)
 	if err != nil {
 		tb.Fatal("LaunchDatabase:", err)
 	}
-	err = conn.Close(ctx)
-	if err != nil {
-		tb.Fatal("LaunchDatabase:", err)
-	}
+	pool.Close()
 
-	return func(tb testing.TB, ctx context.Context, exclusive bool) *pgx.Conn {
+	return func(tb testing.TB, ctx context.Context, exclusive bool) *pgxpool.Pool {
 		tb.Helper()
 
 		if exclusive {
@@ -92,10 +94,13 @@ func InitDatabase(tb testing.TB, ctx context.Context) ConnectFunc {
 			cft.UseShared(tb, ctx, "db")
 		}
 
-		conn, err := database.Connect(ctx, connCfg)
+		pool, err := database.Connect(ctx, connCfg)
 		if err != nil {
 			tb.Fatal("ConnectFunc:", err)
 		}
-		return conn
+		tb.Cleanup(func() {
+			pool.Close()
+		})
+		return pool
 	}
 }

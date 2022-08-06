@@ -3,6 +3,7 @@ module github.com/daichitakahashi/confort
 go 1.18
 
 require (
+	github.com/daichitakahashi/testingc v0.0.0-20220801231842-40b36baddcd3
 	github.com/docker/cli v20.10.16+incompatible
 	github.com/docker/docker v20.10.11+incompatible
 	github.com/docker/go-connections v0.4.0
@@ -37,6 +38,7 @@ require (
 	github.com/jackc/pgproto3/v2 v2.3.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20200714003250-2b9c44734f2b // indirect
 	github.com/jackc/pgtype v1.11.0 // indirect
+	github.com/jackc/puddle v1.2.1 // indirect
 	github.com/moby/buildkit v0.10.3 // indirect
 	github.com/moby/sys/mount v0.3.2 // indirect
 	github.com/moby/sys/mountinfo v0.6.1 // indirect

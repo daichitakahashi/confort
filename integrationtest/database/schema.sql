@@ -8,6 +8,7 @@ create table if not exists employees (
     id serial not null,
     name text not null,
     tenant_id integer not null,
+    primary key (id),
     foreign key (tenant_id)
         references tenants (id)
         on delete no action

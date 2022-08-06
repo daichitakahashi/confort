@@ -9,6 +9,15 @@ import (
 	"context"
 )
 
+const clearEmployees = `-- name: ClearEmployees :exec
+delete from employees
+`
+
+func (q *Queries) ClearEmployees(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, clearEmployees)
+	return err
+}
+
 const clearTenants = `-- name: ClearTenants :exec
 delete from tenants
 `
