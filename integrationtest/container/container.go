@@ -24,10 +24,9 @@ const (
 	Database   = dbUser
 )
 
-func InitDatabase(tb testing.TB, ctx context.Context) ConnectFunc {
+func InitDatabase(tb testing.TB, ctx context.Context, beacon *confort.Connection) ConnectFunc {
 	tb.Helper()
 
-	beacon := confort.ConnectBeacon(tb, ctx)
 	cft, cleanup := confort.New(tb, ctx,
 		confort.WithBeacon(beacon),
 		confort.WithNamespace("integrationtest", false),
@@ -55,6 +54,7 @@ func InitDatabase(tb testing.TB, ctx context.Context) ConnectFunc {
 
 	var release func()
 	ports := cft.UseExclusive(tb, ctx, "db", confort.WithReleaseFunc(&release))
+	// release manually
 	defer release()
 
 	endpoint, ok := ports.Binding("5432/tcp")

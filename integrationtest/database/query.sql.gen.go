@@ -29,25 +29,32 @@ func (q *Queries) ClearTenants(ctx context.Context) error {
 
 const createEmployee = `-- name: CreateEmployee :one
 insert into employees (
-    name, tenant_id
+    username, name, tenant_id
 ) values (
-    $1, $2
-) returning id, name, tenant_id
+    $1, $2, $3
+) returning id, username, name, tenant_id
 `
 
 type CreateEmployeeParams struct {
+	Username string `db:"username"`
 	Name     string `db:"name"`
 	TenantID int32  `db:"tenant_id"`
 }
 
 func (q *Queries) CreateEmployee(ctx context.Context, arg CreateEmployeeParams) (Employee, error) {
-	row := q.db.QueryRow(ctx, createEmployee, arg.Name, arg.TenantID)
+	row := q.db.QueryRow(ctx, createEmployee, arg.Username, arg.Name, arg.TenantID)
 	var i Employee
-	err := row.Scan(&i.ID, &i.Name, &i.TenantID)
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.Name,
+		&i.TenantID,
+	)
 	return i, err
 }
 
 type CreateEmployeesParams struct {
+	Username string `db:"username"`
 	Name     string `db:"name"`
 	TenantID int32  `db:"tenant_id"`
 }
@@ -69,7 +76,7 @@ func (q *Queries) CreateTenant(ctx context.Context, name string) (Tenant, error)
 }
 
 const getEmployees = `-- name: GetEmployees :one
-select id, name, tenant_id from employees where tenant_id = $1 and id = $2 limit 1
+select id, username, name, tenant_id from employees where tenant_id = $1 and id = $2 limit 1
 `
 
 type GetEmployeesParams struct {
@@ -80,7 +87,12 @@ type GetEmployeesParams struct {
 func (q *Queries) GetEmployees(ctx context.Context, arg GetEmployeesParams) (Employee, error) {
 	row := q.db.QueryRow(ctx, getEmployees, arg.TenantID, arg.ID)
 	var i Employee
-	err := row.Scan(&i.ID, &i.Name, &i.TenantID)
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.Name,
+		&i.TenantID,
+	)
 	return i, err
 }
 
@@ -96,7 +108,7 @@ func (q *Queries) GetTenant(ctx context.Context, id int32) (Tenant, error) {
 }
 
 const listEmployees = `-- name: ListEmployees :many
-select id, name, tenant_id from employees where tenant_id = $1
+select id, username, name, tenant_id from employees where tenant_id = $1
 `
 
 func (q *Queries) ListEmployees(ctx context.Context, tenantID int32) ([]Employee, error) {
@@ -108,7 +120,12 @@ func (q *Queries) ListEmployees(ctx context.Context, tenantID int32) ([]Employee
 	var items []Employee
 	for rows.Next() {
 		var i Employee
-		if err := rows.Scan(&i.ID, &i.Name, &i.TenantID); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.Name,
+			&i.TenantID,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

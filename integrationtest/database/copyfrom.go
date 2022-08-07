@@ -29,6 +29,7 @@ func (r *iteratorForCreateEmployees) Next() bool {
 
 func (r iteratorForCreateEmployees) Values() ([]interface{}, error) {
 	return []interface{}{
+		r.rows[0].Username,
 		r.rows[0].Name,
 		r.rows[0].TenantID,
 	}, nil
@@ -39,7 +40,7 @@ func (r iteratorForCreateEmployees) Err() error {
 }
 
 func (q *Queries) CreateEmployees(ctx context.Context, arg []CreateEmployeesParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"employees"}, []string{"name", "tenant_id"}, &iteratorForCreateEmployees{rows: arg})
+	return q.db.CopyFrom(ctx, []string{"employees"}, []string{"username", "name", "tenant_id"}, &iteratorForCreateEmployees{rows: arg})
 }
 
 // iteratorForCreateTenants implements pgx.CopyFromSource.

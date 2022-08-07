@@ -8,6 +8,7 @@ import ()
 
 type Employee struct {
 	ID       int32  `db:"id"`
+	Username string `db:"username"`
 	Name     string `db:"name"`
 	TenantID int32  `db:"tenant_id"`
 }

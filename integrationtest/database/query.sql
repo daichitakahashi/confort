@@ -24,16 +24,16 @@ delete from tenants;
 
 -- name: CreateEmployee :one
 insert into employees (
-    name, tenant_id
+    username, name, tenant_id
 ) values (
-    $1, $2
+    $1, $2, $3
 ) returning *;
 
 -- name: CreateEmployees :copyfrom
 insert into employees (
-    name, tenant_id
+    username, name, tenant_id
 ) values (
-    $1, $2
+    $1, $2, $3
 );
 
 -- name: ListEmployees :many
