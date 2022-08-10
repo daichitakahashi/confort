@@ -1,6 +1,6 @@
 module github.com/daichitakahashi/confort
 
-go 1.18
+go 1.19
 
 require (
 	github.com/daichitakahashi/testingc v0.0.0-20220801231842-40b36baddcd3
