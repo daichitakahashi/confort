@@ -254,13 +254,6 @@ func (d *dockerNamespace) CreateContainer(
 		return c.containerID, err
 	}
 
-	if pullOptions != nil {
-		err := d.pull(ctx, container.Image, *pullOptions, pullOut)
-		if err != nil {
-			return "", err
-		}
-	}
-
 	containers, err := d.cli.ContainerList(ctx, types.ContainerListOptions{
 		All: true, // contains exiting/paused images
 	})
@@ -278,6 +271,14 @@ LOOP:
 				existing = &c
 				break LOOP
 			}
+		}
+	}
+
+	// try pull image when container not exists
+	if existing == nil && pullOptions != nil {
+		err := d.pull(ctx, container.Image, *pullOptions, pullOut)
+		if err != nil {
+			return "", err
 		}
 	}
 
