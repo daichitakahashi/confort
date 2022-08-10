@@ -86,7 +86,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 		client.FromEnv,
 	}
 	namespace := os.Getenv(beaconutil.NamespaceEnv)
-	defaultTimeout := time.Second * 30
+	timeout := time.Minute
 	policy := ResourcePolicyReuse
 	if s := os.Getenv(beaconutil.ResourcePolicyEnv); s != "" {
 		policy = ResourcePolicy(s)
@@ -102,7 +102,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 				namespace = o.namespace
 			}
 		case identOptionDefaultTimeout{}:
-			defaultTimeout = opt.Value().(time.Duration)
+			timeout = opt.Value().(time.Duration)
 		case identOptionResourcePolicy{}:
 			policy = opt.Value().(ResourcePolicy)
 		case identOptionBeacon{}:
@@ -156,7 +156,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 	return &Confort{
 		backend:        backend,
 		namespace:      ns,
-		defaultTimeout: defaultTimeout,
+		defaultTimeout: timeout,
 		ex:             ex,
 	}, term
 }
