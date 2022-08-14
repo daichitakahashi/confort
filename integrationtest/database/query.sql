@@ -6,13 +6,6 @@ insert into tenants (
 )
 returning *;
 
--- name: CreateTenants :copyfrom
-insert into tenants (
-    name
-)values (
-    $1
-);
-
 -- name: ListTenants :many
 select * from tenants;
 
@@ -28,13 +21,6 @@ insert into employees (
 ) values (
     $1, $2, $3
 ) returning *;
-
--- name: CreateEmployees :copyfrom
-insert into employees (
-    username, name, tenant_id
-) values (
-    $1, $2, $3
-);
 
 -- name: ListEmployees :many
 select * from employees where tenant_id = $1;

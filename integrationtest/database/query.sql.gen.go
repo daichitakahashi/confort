@@ -53,12 +53,6 @@ func (q *Queries) CreateEmployee(ctx context.Context, arg CreateEmployeeParams) 
 	return i, err
 }
 
-type CreateEmployeesParams struct {
-	Username string `db:"username"`
-	Name     string `db:"name"`
-	TenantID int32  `db:"tenant_id"`
-}
-
 const createTenant = `-- name: CreateTenant :one
 insert into tenants (
     name
