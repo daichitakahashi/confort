@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"io/fs"
 	"log"
 	"os"
@@ -188,7 +189,7 @@ func (t *TestCommand) SetFlags(f *flag.FlagSet) {
 	f.StringVar(&t.policy, "policy", beaconutil.ResourcePolicyReuse, `resource policy("error", "reuse" or "takeover")`)
 }
 
-func (t *TestCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
+func (t *TestCommand) Execute(ctx context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
 	// start server asynchronously
 	addr, _, err := t.Operation.StartBeaconServer(ctx)
 	if err != nil {
@@ -202,42 +203,22 @@ func (t *TestCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interfa
 		}
 	}()
 
-	// get args after "--" as test args
-	var testArgs []string
-	for i, arg := range os.Args {
-		if arg == "--" {
-			testArgs = os.Args[i+1:]
-			break
-		}
-	}
-
 	// prepare environment variables
-	err = os.Setenv(beaconutil.AddressEnv, addr)
-	if err != nil {
-		log.Println(err)
-		return subcommands.ExitFailure
-	}
+	env := os.Environ()
+	env = append(env, fmt.Sprintf("%s=%s", beaconutil.AddressEnv, addr))
 	if t.namespace != "" {
-		err = os.Setenv(beaconutil.NamespaceEnv, t.namespace)
-		if err != nil {
-			log.Println(err)
-			return subcommands.ExitFailure
-		}
+		env = append(env, fmt.Sprintf("%s=%s", beaconutil.NamespaceEnv, t.namespace))
 	}
 	if t.policy != "" {
 		if !beaconutil.ValidResourcePolicy(t.policy) {
 			log.Printf("invalid resource policy %q", t.policy)
 			return subcommands.ExitFailure
 		}
-		err = os.Setenv(beaconutil.ResourcePolicyEnv, t.policy)
-		if err != nil {
-			log.Println(err)
-			return subcommands.ExitFailure
-		}
+		env = append(env, fmt.Sprintf("%s=%s", beaconutil.ResourcePolicyEnv, t.policy))
 	}
 
 	// execute test
-	err = t.Operation.ExecuteTest(ctx, testArgs, os.Environ())
+	err = t.Operation.ExecuteTest(ctx, f.Args(), env)
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {
 		return subcommands.ExitStatus(ee.ExitCode())

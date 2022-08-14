@@ -89,6 +89,26 @@ func TestStartAndStop(t *testing.T) {
 	}
 }
 
+func TestTest(t *testing.T) {
+	ctx := context.Background()
+
+	op := cmd.NewOperation()
+	test := cmd.TestCommand{
+		Operation: op,
+	}
+	f := flag.NewFlagSet("test", flag.ContinueOnError)
+	test.SetFlags(f)
+	err := f.Parse([]string{"-namespace", uuid.NewString(), "--", "-shuffle=on", "-count=20", "-v", "../tests"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	code := test.Execute(ctx, f)
+	if code != 0 {
+		t.Errorf("unxpected code: %d", code)
+	}
+}
+
 func reserveLockFile(t *testing.T) string {
 	t.Helper()
 	f, err := os.CreateTemp(t.TempDir(), "e2e")
