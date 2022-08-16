@@ -48,7 +48,3 @@ func DeleteLockFile(lockFile string) error {
 	}
 	return os.Remove(lockFile)
 }
-
-func StoreAddressToEnv(addr string) error {
-	return os.Setenv(AddressEnv, addr)
-}
