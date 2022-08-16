@@ -14,8 +14,8 @@ import (
 	"github.com/google/subcommands"
 )
 
-func NewCommands(set *flag.FlagSet, name string, op Operation) *subcommands.Commander {
-	cmd := subcommands.NewCommander(set, name)
+func NewCommands(set *flag.FlagSet, op Operation) *subcommands.Commander {
+	cmd := subcommands.NewCommander(set, set.Name())
 	cmd.Register(subcommands.CommandsCommand(), "help")
 	cmd.Register(subcommands.FlagsCommand(), "help")
 	cmd.Register(subcommands.HelpCommand(), "help")

@@ -9,14 +9,15 @@ import (
 )
 
 func main() {
-	flag.Parse()
 	ctx := context.Background()
 
-	status := cmd.NewCommands(
+	command := cmd.NewCommands(
 		flag.CommandLine,
-		os.Args[0],
 		cmd.NewOperation(),
-	).Execute(ctx)
+	)
+	flag.Parse()
 
-	os.Exit(int(status))
+	os.Exit(
+		int(command.Execute(ctx)),
+	)
 }

@@ -24,12 +24,9 @@ func TestStartAndStop(t *testing.T) {
 	lockFile := reserveLockFile(t)
 
 	op := cmd.NewOperation()
-	start := cmd.StartCommand{
-		Operation: op,
-	}
-	f := flag.NewFlagSet("start", flag.ContinueOnError)
-	start.SetFlags(f)
-	err := f.Parse([]string{"-lock-file", lockFile})
+	f := flag.NewFlagSet("confort", flag.ContinueOnError)
+	start := cmd.NewCommands(f, op)
+	err := f.Parse([]string{"start", "-lock-file", lockFile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,12 +66,9 @@ func TestStartAndStop(t *testing.T) {
 
 	//
 
-	stop := cmd.StopCommand{
-		Operation: op,
-	}
 	f = flag.NewFlagSet("stop", flag.ContinueOnError)
-	stop.SetFlags(f)
-	err = f.Parse([]string{"-lock-file", lockFile})
+	stop := cmd.NewCommands(f, op)
+	err = f.Parse([]string{"stop", "-lock-file", lockFile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,12 +87,9 @@ func TestTest(t *testing.T) {
 	ctx := context.Background()
 
 	op := cmd.NewOperation()
-	test := cmd.TestCommand{
-		Operation: op,
-	}
-	f := flag.NewFlagSet("test", flag.ContinueOnError)
-	test.SetFlags(f)
-	err := f.Parse([]string{"-namespace", uuid.NewString(), "--", "-shuffle=on", "-count=20", "-v", "../tests"})
+	f := flag.NewFlagSet("confort", flag.ContinueOnError)
+	test := cmd.NewCommands(f, op)
+	err := f.Parse([]string{"test", "-namespace", uuid.NewString(), "--", "-shuffle=on", "-count=20", "-v", "../tests"})
 	if err != nil {
 		t.Fatal(err)
 	}
