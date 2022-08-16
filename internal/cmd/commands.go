@@ -128,7 +128,7 @@ func (s *StopCommand) SetFlags(f *flag.FlagSet) {
 
 func (s *StopCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
 	// read address from env or lock file
-	addr, err := beaconutil.Address(s.lockFile)
+	addr, err := beaconutil.Address(ctx, s.lockFile)
 	if err != nil {
 		log.Printf("failed to read lock file %q", s.lockFile)
 		log.Println(err)

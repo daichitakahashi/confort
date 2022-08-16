@@ -24,7 +24,7 @@ func (c *Connection) Enabled() bool {
 func ConnectBeacon(tb testing.TB, ctx context.Context) *Connection {
 	tb.Helper()
 
-	addr, err := beaconutil.Address(beaconutil.LockFile)
+	addr, err := beaconutil.Address(ctx, beaconutil.LockFile)
 	if err != nil {
 		tb.Logf("confort: %s", err)
 	}

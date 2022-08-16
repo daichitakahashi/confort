@@ -35,7 +35,11 @@ func TestStartAndStop(t *testing.T) {
 		stopped <- start.Execute(ctx, f)
 	}()
 
-	addr := waitLockFile(t, lockFile)
+	t.Setenv(beaconutil.AddressEnv, "")
+	addr, err := beaconutil.Address(ctx, lockFile)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// execute tests
 
@@ -112,19 +116,6 @@ func reserveLockFile(t *testing.T) string {
 		_ = os.Remove(name)
 	}()
 	return name
-}
-
-func waitLockFile(t *testing.T, lockFile string) string {
-	for i := 0; i < 10; i++ {
-		<-time.After(200 * time.Millisecond)
-		data, err := os.ReadFile(lockFile)
-		if err != nil {
-			continue
-		}
-		return string(data)
-	}
-	t.Fatal("waitLockFile: failed to load", lockFile)
-	return ""
 }
 
 func goCommand() string {

@@ -1,25 +1,38 @@
 package beaconutil
 
 import (
-	"bytes"
+	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
+	"time"
 )
 
 const LockFile = ".confort.lock"
 
-func Address(lockFile string) (string, error) {
+func Address(ctx context.Context, lockFile string) (string, error) {
 	addr := os.Getenv(AddressEnv)
 	if addr != "" {
 		return addr, nil
 	}
 
-	data, err := os.ReadFile(lockFile)
-	if err != nil {
-		return "", err
+	for i := 0; i < 10; i++ {
+		select {
+		case <-time.After(200 * time.Millisecond):
+			data, err := os.ReadFile(lockFile)
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				return "", err
+			}
+			return string(data), nil
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
 	}
-	return string(bytes.TrimSpace(data)), nil
+	return "", fmt.Errorf("failed to read lock file: %s", lockFile)
 }
 
 func StoreAddressToLockFile(lockFile, addr string) error {
