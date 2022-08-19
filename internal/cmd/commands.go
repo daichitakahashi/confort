@@ -229,14 +229,16 @@ func (t *TestCommand) Execute(ctx context.Context, f *flag.FlagSet, _ ...interfa
 	env = append(env, fmt.Sprintf("%s=%s", beaconutil.ResourcePolicyEnv, t.policy))
 
 	// execute test
+	var status subcommands.ExitStatus
 	err = t.Operation.ExecuteTest(ctx, goCmd, f.Args(), env)
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {
-		return subcommands.ExitStatus(ee.ExitCode())
-	}
-	if err != nil {
+		status = subcommands.ExitStatus(ee.ExitCode())
+	} else if err != nil {
 		log.Println(err)
 		return subcommands.ExitFailure
+	} else {
+		status = subcommands.ExitSuccess
 	}
 
 	// delete all docker resources created in TestCommand
@@ -246,7 +248,7 @@ func (t *TestCommand) Execute(ctx context.Context, f *flag.FlagSet, _ ...interfa
 		return subcommands.ExitFailure
 	}
 
-	return subcommands.ExitSuccess
+	return status
 }
 
 func (t *TestCommand) determineGoCommand() (string, string, error) {
