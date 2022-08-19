@@ -2,8 +2,11 @@ package cmd
 
 import (
 	"bytes"
+	"context"
+	"flag"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/daichitakahashi/confort/internal/beaconutil"
@@ -28,6 +31,29 @@ func assertNoError(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
 		t.Errorf("unexpected error: %s", err)
+	}
+}
+
+func TestNewCommands_Help(t *testing.T) {
+	t.Parallel()
+
+	arguments := [][]string{
+		{"help"},
+		{"help", "start"},
+		{"help", "stop"},
+		{"help", "test"},
+	}
+
+	for _, args := range arguments {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			f := flag.NewFlagSet("confort", flag.ContinueOnError)
+			cmd := NewCommands(f, nil)
+			err := f.Parse(args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cmd.Execute(context.Background())
+		})
 	}
 }
 

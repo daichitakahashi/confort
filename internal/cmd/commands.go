@@ -17,9 +17,9 @@ import (
 
 func NewCommands(set *flag.FlagSet, op Operation) *subcommands.Commander {
 	cmd := subcommands.NewCommander(set, set.Name())
-	cmd.Register(subcommands.CommandsCommand(), "help")
-	cmd.Register(subcommands.FlagsCommand(), "help")
-	cmd.Register(subcommands.HelpCommand(), "help")
+	cmd.Register(cmd.CommandsCommand(), "help")
+	cmd.Register(cmd.FlagsCommand(), "help")
+	cmd.Register(cmd.HelpCommand(), "help")
 	cmd.Register(&StartCommand{
 		Operation: op,
 	}, "")
@@ -44,17 +44,20 @@ func (s *StartCommand) Name() string {
 }
 
 func (s *StartCommand) Synopsis() string {
-	return `Start beacon server and output its endpoint to lock file.
+	return `Start beacon server for test.`
+}
+
+func (s *StartCommand) Usage() string {
+	return `$ confort start (-lock-file <filename>)
+
+Start beacon server and output its endpoint to lock file.
 Use "confort stop" command to stop beacon server.
 
 By using "-lock-file" option, you can use a user-defined file name as a lock file.
 Default file name is ".confort.lock".
 
-If lock file already exists, this command fails.`
-}
+If lock file already exists, this command fails.
 
-func (s *StartCommand) Usage() string {
-	return `confort start (-lock-file <filename>)
 `
 }
 
@@ -113,13 +116,16 @@ func (s *StopCommand) Name() string {
 }
 
 func (s *StopCommand) Synopsis() string {
-	return `Stop beacon server run by "confort start" command.
-The target server address will be read from lock file(".confort.lock"), and the lock file will be removed.
-If "confort start" has accompanied by "-lock-file" option, this command requires the same.`
+	return `Stop beacon server.`
 }
 
 func (s *StopCommand) Usage() string {
-	return `confort stop (-lock-file <filename>)
+	return `$ confort stop (-lock-file <filename>)
+
+Stop the beacon server started by "confort start" command.
+The target server address will be read from lock file(".confort.lock"), and the lock file will be removed.
+If "confort start" has accompanied by "-lock-file" option, this command requires the same.
+
 `
 }
 
@@ -177,13 +183,16 @@ func (t *TestCommand) Name() string {
 }
 
 func (t *TestCommand) Synopsis() string {
-	return `Start beacon server and execute tests.
-After tests are finished, beacon server will be stopped automatically.
-If you want to use options of "go test", put them after "--".`
+	return `Start beacon server and execute test.`
 }
 
 func (t *TestCommand) Usage() string {
-	return `confort test (-namespace <namespace> -policy <resource policy> -go <go version>) (-- -p=4 -shuffle=on)
+	return `$ confort test (-namespace <namespace> -policy <resource policy> -go <go version> -go-mode <mode>) (-- -p=4 -shuffle=on)
+
+Start the beacon server and execute tests.
+After the tests are finished, the beacon server will be stopped automatically.
+If you want to use options of "go test", put them after "--".
+
 `
 }
 
@@ -193,10 +202,10 @@ func (t *TestCommand) SetFlags(f *flag.FlagSet) {
 	f.Var(&t.policy, "policy", `resource policy("error", "reuse" or "takeover")`)
 	f.StringVar(&t.goVer, "go", "", `specify go version. "-go=mod" enables to use go version written in your go.mod`)
 	t.goMode = goMode(gocmd.ModeFallback)
-	f.Var(&t.goMode, "go-mode", `use with -go option.
-"exact" finds go command that has the exact same version as given in "-go".
-"latest" finds go command that has the same major version as given in "-go"
-"fallback" behaves like "latest", but if no command was found, fallbacks to "go" command`)
+	f.Var(&t.goMode, "go-mode", `use with -go option
+  * "exact" finds go command that has the exact same version as given in "-go"
+  * "latest" finds go command that has the same major version as given in "-go"
+  * "fallback" behaves like "latest", but if no command was found, fallbacks to "go" command`)
 }
 
 func (t *TestCommand) Execute(ctx context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
