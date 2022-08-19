@@ -21,69 +21,77 @@ import (
 
 func TestStartAndStop(t *testing.T) {
 	ctx := context.Background()
-	lockFile := reserveLockFile(t)
-
-	op := cmd.NewOperation()
-	f := flag.NewFlagSet("confort", flag.ContinueOnError)
-	start := cmd.NewCommands(f, op)
-	err := f.Parse([]string{"start", "-lock-file", lockFile})
-	if err != nil {
-		t.Fatal(err)
-	}
-	stopped := make(chan subcommands.ExitStatus)
-	go func() {
-		stopped <- start.Execute(ctx, f)
-	}()
-
 	t.Setenv(beaconutil.AddressEnv, "")
-	addr, err := beaconutil.Address(ctx, lockFile)
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	// execute tests
+	for i := 0; i < 2; i++ {
+		ns := uuid.NewString()
+		t.Run(ns, func(t *testing.T) {
+			t.Parallel()
 
-	var eg errgroup.Group
-	env := append(
-		os.Environ(),
-		fmt.Sprintf("%s=%s", beaconutil.AddressEnv, addr),
-		fmt.Sprintf("%s=%s", beaconutil.NamespaceEnv, uuid.NewString()),
-	)
-	// use "go" command which executes this test
-	goCmd := goCommand()
-	for i := 0; i < 4; i++ {
-		<-time.After(200 * time.Millisecond)
-		eg.Go(func() error {
-			buf := bytes.NewBuffer(nil)
-			testCmd := exec.Command(goCmd, "test", "-shuffle=on", "-count=20", "-v", "../tests")
-			testCmd.Env = env
-			testCmd.Stdout = buf
-			err := testCmd.Run()
-			t.Log(buf.String())
-			return err
+			lockFile := reserveLockFile(t)
+
+			op := cmd.NewOperation()
+			f := flag.NewFlagSet("confort", flag.ContinueOnError)
+			start := cmd.NewCommands(f, op)
+			err := f.Parse([]string{"start", "-lock-file", lockFile})
+			if err != nil {
+				t.Fatal(err)
+			}
+			stopped := make(chan subcommands.ExitStatus)
+			go func() {
+				stopped <- start.Execute(ctx, f)
+			}()
+
+			addr, err := beaconutil.Address(ctx, lockFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// execute tests
+
+			var eg errgroup.Group
+			env := append(
+				os.Environ(),
+				fmt.Sprintf("%s=%s", beaconutil.AddressEnv, addr),
+				fmt.Sprintf("%s=%s", beaconutil.NamespaceEnv, ns),
+			)
+			// use "go" command which executes this test
+			goCmd := goCommand()
+			for i := 0; i < 2; i++ {
+				<-time.After(200 * time.Millisecond)
+				eg.Go(func() error {
+					buf := bytes.NewBuffer(nil)
+					testCmd := exec.Command(goCmd, "test", "-shuffle=on", "-count=20", "-v", "../tests")
+					testCmd.Env = env
+					testCmd.Stdout = buf
+					err := testCmd.Run()
+					t.Log(buf.String())
+					return err
+				})
+			}
+			err = eg.Wait()
+			if err != nil {
+				t.Error(err)
+			}
+
+			//
+
+			f = flag.NewFlagSet("stop", flag.ContinueOnError)
+			stop := cmd.NewCommands(f, op)
+			err = f.Parse([]string{"stop", "-lock-file", lockFile})
+			if err != nil {
+				t.Fatal(err)
+			}
+			code := stop.Execute(ctx, f)
+			if code != 0 {
+				t.Fatalf("unexpected exit code of stop: %d", code)
+			}
+
+			code = <-stopped
+			if code != 0 {
+				t.Fatalf("unexpected exit code of stop: %d", code)
+			}
 		})
-	}
-	err = eg.Wait()
-	if err != nil {
-		t.Error(err)
-	}
-
-	//
-
-	f = flag.NewFlagSet("stop", flag.ContinueOnError)
-	stop := cmd.NewCommands(f, op)
-	err = f.Parse([]string{"stop", "-lock-file", lockFile})
-	if err != nil {
-		t.Fatal(err)
-	}
-	code := stop.Execute(ctx, f)
-	if code != 0 {
-		t.Fatalf("unexpected exit code of stop: %d", code)
-	}
-
-	code = <-stopped
-	if code != 0 {
-		t.Fatalf("unexpected exit code of stop: %d", code)
 	}
 }
 
@@ -93,7 +101,7 @@ func TestTest(t *testing.T) {
 	op := cmd.NewOperation()
 	f := flag.NewFlagSet("confort", flag.ContinueOnError)
 	test := cmd.NewCommands(f, op)
-	err := f.Parse([]string{"test", "-namespace", uuid.NewString(), "--", "-shuffle=on", "-count=20", "-v", "../tests"})
+	err := f.Parse([]string{"test", "-go=mod", "-go-mode=latest", "-namespace", uuid.NewString(), "--", "-shuffle=on", "-count=20", "-v", "../tests"})
 	if err != nil {
 		t.Fatal(err)
 	}
