@@ -179,14 +179,14 @@ func TestOperation_ExecuteTest(t *testing.T) {
 	env := os.Environ()
 
 	t.Run("success", func(t *testing.T) {
-		err := op.ExecuteTest(ctx, args, append(env, "BEACON_INTEGRATION_EXECUTE_TEST=success"))
+		err := op.ExecuteTest(ctx, "go", args, append(env, "BEACON_INTEGRATION_EXECUTE_TEST=success"))
 		if err != nil {
 			t.Fatal(err)
 		}
 	})
 
 	t.Run("fail", func(t *testing.T) {
-		err := op.ExecuteTest(ctx, args, append(env, "BEACON_INTEGRATION_EXECUTE_TEST=fail"))
+		err := op.ExecuteTest(ctx, "go", args, append(env, "BEACON_INTEGRATION_EXECUTE_TEST=fail"))
 		if err == nil {
 			t.Fatal("error expected but succeeded")
 		}

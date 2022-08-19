@@ -11,6 +11,7 @@ import (
 	"os/exec"
 
 	"github.com/daichitakahashi/confort/internal/beaconutil"
+	"github.com/daichitakahashi/gocmd"
 	"github.com/google/subcommands"
 )
 
@@ -166,7 +167,9 @@ type TestCommand struct {
 
 	// flags
 	namespace string
-	policy    string
+	policy    resourcePolicy
+	goVer     string
+	goMode    goMode
 }
 
 func (t *TestCommand) Name() string {
@@ -180,13 +183,20 @@ If you want to use options of "go test", put them after "--".`
 }
 
 func (t *TestCommand) Usage() string {
-	return `confort test (-namespace <namespace> -policy <resource policy>) (-- -p=4 -shuffle=on)
+	return `confort test (-namespace <namespace> -policy <resource policy> -go <go version>) (-- -p=4 -shuffle=on)
 `
 }
 
 func (t *TestCommand) SetFlags(f *flag.FlagSet) {
 	f.StringVar(&t.namespace, "namespace", "", "namespace")
-	f.StringVar(&t.policy, "policy", beaconutil.ResourcePolicyReuse, `resource policy("error", "reuse" or "takeover")`)
+	t.policy = beaconutil.ResourcePolicyReuse
+	f.Var(&t.policy, "policy", `resource policy("error", "reuse" or "takeover")`)
+	f.StringVar(&t.goVer, "go", "", `specify go version. "-go=mod" enables to use go version written in your go.mod`)
+	t.goMode = goMode(gocmd.ModeFallback)
+	f.Var(&t.goMode, "go-mode", `use with -go option.
+"exact" finds go command that has the exact same version as given in "-go".
+"latest" finds go command that has the same major version as given in "-go"
+"fallback" behaves like "latest", but if no command was found, fallbacks to "go" command`)
 }
 
 func (t *TestCommand) Execute(ctx context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
@@ -203,22 +213,23 @@ func (t *TestCommand) Execute(ctx context.Context, f *flag.FlagSet, _ ...interfa
 		}
 	}()
 
+	goCmd, ver, err := t.determineGoCommand()
+	if err != nil {
+		log.Println(err)
+		return subcommands.ExitFailure
+	}
+	fmt.Println("use go version:", ver)
+
 	// prepare environment variables
 	env := os.Environ()
 	env = append(env, fmt.Sprintf("%s=%s", beaconutil.AddressEnv, addr))
 	if t.namespace != "" {
 		env = append(env, fmt.Sprintf("%s=%s", beaconutil.NamespaceEnv, t.namespace))
 	}
-	if t.policy != "" {
-		if !beaconutil.ValidResourcePolicy(t.policy) {
-			log.Printf("invalid resource policy %q", t.policy)
-			return subcommands.ExitFailure
-		}
-		env = append(env, fmt.Sprintf("%s=%s", beaconutil.ResourcePolicyEnv, t.policy))
-	}
+	env = append(env, fmt.Sprintf("%s=%s", beaconutil.ResourcePolicyEnv, t.policy))
 
 	// execute test
-	err = t.Operation.ExecuteTest(ctx, f.Args(), env)
+	err = t.Operation.ExecuteTest(ctx, goCmd, f.Args(), env)
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {
 		return subcommands.ExitStatus(ee.ExitCode())
@@ -238,4 +249,66 @@ func (t *TestCommand) Execute(ctx context.Context, f *flag.FlagSet, _ ...interfa
 	return subcommands.ExitSuccess
 }
 
+func (t *TestCommand) determineGoCommand() (string, string, error) {
+	switch t.goVer {
+	case "":
+		goVer, err := gocmd.CurrentVersion()
+		return "go", goVer, err
+	case "mod":
+		modVer, err := gocmd.ModuleGoVersion()
+		if err != nil {
+			return "", "", fmt.Errorf("failed to read go.mod: %w", err)
+		}
+		return gocmd.Determine(modVer, gocmd.Mode(t.goMode))
+	default:
+		return gocmd.Determine(t.goVer, gocmd.Mode(t.goMode))
+	}
+}
+
 var _ subcommands.Command = (*TestCommand)(nil)
+
+type resourcePolicy string
+
+func (r *resourcePolicy) String() string {
+	return string(*r)
+}
+
+func (r *resourcePolicy) Set(v string) error {
+	if !beaconutil.ValidResourcePolicy(v) {
+		return fmt.Errorf("invalid resource policy: %s", v)
+	}
+	*r = resourcePolicy(v)
+	return nil
+}
+
+var _ flag.Value = (*resourcePolicy)(nil)
+
+type goMode gocmd.Mode
+
+func (g *goMode) String() string {
+	switch gocmd.Mode(*g) {
+	case gocmd.ModeExact:
+		return "exact"
+	case gocmd.ModeLatest:
+		return "latest"
+	case gocmd.ModeFallback:
+		return "fallback"
+	}
+	return ""
+}
+
+func (g *goMode) Set(v string) error {
+	switch v {
+	case "exact":
+		*g = goMode(gocmd.ModeExact)
+	case "latest":
+		*g = goMode(gocmd.ModeLatest)
+	case "fallback", "":
+		*g = goMode(gocmd.ModeFallback)
+	default:
+		return fmt.Errorf("invalid value: %s", v)
+	}
+	return nil
+}
+
+var _ flag.Value = (*goMode)(nil)

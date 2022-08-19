@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"time"
 
 	"github.com/daichitakahashi/confort/beaconserver"
@@ -27,7 +26,7 @@ type Operation interface {
 	StartBeaconServer(ctx context.Context) (string, <-chan struct{}, error)
 	StopBeaconServer(ctx context.Context, addr string) error
 	CleanupResources(ctx context.Context, label, value string) error
-	ExecuteTest(ctx context.Context, args []string, environments []string) error
+	ExecuteTest(ctx context.Context, goCmd string, args []string, environments []string) error
 }
 
 type operation struct {
@@ -169,13 +168,7 @@ func (o *operation) CleanupResources(ctx context.Context, label, value string) e
 	return multierr.Combine(errs...)
 }
 
-func (o *operation) ExecuteTest(ctx context.Context, args, environments []string) error {
-	goCmd := "go"
-	goRoot := os.Getenv("GOROOT")
-	if goRoot != "" {
-		goCmd = filepath.Join(goRoot, "bin/go")
-	}
-
+func (o *operation) ExecuteTest(ctx context.Context, goCmd string, args, environments []string) error {
 	cmd := exec.CommandContext(ctx, goCmd, append([]string{"test"}, args...)...)
 	cmd.Env = environments
 	cmd.Stdout = os.Stdout

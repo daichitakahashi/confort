@@ -3,12 +3,13 @@ module github.com/daichitakahashi/confort
 go 1.19
 
 require (
+	github.com/daichitakahashi/gocmd v1.0.0
 	github.com/daichitakahashi/testingc v0.0.0-20220801231842-40b36baddcd3
 	github.com/docker/cli v20.10.16+incompatible
 	github.com/docker/docker v20.10.11+incompatible
 	github.com/docker/go-connections v0.4.0
 	github.com/goccy/go-reflect v1.1.1-0.20210520085854-e1eb8c5193d0
-	github.com/google/go-cmp v0.5.7
+	github.com/google/go-cmp v0.5.8
 	github.com/google/subcommands v1.2.0
 	github.com/google/uuid v1.3.0
 	github.com/jackc/pgconn v1.12.1
@@ -53,9 +54,11 @@ require (
 	go.opencensus.io v0.23.0 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
 	golang.org/x/crypto v0.0.0-20211202192323-5770296d904e // indirect
+	golang.org/x/mod v0.5.1 // indirect
 	golang.org/x/net v0.0.0-20211216030914-fe4d6282115f // indirect
 	golang.org/x/sys v0.0.0-20220114195835-da31bd327af9 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac // indirect
+	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/genproto v0.0.0-20211208223120-3a66f561d7aa // indirect
 )
