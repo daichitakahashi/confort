@@ -128,10 +128,7 @@ func CheckHealthy(ctx context.Context, f Fetcher) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if status.Health == nil {
-		return false, nil
-	}
-	return status.Health.Status == "healthy", nil
+	return status.Health != nil && status.Health.Status == "healthy", nil
 }
 
 func (w *Waiter) Wait(ctx context.Context, f Fetcher) error {
