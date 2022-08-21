@@ -9,8 +9,22 @@ import (
 	"time"
 )
 
+// LockFile is default file name of lock file.
 const LockFile = ".confort.lock"
 
+// LockFilePath returns file name of lock file.
+// If CFT_LOCKFILE is set, return its value, or else return LockFile.
+func LockFilePath() string {
+	v, ok := os.LookupEnv(LockFileEnv)
+	if ok {
+		return v
+	}
+	return LockFile
+}
+
+// Address returns address of beacon server.
+// It returns value of CFT_BEACON_ADDR if exists.
+// If not exists, read from lockFile.
 func Address(ctx context.Context, lockFile string) (string, error) {
 	addr := os.Getenv(AddressEnv)
 	if addr != "" {

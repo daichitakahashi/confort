@@ -55,6 +55,8 @@ Use "confort stop" command to stop beacon server.
 
 By using "-lock-file" option, you can use a user-defined file name as a lock file.
 Default file name is ".confort.lock".
+To tell the endpoint to test code, you have to set file name as environment variable CFT_LOCKFILE.
+See document of confort.ConnectBeacon.
 
 If lock file already exists, this command fails.
 

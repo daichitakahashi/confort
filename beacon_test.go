@@ -17,7 +17,6 @@ import (
 )
 
 func TestConnectBeacon(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 
 	// start beacon server
@@ -43,8 +42,9 @@ func TestConnectBeacon(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv(beaconutil.LockFileEnv, lockFile)
 
-	beacon := confort.ConnectBeacon(t, ctx, lockFile)
+	beacon := confort.ConnectBeacon(t, ctx)
 	if !beacon.Enabled() {
 		t.Fatal("failed to connect beacon server")
 	}

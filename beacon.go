@@ -21,13 +21,23 @@ func (c *Connection) Enabled() bool {
 	return c.conn != nil
 }
 
-func ConnectBeacon(tb testing.TB, ctx context.Context, lockFile string) *Connection {
+// ConnectBeacon tries to connect beacon server and returns its result.
+// The address of server will be read from CFT_BEACON_ADDR or lock file specified as CFT_LOCKFILE.
+//
+// # With `confort test` command
+//
+// This command starts beacon server and sets the address as CFT_BEACON_ADDR automatically.
+//
+// # With `confort start` command
+//
+// This command starts beacon server and creates a lock file that contains the address.
+// The default filename is ".confort.lock" and you don't need to set the file name as CFT_LOCKFILE.
+// If you set a custom filename with "-lock-file" option, also you have to set the file name as CFT_LOCKFILE,
+// or you can set address that read from lock file as CFT_BEACON_ADDR.
+func ConnectBeacon(tb testing.TB, ctx context.Context) *Connection {
 	tb.Helper()
 
-	if lockFile == "" {
-		lockFile = beaconutil.LockFile
-	}
-	addr, err := beaconutil.Address(ctx, lockFile)
+	addr, err := beaconutil.Address(ctx, beaconutil.LockFilePath())
 	if err != nil {
 		tb.Logf("confort: %s", err)
 	}

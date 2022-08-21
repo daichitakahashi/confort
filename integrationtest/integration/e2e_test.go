@@ -42,17 +42,18 @@ func TestStartAndStop(t *testing.T) {
 				stopped <- start.Execute(ctx, f)
 			}()
 
-			addr, err := beaconutil.Address(ctx, lockFile)
-			if err != nil {
-				t.Fatal(err)
-			}
+			// addr, err := beaconutil.Address(ctx, lockFile)
+			// if err != nil {
+			// 	t.Fatal(err)
+			// }
 
 			// execute tests
 
 			var eg errgroup.Group
 			env := append(
 				os.Environ(),
-				fmt.Sprintf("%s=%s", beaconutil.AddressEnv, addr),
+				// fmt.Sprintf("%s=%s", beaconutil.AddressEnv, addr),
+				fmt.Sprintf("%s=%s", beaconutil.LockFileEnv, lockFile),
 				fmt.Sprintf("%s=%s", beaconutil.NamespaceEnv, ns),
 			)
 			// use "go" command which executes this test
