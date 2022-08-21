@@ -107,7 +107,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 			policy = opt.Value().(ResourcePolicy)
 		case identOptionBeacon{}:
 			c := opt.Value().(*Connection)
-			if c.conn != nil {
+			if c.Enabled() {
 				ex = &beaconControl{
 					cli: beacon.NewBeaconServiceClient(c.conn),
 				}

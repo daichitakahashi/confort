@@ -23,7 +23,7 @@ func TestMain(m *testing.M) {
 }
 func testMain(c *testingc.C) int {
 	ctx := context.Background()
-	beacon := confort.ConnectBeacon(c, ctx)
+	beacon := confort.ConnectBeacon(c, ctx, "")
 	connect = container.InitDatabase(c, ctx, beacon)
 	uniqueTenantName = confort.UniqueString(10, confort.WithGlobalUniqueness(beacon, "tenant_name"))
 	uniqueEmployeeUserName = confort.UniqueString(10, confort.WithGlobalUniqueness(beacon, "employee_username"))

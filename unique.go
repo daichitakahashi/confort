@@ -76,7 +76,7 @@ func NewUnique[T comparable](f func() (T, error), opts ...UniqueOption) *Unique[
 		}
 	}
 
-	if options.store != "" && options.c.conn != nil {
+	if options.store != "" && options.c.Enabled() {
 		u.g = &globalGenerator[T]{
 			f:     f,
 			cli:   beacon.NewUniqueValueServiceClient(options.c.conn),
@@ -101,6 +101,11 @@ func (u *Unique[T]) Must(tb testing.TB) T {
 		tb.Fatal(err)
 	}
 	return v
+}
+
+func (u *Unique[T]) Global() bool {
+	_, ok := u.g.(*globalGenerator[T])
+	return ok
 }
 
 var errFailedToGenerate = errors.New("cannot create new unique value")
