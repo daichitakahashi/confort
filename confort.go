@@ -47,6 +47,7 @@ func WithClientOptions(opts ...client.Opt) NewOption {
 
 // WithNamespace specifies namespace of Confort.
 // Default namespace is the value of the CFT_NAMESPACE environment variable.
+// The "confort test" command has "-namespace" option that overrides the variable.
 // If force is true, the value of the argument namespace takes precedence.
 //
 // If neither CFT_NAMESPACE nor WithNamespace is set, New fails.
@@ -70,12 +71,21 @@ func WithDefaultTimeout(d time.Duration) NewOption {
 	}
 }
 
+// WithResourcePolicy overrides the policy for handling Docker resources that already exist,
+// such as containers and networks.
+// By default, ResourcePolicyReuse or the value of the CFT_RESOURCE_POLICY environment variable, if set, is used.
+// The "confort test" command has "-policy" option that overrides the variable.
 func WithResourcePolicy(s ResourcePolicy) NewOption {
 	return newOption{
 		Interface: option.New(identOptionResourcePolicy{}, s),
 	}
 }
 
+// WithBeacon configures Confort to integrate with a starting beacon server.
+// The beacon server is started by the "confort" command.
+// Use Connection object given from ConnectBeacon as the argument conn.
+//
+// For detail, see ConnectBeacon and "confort help".
 func WithBeacon(conn *Connection) NewOption {
 	return newOption{
 		Interface: option.New(identOptionBeacon{}, conn),
