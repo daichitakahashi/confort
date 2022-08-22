@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httputil"
 	"strings"
 	"testing"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/uuid"
 )
 
 const (
@@ -484,6 +486,52 @@ func communicate(t *testing.T, host, method, status string) string {
 		t.Fatalf("got error response: %d: %s", resp.StatusCode, stat)
 	}
 	return string(stat)
+}
+
+func TestWithClientOptions(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	c, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// wrap transport
+	logOut := bytes.NewBuffer(nil)
+	httpCli := c.HTTPClient()
+	httpCli.Transport = &logTransport{
+		RoundTripper: httpCli.Transport,
+		w:            logOut,
+	}
+
+	_, term := New(t, ctx,
+		WithClientOptions(client.FromEnv, client.WithHTTPClient(httpCli)),
+		WithNamespace(uuid.NewString(), true),
+	)
+	term()
+
+	if logOut.Len() == 0 {
+		t.Fatal("no log output")
+	}
+}
+
+type logTransport struct {
+	http.RoundTripper
+	w io.Writer
+}
+
+func (t *logTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	resp, err := t.RoundTripper.RoundTrip(r)
+	if err != nil {
+		return nil, err
+	}
+	dump, err := httputil.DumpResponse(resp, true)
+	if err != nil {
+		return nil, err
+	}
+	_, err = t.w.Write(dump)
+	return resp, err
 }
 
 func TestWithResourcePolicy(t *testing.T) {

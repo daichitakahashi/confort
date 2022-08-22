@@ -36,6 +36,9 @@ type (
 
 func (newOption) new() {}
 
+// WithClientOptions sets options for Docker API client.
+// Default option is client.FromEnv.
+// For detail, see client.NewClientWithOpts.
 func WithClientOptions(opts ...client.Opt) NewOption {
 	return newOption{
 		Interface: option.New(identOptionClientOptions{}, opts),
