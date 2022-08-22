@@ -50,25 +50,25 @@ var _ Fetcher = (*fetcher)(nil)
 type (
 	WaitOption interface {
 		option.Interface
-		wait()
+		wait() WaitOption
 	}
 	identOptionInterval struct{}
 	identOptionTimeout  struct{}
 	waitOption          struct{ option.Interface }
 )
 
-func (waitOption) wait() {}
+func (o waitOption) wait() WaitOption { return o }
 
 func WithInterval(d time.Duration) WaitOption {
 	return waitOption{
 		Interface: option.New(identOptionInterval{}, d),
-	}
+	}.wait()
 }
 
 func WithTimeout(d time.Duration) WaitOption {
 	return waitOption{
 		Interface: option.New(identOptionTimeout{}, d),
-	}
+	}.wait()
 }
 
 const (

@@ -26,7 +26,7 @@ type uniqueValueGenerator[T comparable] interface {
 type (
 	UniqueOption interface {
 		option.Interface
-		unique()
+		unique() UniqueOption
 	}
 	identOptionRetry            struct{}
 	identOptionGlobalUniqueness struct{}
@@ -37,7 +37,7 @@ type (
 	uniqueOption struct{ option.Interface }
 )
 
-func (uniqueOption) unique() {}
+func (o uniqueOption) unique() UniqueOption { return o }
 
 func WithRetry(n uint) UniqueOption {
 	if n == 0 {
@@ -45,7 +45,7 @@ func WithRetry(n uint) UniqueOption {
 	}
 	return uniqueOption{
 		Interface: option.New(identOptionRetry{}, n),
-	}
+	}.unique()
 }
 
 func WithGlobalUniqueness(conn *Connection, beaconStore string) UniqueOption {
@@ -54,7 +54,7 @@ func WithGlobalUniqueness(conn *Connection, beaconStore string) UniqueOption {
 			store: beaconStore,
 			c:     conn,
 		}),
-	}
+	}.unique()
 }
 
 func NewUnique[T comparable](f func() (T, error), opts ...UniqueOption) *Unique[T] {

@@ -20,7 +20,7 @@ import (
 type (
 	NewOption interface {
 		option.Interface
-		new()
+		new() NewOption
 	}
 	identOptionClientOptions struct{}
 	identOptionNamespace     struct{}
@@ -34,7 +34,7 @@ type (
 	newOption                 struct{ option.Interface }
 )
 
-func (newOption) new() {}
+func (o newOption) new() NewOption { return o }
 
 // WithClientOptions sets options for Docker API client.
 // Default option is client.FromEnv.
@@ -42,7 +42,7 @@ func (newOption) new() {}
 func WithClientOptions(opts ...client.Opt) NewOption {
 	return newOption{
 		Interface: option.New(identOptionClientOptions{}, opts),
-	}
+	}.new()
 }
 
 // WithNamespace specifies namespace of Confort.
@@ -57,7 +57,7 @@ func WithNamespace(namespace string, force bool) NewOption {
 			namespace: namespace,
 			force:     force,
 		}),
-	}
+	}.new()
 }
 
 // WithDefaultTimeout sets the default timeout for each request to the Docker API and beacon server.
@@ -68,7 +68,7 @@ func WithNamespace(namespace string, force bool) NewOption {
 func WithDefaultTimeout(d time.Duration) NewOption {
 	return newOption{
 		Interface: option.New(identOptionDefaultTimeout{}, d),
-	}
+	}.new()
 }
 
 // WithResourcePolicy overrides the policy for handling Docker resources that already exist,
@@ -78,7 +78,7 @@ func WithDefaultTimeout(d time.Duration) NewOption {
 func WithResourcePolicy(s ResourcePolicy) NewOption {
 	return newOption{
 		Interface: option.New(identOptionResourcePolicy{}, s),
-	}
+	}.new()
 }
 
 // WithBeacon configures Confort to integrate with a starting beacon server.
@@ -89,7 +89,7 @@ func WithResourcePolicy(s ResourcePolicy) NewOption {
 func WithBeacon(conn *Connection) NewOption {
 	return newOption{
 		Interface: option.New(identOptionBeacon{}, conn),
-	}
+	}.new()
 }
 
 func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func()) {
@@ -212,7 +212,7 @@ func (cft *Confort) Namespace() string {
 type (
 	BuildOption interface {
 		option.Interface
-		build()
+		build() BuildOption
 	}
 	identOptionImageBuildOptions struct{}
 	identOptionForceBuild        struct{}
@@ -220,24 +220,24 @@ type (
 	buildOption                  struct{ option.Interface }
 )
 
-func (buildOption) build() {}
+func (o buildOption) build() BuildOption { return o }
 
 func WithImageBuildOptions(f func(option *types.ImageBuildOptions)) BuildOption {
 	return buildOption{
 		Interface: option.New(identOptionImageBuildOptions{}, f),
-	}
+	}.build()
 }
 
 func WithForceBuild() BuildOption {
 	return buildOption{
 		Interface: option.New(identOptionForceBuild{}, true),
-	}
+	}.build()
 }
 
 func WithBuildOutput(dst io.Writer) BuildOption {
 	return buildOption{
 		Interface: option.New(identOptionBuildOutput{}, dst),
-	}
+	}.build()
 }
 
 type Build struct {
@@ -394,7 +394,7 @@ func (cft *Confort) createContainer(ctx context.Context, name, alias string, c *
 type (
 	RunOption interface {
 		option.Interface
-		run()
+		run() RunOption
 	}
 	identOptionContainerConfig   struct{}
 	identOptionHostConfig        struct{}
@@ -408,30 +408,30 @@ type (
 	runOption struct{ option.Interface }
 )
 
-func (runOption) run() {}
+func (o runOption) run() RunOption { return o }
 
 func WithContainerConfig(f func(config *container.Config)) RunOption {
 	return runOption{
 		Interface: option.New(identOptionContainerConfig{}, f),
-	}
+	}.run()
 }
 
 func WithHostConfig(f func(config *container.HostConfig)) RunOption {
 	return runOption{
 		Interface: option.New(identOptionHostConfig{}, f),
-	}
+	}.run()
 }
 
 func WithNetworkingConfig(f func(config *network.NetworkingConfig)) RunOption {
 	return runOption{
 		Interface: option.New(identOptionNetworkingConfig{}, f),
-	}
+	}.run()
 }
 
 func WithConfigConsistency(check bool) RunOption {
 	return runOption{
 		Interface: option.New(identOptionConfigConsistency{}, check),
-	}
+	}.run()
 }
 
 func WithPullOptions(opts *types.ImagePullOptions, out io.Writer) RunOption {
@@ -440,7 +440,7 @@ func WithPullOptions(opts *types.ImagePullOptions, out io.Writer) RunOption {
 			pullOption: opts,
 			pullOut:    out,
 		}),
-	}
+	}.run()
 }
 
 // LazyRun creates container but doesn't start.
@@ -505,7 +505,7 @@ func (cft *Confort) Run(tb testing.TB, ctx context.Context, name string, c *Cont
 type (
 	UseOption interface {
 		option.Interface
-		use()
+		use() UseOption
 	}
 	identOptionReleaseFunc struct{}
 	identOptionInitFunc    struct{}
@@ -514,12 +514,12 @@ type (
 	}
 )
 
-func (useOption) use() {}
+func (o useOption) use() UseOption { return o }
 
 func WithReleaseFunc(f *func()) UseOption {
 	return useOption{
 		Interface: option.New(identOptionReleaseFunc{}, f),
-	}
+	}.use()
 }
 
 type InitFunc func(ctx context.Context) error
@@ -527,7 +527,7 @@ type InitFunc func(ctx context.Context) error
 func WithInitFunc(init InitFunc) UseOption {
 	return useOption{
 		Interface: option.New(identOptionInitFunc{}, init),
-	}
+	}.use()
 }
 
 func (cft *Confort) use(tb testing.TB, ctx context.Context, name string, exclusive bool, opts ...UseOption) Ports {
