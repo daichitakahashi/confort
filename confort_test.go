@@ -585,6 +585,24 @@ func TestWithNamespace(t *testing.T) {
 	}
 }
 
+func TestWithNamespace_empty(t *testing.T) {
+	t.Parallel()
+
+	c, cleanup := NewControl()
+	t.Cleanup(cleanup)
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected to fail, but succeeded")
+		}
+	}()
+	_, term := New(c, context.Background(),
+		WithNamespace("", true),
+	)
+	t.Cleanup(term)
+}
+
 func TestWithDefaultTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -910,6 +928,44 @@ func TestWithResourcePolicy(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestWithResourcePolicy_invalid(t *testing.T) {
+
+	t.Run("invalid policy from env", func(t *testing.T) {
+		t.Setenv(beaconutil.ResourcePolicyEnv, "invalid")
+
+		c, cleanup := NewControl()
+		t.Cleanup(cleanup)
+
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Fatal("expected to fail, but succeeded")
+			}
+		}()
+		_, term := New(c, context.Background(),
+			WithNamespace(uuid.NewString(), true),
+		)
+		t.Cleanup(term)
+	})
+
+	t.Run("invalid policy from WithResourcePolicy", func(t *testing.T) {
+		c, cleanup := NewControl()
+		t.Cleanup(cleanup)
+
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Fatal("expected to fail, but succeeded")
+			}
+		}()
+		_, term := New(c, context.Background(),
+			WithNamespace(uuid.NewString(), true),
+			WithResourcePolicy("invalid"),
+		)
+		t.Cleanup(term)
+	})
 }
 
 func TestWithPullOptions(t *testing.T) {
