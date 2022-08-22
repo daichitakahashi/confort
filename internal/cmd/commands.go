@@ -56,7 +56,8 @@ Use "confort stop" command to stop beacon server.
 By using "-lock-file" option, you can use a user-defined file name as a lock file.
 Default file name is ".confort.lock".
 To tell the endpoint to test code, you have to set file name as environment variable CFT_LOCKFILE.
-See document of confort.ConnectBeacon.
+If the variable is already set, this command regards CFT_LOCKFILE as the default file name.
+See the document of confort.ConnectBeacon.
 
 If lock file already exists, this command fails.
 
@@ -64,6 +65,7 @@ If lock file already exists, this command fails.
 }
 
 func (s *StartCommand) SetFlags(f *flag.FlagSet) {
+	s.lockFile = os.Getenv(beaconutil.LockFileEnv) // it regards CFT_LOCKFILE as default value
 	f.StringVar(&s.lockFile, "lock-file", beaconutil.LockFile, "user defined lock file name)")
 }
 
