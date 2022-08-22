@@ -59,6 +59,11 @@ func WithNamespace(namespace string, force bool) NewOption {
 	}
 }
 
+// WithDefaultTimeout sets the default timeout for each request to the Docker API and beacon server.
+// The default value of the "default timeout" is 1 min.
+// If default timeout is 0, Confort doesn't apply any timeout for ctx.
+//
+// If a timeout has already been set to ctx, the default timeout is not applied.
 func WithDefaultTimeout(d time.Duration) NewOption {
 	return newOption{
 		Interface: option.New(identOptionDefaultTimeout{}, d),
@@ -131,6 +136,8 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 		tb.Fatalf("confort: invalid resource policy %q", policy)
 	}
 
+	ctx, cancel := applyTimeout(ctx, timeout)
+	defer cancel()
 	cli, err := client.NewClientWithOpts(clientOps...)
 	if err != nil {
 		tb.Fatalf("confort: %s", err)
@@ -176,15 +183,15 @@ type Confort struct {
 	ex             ExclusionControl
 }
 
-func (cft *Confort) applyTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
-	if cft.defaultTimeout == 0 {
+func applyTimeout(ctx context.Context, defaultTimeout time.Duration) (context.Context, context.CancelFunc) {
+	if defaultTimeout == 0 {
 		return ctx, func() {}
 	}
 	_, ok := ctx.Deadline()
 	if ok {
 		return ctx, func() {}
 	}
-	return context.WithTimeout(ctx, cft.defaultTimeout)
+	return context.WithTimeout(ctx, defaultTimeout)
 }
 
 // Namespace returns namespace associated with cft.
@@ -240,7 +247,7 @@ func (cft *Confort) Build(tb testing.TB, ctx context.Context, b *Build, opts ...
 
 	buildOut := io.Discard
 
-	ctx, cancel := cft.applyTimeout(ctx)
+	ctx, cancel := applyTimeout(ctx, cft.defaultTimeout)
 	defer cancel()
 
 	var modifyBuildOptions func(option *types.ImageBuildOptions)
@@ -436,7 +443,7 @@ func (cft *Confort) LazyRun(tb testing.TB, ctx context.Context, name string, c *
 	alias := name
 	name = cft.namespace.Namespace() + name
 
-	ctx, cancel := cft.applyTimeout(ctx)
+	ctx, cancel := applyTimeout(ctx, cft.defaultTimeout)
 	defer cancel()
 
 	unlock, err := cft.ex.InitContainerLock(ctx, name)
@@ -465,7 +472,7 @@ func (cft *Confort) Run(tb testing.TB, ctx context.Context, name string, c *Cont
 	alias := name
 	name = cft.namespace.Namespace() + name
 
-	ctx, cancel := cft.applyTimeout(ctx)
+	ctx, cancel := applyTimeout(ctx, cft.defaultTimeout)
 	defer cancel()
 
 	unlock, err := cft.ex.InitContainerLock(ctx, name)

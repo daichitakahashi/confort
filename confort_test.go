@@ -9,6 +9,7 @@ import (
 	"net/http/httputil"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/daichitakahashi/confort/internal/beaconutil"
 	"github.com/docker/docker/api/types"
@@ -501,10 +502,20 @@ func TestWithClientOptions(t *testing.T) {
 	// wrap transport
 	logOut := bytes.NewBuffer(nil)
 	httpCli := c.HTTPClient()
-	httpCli.Transport = &logTransport{
-		RoundTripper: httpCli.Transport,
-		w:            logOut,
-	}
+	transport := httpCli.Transport
+	httpCli.Transport = transportFunc(func(r *http.Request) (*http.Response, error) {
+		resp, err := transport.RoundTrip(r)
+		if err != nil {
+			return nil, err
+		}
+		dump, err := httputil.DumpResponse(resp, true)
+		if err != nil {
+			return nil, err
+		}
+		logOut.Write(dump)
+		logOut.WriteByte('\n')
+		return resp, err
+	})
 
 	_, term := New(t, ctx,
 		WithClientOptions(client.FromEnv, client.WithHTTPClient(httpCli)),
@@ -517,22 +528,10 @@ func TestWithClientOptions(t *testing.T) {
 	}
 }
 
-type logTransport struct {
-	http.RoundTripper
-	w io.Writer
-}
+type transportFunc func(*http.Request) (*http.Response, error)
 
-func (t *logTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	resp, err := t.RoundTripper.RoundTrip(r)
-	if err != nil {
-		return nil, err
-	}
-	dump, err := httputil.DumpResponse(resp, true)
-	if err != nil {
-		return nil, err
-	}
-	_, err = t.w.Write(dump)
-	return resp, err
+func (f transportFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
 }
 
 func TestWithNamespace(t *testing.T) {
@@ -582,6 +581,128 @@ func TestWithNamespace(t *testing.T) {
 			if tc.expectedNamespace != actual {
 				t.Fatalf("expected namespace %q, got %q", tc.expectedNamespace, actual)
 			}
+		})
+	}
+}
+
+func TestWithDefaultTimeout(t *testing.T) {
+	t.Parallel()
+
+	// test timeout for Docker API request
+	httpClient := func(fn func(deadline time.Time, ok bool)) *http.Client {
+		cli, err := client.NewClientWithOpts(client.FromEnv)
+		if err != nil {
+			t.Fatal(err)
+		}
+		httpCli := cli.HTTPClient()
+		transport := httpCli.Transport
+
+		var tested bool
+		httpCli.Transport = transportFunc(func(r *http.Request) (*http.Response, error) {
+			ctx := r.Context()
+			// test once
+			if !tested {
+				deadline, ok := ctx.Deadline()
+				fn(deadline, ok)
+				tested = true
+			}
+			return transport.RoundTrip(r)
+		})
+		return httpCli
+	}
+
+	testCases := []struct {
+		desc    string
+		timeout time.Duration
+		newCtx  func() (context.Context, context.CancelFunc)
+		test    func(t *testing.T, deadline time.Time, ok bool)
+	}{
+		{
+			desc:    "default default timeout(1 min.)",
+			timeout: -1, // without WithDefaultTimeout
+			test: func(t *testing.T, deadline time.Time, ok bool) {
+				if !ok {
+					t.Fatal("deadline expected")
+				}
+				d := time.Until(deadline)
+				if d < time.Second*59 || time.Minute < d {
+					t.Fatalf("expected timeout is more than 59 sec. and less than 1 min., actual %s", d)
+				}
+			},
+		}, {
+			desc:    "no timeout",
+			timeout: 0, // WithDefaultTimeout(0)
+			test: func(t *testing.T, deadline time.Time, ok bool) {
+				if ok {
+					t.Fatal("no deadline expected")
+				}
+			},
+		}, {
+			desc:    "with default timeout(5 sec.)",
+			timeout: time.Second * 5, // WithDefaultTimeout(time.Second*5)
+			test: func(t *testing.T, deadline time.Time, ok bool) {
+				if !ok {
+					t.Fatal("deadline expected")
+				}
+				d := time.Until(deadline)
+				if d < time.Second*4 || time.Second*5 < d {
+					t.Fatalf("expected timeout is more than 4 min., and less than 5 min., actual %s", d)
+				}
+			},
+		}, {
+			desc:    "with default timeout(5 sec.) and timeout for New(3 sec.)",
+			timeout: time.Second * 5, // WithDefaultTimeout(time.Second*5)
+			newCtx: func() (context.Context, context.CancelFunc) {
+				return context.WithTimeout(context.Background(), time.Second*3)
+			},
+			test: func(t *testing.T, deadline time.Time, ok bool) {
+				if !ok {
+					t.Fatal("deadline expected")
+				}
+				d := time.Until(deadline)
+				if d < time.Second*2 || time.Second*3 < d {
+					t.Fatalf("expected timeout is more than 2 sec., and less than 3 sec., actual %s", d)
+				}
+			},
+		}, {
+			desc:    "with default timeout(5 sec.) and timeout for New(7 sec.)",
+			timeout: time.Second * 5, // WithDefaultTimeout(time.Second*5)
+			newCtx: func() (context.Context, context.CancelFunc) {
+				return context.WithTimeout(context.Background(), time.Second*7)
+			},
+			test: func(t *testing.T, deadline time.Time, ok bool) {
+				if !ok {
+					t.Fatal("deadline expected")
+				}
+				d := time.Until(deadline)
+				if d < time.Second*6 || time.Second*7 < d {
+					t.Fatalf("expected timeout is more than 6 sec., and less than 7 sec., actual %s", d)
+				}
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			httpCli := httpClient(func(deadline time.Time, ok bool) {
+				tc.test(t, deadline, ok)
+			})
+			opts := []NewOption{
+				WithNamespace(uuid.NewString(), true),
+				WithClientOptions(client.FromEnv, client.WithHTTPClient(httpCli)),
+			}
+			if tc.timeout >= 0 {
+				opts = append(opts, WithDefaultTimeout(tc.timeout))
+			}
+
+			ctx := context.Background()
+			if tc.newCtx != nil {
+				var cancel context.CancelFunc
+				ctx, cancel = tc.newCtx()
+				t.Cleanup(cancel)
+			}
+			_, term := New(t, ctx, opts...)
+			t.Cleanup(term)
 		})
 	}
 }
