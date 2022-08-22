@@ -45,6 +45,11 @@ func WithClientOptions(opts ...client.Opt) NewOption {
 	}
 }
 
+// WithNamespace specifies namespace of Confort.
+// Default namespace is the value of the CFT_NAMESPACE environment variable.
+// If force is true, the value of the argument namespace takes precedence.
+//
+// If neither CFT_NAMESPACE nor WithNamespace is set, New fails.
 func WithNamespace(namespace string, force bool) NewOption {
 	return newOption{
 		Interface: option.New(identOptionNamespace{}, namespaceOption{

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/daichitakahashi/confort/internal/beaconutil"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -532,6 +533,57 @@ func (t *logTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	_, err = t.w.Write(dump)
 	return resp, err
+}
+
+func TestWithNamespace(t *testing.T) {
+	ctx := context.Background()
+
+	testCases := []struct {
+		desc              string
+		envNamespace      string
+		optNamespace      string
+		force             bool
+		expectedNamespace string
+	}{
+		{
+			desc:              "without env or enforcement",
+			envNamespace:      "",
+			optNamespace:      "opt-namespace",
+			expectedNamespace: "opt-namespace-",
+		}, {
+			desc:              "with env and no enforcement",
+			envNamespace:      "env-namespace",
+			optNamespace:      "opt-namespace",
+			expectedNamespace: "env-namespace-",
+		}, {
+			desc:              "without env and with enforcement",
+			envNamespace:      "",
+			optNamespace:      "opt-namespace",
+			force:             true,
+			expectedNamespace: "opt-namespace-",
+		}, {
+			desc:              "with env and enforcement",
+			envNamespace:      "env-namespace",
+			optNamespace:      "opt-namespace",
+			force:             true,
+			expectedNamespace: "opt-namespace-",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			if tc.envNamespace != "" {
+				t.Setenv(beaconutil.NamespaceEnv, tc.envNamespace)
+			}
+			cft, term := New(t, ctx, WithNamespace(tc.optNamespace, tc.force))
+			t.Cleanup(term)
+
+			actual := cft.Namespace()
+			if tc.expectedNamespace != actual {
+				t.Fatalf("expected namespace %q, got %q", tc.expectedNamespace, actual)
+			}
+		})
+	}
 }
 
 func TestWithResourcePolicy(t *testing.T) {
