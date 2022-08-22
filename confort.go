@@ -179,6 +179,11 @@ func (cft *Confort) applyTimeout(ctx context.Context) (context.Context, context.
 	return context.WithTimeout(ctx, cft.defaultTimeout)
 }
 
+// Namespace returns namespace associated with cft.
+func (cft *Confort) Namespace() string {
+	return cft.namespace.Namespace()
+}
+
 type (
 	BuildOption interface {
 		option.Interface
