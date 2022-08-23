@@ -53,49 +53,70 @@ func TestConnectBeacon(t *testing.T) {
 		t.Parallel()
 
 		namespace := strings.ReplaceAll(t.Name(), "/", "_")
-		cft, shutdown := confort.New(t, ctx,
+		cft, term := confort.New(t, ctx,
 			confort.WithBeacon(beacon),
 			confort.WithNamespace(namespace, true),
 		)
 		var done bool
 		t.Cleanup(func() {
 			if !done {
-				shutdown()
+				term()
 				return
 			}
 		})
 		cft.Run(t, ctx, "tester", &confort.Container{
 			Image: "github.com/daichitakahashi/confort/testdata/echo:test",
 		})
-		shutdown()
+		term()
 		done = true
 
-		// when beacon server is enabled, container is not deleted after shutdown
-		containerName := namespace + "-tester"
+		// when beacon server is enabled, network and container is not deleted after termination
 		cli, err := client.NewClientWithOpts(client.FromEnv)
 		if err != nil {
 			t.Fatal(err)
 		}
-		f := filters.NewArgs()
-		f.Add("name", containerName)
-		list, err := cli.ContainerList(ctx, types.ContainerListOptions{
-			All:     true,
-			Filters: f,
+
+		containerName := namespace + "-tester"
+		containers, err := cli.ContainerList(ctx, types.ContainerListOptions{
+			All: true,
+			Filters: filters.NewArgs(
+				filters.Arg("name", containerName),
+			),
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, c := range list {
-			err = cli.ContainerRemove(ctx, c.ID, types.ContainerRemoveOptions{
+		if len(containers) == 0 {
+			t.Fatalf("container %q not found", containerName)
+		}
+		for _, container := range containers {
+			err = cli.ContainerRemove(ctx, container.ID, types.ContainerRemoveOptions{
 				RemoveVolumes: true,
 				Force:         true,
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			return
 		}
-		t.Fatalf("container %q not found", containerName)
+
+		networks, err := cli.NetworkList(ctx, types.NetworkListOptions{
+			Filters: filters.NewArgs(
+				filters.Arg("name", namespace),
+			),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(networks) == 0 {
+			t.Fatalf("network %q not found", namespace)
+		}
+		for _, network := range networks {
+			t.Logf("%#v", network)
+			err = cli.NetworkRemove(ctx, network.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
 	})
 
 	t.Run("unique", func(t *testing.T) {
