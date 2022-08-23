@@ -25,6 +25,7 @@ import (
 const (
 	imageCommunicator = "github.com/daichitakahashi/confort/testdata/communicator:test"
 	imageEcho         = "github.com/daichitakahashi/confort/testdata/echo:test"
+	imageLs           = "github.com/daichitakahashi/confort/testdata/ls:"
 )
 
 var (
@@ -966,6 +967,111 @@ func TestWithResourcePolicy_invalid(t *testing.T) {
 		)
 		t.Cleanup(term)
 	})
+}
+
+func TestWithImageBuildOptions(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	cft, term := New(t, ctx,
+		WithNamespace("TestWithForceBuild_WithBuildOutput", true),
+	)
+	t.Cleanup(term)
+
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	build := &Build{
+		Image:      imageLs + "label",
+		Dockerfile: "testdata/ls/Dockerfile",
+		ContextDir: "testdata/ls",
+	}
+
+	var (
+		label      = "daichitakahashi.confort.test"
+		labelValue = t.Name()
+	)
+
+	// build labeled image
+	cft.Build(t, ctx, build,
+		WithBuildOutput(io.Discard),
+		WithImageBuildOptions(func(option *types.ImageBuildOptions) {
+			if option.Labels == nil {
+				option.Labels = map[string]string{}
+			}
+			option.Labels[label] = labelValue
+		}),
+	)
+	t.Cleanup(func() {
+		removeImageIfExists(t, cli, build.Image)
+	})
+
+	// check the labeled image exists
+	list, err := cli.ImageList(ctx, types.ImageListOptions{
+		All: true,
+		Filters: filters.NewArgs(
+			filters.Arg("label", fmt.Sprintf("%s=%s", label, labelValue)),
+		),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) == 0 {
+		t.Fatalf(`there is no image labeled "%s=%s"`, label, labelValue)
+	}
+}
+
+func TestWithForceBuild_WithBuildOutput(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	cft, term := New(t, ctx,
+		WithNamespace("TestWithForceBuild_WithBuildOutput", true),
+	)
+	t.Cleanup(term)
+
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	build := &Build{
+		Image:      imageLs + "force",
+		Dockerfile: "testdata/ls/Dockerfile",
+		ContextDir: "testdata/ls",
+	}
+
+	// build once
+	cft.Build(t, ctx, build,
+		WithForceBuild(),
+		WithBuildOutput(io.Discard),
+	)
+	t.Cleanup(func() {
+		removeImageIfExists(t, cli, build.Image)
+	})
+
+	buf := bytes.NewBuffer(nil)
+
+	// force build
+	cft.Build(t, ctx, build,
+		WithForceBuild(),
+		WithBuildOutput(buf),
+	)
+	if buf.Len() == 0 {
+		t.Fatal("expected build log to be written to buf, but got no output")
+	}
+	buf.Reset()
+
+	// build if the image not exists
+	cft.Build(t, ctx, build,
+		WithBuildOutput(buf),
+	)
+	if buf.Len() > 0 {
+		t.Error("expected build to be skipped, but build log is written")
+		t.Log(buf.String())
+	}
 }
 
 func TestWithPullOptions(t *testing.T) {
