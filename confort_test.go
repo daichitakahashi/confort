@@ -983,10 +983,14 @@ func TestWithImageBuildOptions(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	tag := "label"
 	build := &Build{
-		Image:      imageLs + "label",
+		Image:      imageLs + tag,
 		Dockerfile: "testdata/ls/Dockerfile",
 		ContextDir: "testdata/ls",
+		BuildArgs: map[string]*string{
+			"ID": &tag,
+		},
 	}
 
 	var (
@@ -1037,10 +1041,14 @@ func TestWithForceBuild_WithBuildOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	tag := "force"
 	build := &Build{
-		Image:      imageLs + "force",
+		Image:      imageLs + tag,
 		Dockerfile: "testdata/ls/Dockerfile",
 		ContextDir: "testdata/ls",
+		BuildArgs: map[string]*string{
+			"ID": &tag,
+		},
 	}
 
 	// build once
