@@ -222,18 +222,22 @@ type (
 
 func (o buildOption) build() BuildOption { return o }
 
+// WithImageBuildOptions modifies the configuration of build.
+// The argument `option` already contains required values, according to Build.
 func WithImageBuildOptions(f func(option *types.ImageBuildOptions)) BuildOption {
 	return buildOption{
 		Interface: option.New(identOptionImageBuildOptions{}, f),
 	}.build()
 }
 
+// WithForceBuild forces to build an image even if it already exists.
 func WithForceBuild() BuildOption {
 	return buildOption{
 		Interface: option.New(identOptionForceBuild{}, true),
 	}.build()
 }
 
+// WithBuildOutput sets dst that the output during build will be written.
 func WithBuildOutput(dst io.Writer) BuildOption {
 	return buildOption{
 		Interface: option.New(identOptionBuildOutput{}, dst),
@@ -269,7 +273,10 @@ func (cft *Confort) Build(tb testing.TB, ctx context.Context, b *Build, opts ...
 		case identOptionForceBuild{}:
 			force = opt.Value().(bool)
 		case identOptionBuildOutput{}:
-			buildOut = opt.Value().(io.Writer)
+			out := opt.Value().(io.Writer)
+			if out != nil {
+				buildOut = out
+			}
 		}
 	}
 
