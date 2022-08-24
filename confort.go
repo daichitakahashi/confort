@@ -410,30 +410,47 @@ type (
 
 func (o runOption) run() RunOption { return o }
 
+// WithContainerConfig modifies the configuration of container.
+// The argument `config` already contains required values to create container,
+// apply your values with care.
 func WithContainerConfig(f func(config *container.Config)) RunOption {
 	return runOption{
 		Interface: option.New(identOptionContainerConfig{}, f),
 	}.run()
 }
 
+// WithHostConfig modifies the configuration of container from host side.
+// The argument `config` already contains required values to create container,
+// apply your values with care.
 func WithHostConfig(f func(config *container.HostConfig)) RunOption {
 	return runOption{
 		Interface: option.New(identOptionHostConfig{}, f),
 	}.run()
 }
 
+// WithNetworkingConfig modifies the configuration of network.
+// The argument `config` already contains required values to connecting to bridge network,
+// and a container cannot join multi-networks on container creation.
 func WithNetworkingConfig(f func(config *network.NetworkingConfig)) RunOption {
 	return runOption{
 		Interface: option.New(identOptionNetworkingConfig{}, f),
 	}.run()
 }
 
+// WithConfigConsistency enables/disables the test checking consistency of configurations.
+// By default, this test is enabled.
+// NOTICE: This is quite experimental feature.
 func WithConfigConsistency(check bool) RunOption {
 	return runOption{
 		Interface: option.New(identOptionConfigConsistency{}, check),
 	}.run()
 }
 
+// WithPullOptions enables to pull image that not exists.
+// For example, if you want to use an image hosted in private repository,
+// you have to fill RegistryAuth field.
+//
+// The output will be written to `out`. If nil, io.Discard will be used.
 func WithPullOptions(opts *types.ImagePullOptions, out io.Writer) RunOption {
 	return runOption{
 		Interface: option.New(identOptionPullOption{}, pullOptions{

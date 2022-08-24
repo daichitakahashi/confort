@@ -235,8 +235,14 @@ func (d *dockerNamespace) CreateContainer(
 ) (string, error) {
 	var err error
 
-	// inject labels
-	container.Labels = d.labels
+	// merge labels
+	if container.Labels == nil {
+		container.Labels = d.labels
+	} else {
+		for k, v := range d.labels {
+			container.Labels[k] = v
+		}
+	}
 
 	d.m.Lock()
 	defer d.m.Unlock()

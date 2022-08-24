@@ -974,7 +974,7 @@ func TestWithImageBuildOptions(t *testing.T) {
 	ctx := context.Background()
 
 	cft, term := New(t, ctx,
-		WithNamespace("TestWithForceBuild_WithBuildOutput", true),
+		WithNamespace(t.Name(), true),
 	)
 	t.Cleanup(term)
 
@@ -1032,7 +1032,7 @@ func TestWithForceBuild_WithBuildOutput(t *testing.T) {
 	ctx := context.Background()
 
 	cft, term := New(t, ctx,
-		WithNamespace("TestWithForceBuild_WithBuildOutput", true),
+		WithNamespace(t.Name(), true),
 	)
 	t.Cleanup(term)
 
@@ -1079,6 +1079,206 @@ func TestWithForceBuild_WithBuildOutput(t *testing.T) {
 	if buf.Len() > 0 {
 		t.Error("expected build to be skipped, but build log is written")
 		t.Log(buf.String())
+	}
+}
+
+func TestWithContainerConfig(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cft, term := New(t, ctx,
+		WithNamespace(t.Name(), true),
+	)
+	t.Cleanup(term)
+
+	var (
+		label      = "daichitakahashi.confort.test"
+		labelValue = t.Name()
+	)
+
+	cft.Run(t, ctx, "echo", &Container{
+		Image: imageEcho,
+	}, WithContainerConfig(func(config *container.Config) {
+		if config.Labels == nil {
+			config.Labels = map[string]string{}
+		}
+		config.Labels[label] = labelValue
+	}))
+
+	// check the labeled container exists
+	list, err := cli.ContainerList(ctx, types.ContainerListOptions{
+		All: true,
+		Filters: filters.NewArgs(
+			filters.Arg("label", fmt.Sprintf("%s=%s", label, labelValue)),
+		),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) == 0 {
+		t.Fatalf(`there is no container labeled "%s=%s"`, label, labelValue)
+	}
+}
+
+func TestWithHostConfig(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	cft, term := New(t, ctx,
+		WithNamespace(t.Name(), true),
+	)
+	t.Cleanup(term)
+
+	cft.Run(t, ctx, "communicator", &Container{
+		Image: imageCommunicator,
+		Env: map[string]string{
+			"CM_TARGET": "reflect",
+		},
+		ExposedPorts: []string{"80/tcp"},
+		Waiter:       Healthy(),
+	}, WithHostConfig(func(config *container.HostConfig) {
+		// configure container to communicate with itself using extra_hosts
+		config.ExtraHosts = append(config.ExtraHosts, "reflect:127.0.0.1")
+	}))
+
+	ports := cft.UseExclusive(t, ctx, "communicator")
+	host, ok := ports.Binding("80/tcp")
+	if !ok {
+		t.Fatal("two: bound port not found")
+	}
+
+	// set status
+	communicate(t, host, "set", "reflecting")
+	// exchange status with container-self
+	communicate(t, host, "exchange", "")
+	// get exchanged status
+	status := communicate(t, host, "get", "")
+
+	if status != "reflecting" {
+		t.Fatalf(`expected status "reflecting", but got %q`, status)
+	}
+}
+
+func TestWithNetworkingConfig(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	var (
+		name  = "com"
+		alias = "com_alias"
+	)
+
+	// create a communicator with two aliases
+	cft1, term1 := New(t, ctx, WithNamespace(t.Name(), true))
+	t.Cleanup(term1)
+	cft1.Run(t, ctx, name, &Container{
+		Image: imageCommunicator,
+		Env: map[string]string{
+			"CM_TARGET": alias,
+		},
+		ExposedPorts: []string{"80/tcp"},
+		Waiter:       Healthy(),
+	}, WithNetworkingConfig(func(config *network.NetworkingConfig) {
+		for _, cfg := range config.EndpointsConfig {
+			// add alias
+			cfg.Aliases = append(cfg.Aliases, alias)
+		}
+	}))
+	host, ok := cft1.UseExclusive(t, ctx, name).Binding("80/tcp")
+	if !ok {
+		t.Fatalf("%s: bound port not found", name)
+	}
+
+	// set status
+	communicate(t, host, "set", "hello")
+	// exchange status with container-self
+	communicate(t, host, "exchange", "")
+	// get exchanged status
+	status := communicate(t, host, "get", "")
+
+	if status != "hello" {
+		t.Fatalf(`expected status "hello", but got %q`, status)
+	}
+}
+
+func TestWithConfigConsistency(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	namespace := t.Name()
+	cft, term := New(t, ctx, WithNamespace(namespace, true))
+	t.Cleanup(term)
+
+	cft.Run(t, ctx, "echo", &Container{
+		Image:        imageEcho,
+		ExposedPorts: []string{"80/tcp", "8080/tcp"},
+		Waiter:       Healthy(),
+	})
+
+	testCases := []struct {
+		desc                     string
+		ports                    []string
+		configConsistencyEnabled bool
+		failed                   bool
+	}{
+		{
+			desc:                     "less ports with consistency check",
+			ports:                    []string{"80/tcp"},
+			configConsistencyEnabled: true,
+			failed:                   false,
+		}, {
+			desc:                     "extra ports with consistency check",
+			ports:                    []string{"80/tcp", "8443/tcp"},
+			configConsistencyEnabled: true,
+			failed:                   true,
+		}, {
+			desc:                     "less ports without consistency check",
+			ports:                    []string{"80/tcp"},
+			configConsistencyEnabled: false,
+			failed:                   false,
+		}, {
+			desc:                     "extra ports without consistency check",
+			ports:                    []string{"80/tcp", "8443/tcp"},
+			configConsistencyEnabled: false,
+			failed:                   false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			cft, term := New(t, ctx, WithNamespace(namespace, true))
+			t.Cleanup(term)
+
+			var opts []RunOption
+			if !tc.configConsistencyEnabled {
+				opts = append(opts, WithConfigConsistency(false))
+			}
+
+			recovered := func() (r any) {
+				defer func() {
+					r = recover()
+				}()
+				c, term := NewControl()
+				defer term()
+
+				cft.Run(c, ctx, "echo", &Container{
+					Image:        imageEcho,
+					ExposedPorts: tc.ports,
+					Waiter:       Healthy(),
+				}, opts...)
+				return nil
+			}()
+			if tc.failed && recovered == nil {
+				t.Fatal("expected fail because of inconsistency, but not failed")
+			} else if !tc.failed && recovered != nil {
+				t.Fatal("expected not to fail, but failed")
+			}
+		})
 	}
 }
 

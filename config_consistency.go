@@ -36,7 +36,7 @@ func checkContainerConfigConsistency(expected, target *container.Config) error {
 		// AttachStdin
 		// AttachStdout
 		// AttachStderr
-		mapSubset("ExposedPorts", target.ExposedPorts, target.ExposedPorts),
+		mapSubset("ExposedPorts", expected.ExposedPorts, target.ExposedPorts),
 		// Tty
 		// OpenStdin
 		// StdinOnce
