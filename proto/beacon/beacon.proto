@@ -7,17 +7,17 @@ import "google/protobuf/empty.proto";
 package beacon;
 
 service BeaconService {
-  rpc NamespaceLock(stream LockRequest)
+  rpc LockForNamespace(stream LockRequest)
       returns (stream LockResponse);
 
-  rpc BuildLock(stream KeyedLockRequest)
+  rpc LockForBuild(stream KeyedLockRequest)
       returns (stream LockResponse);
 
-  rpc InitContainerLock(stream KeyedLockRequest)
+  rpc LockForContainerSetup(stream KeyedLockRequest)
       returns (stream LockResponse);
 
   rpc AcquireContainerLock(stream AcquireLockRequest)
-      returns (stream LockResponse);
+      returns (stream AcquireLockResponse);
 
   rpc Interrupt(google.protobuf.Empty)
       returns (google.protobuf.Empty);
@@ -30,10 +30,12 @@ enum LockOp {
 
 enum AcquireOp {
   ACQUIRE_OP_LOCK = 0;
-  ACQUIRE_OP_UNLOCK = 1;
+  ACQUIRE_OP_INIT_LOCK = 1;
   ACQUIRE_OP_SHARED_LOCK = 2;
   ACQUIRE_OP_INIT_SHARED_LOCK = 3;
-  ACQUIRE_OP_DOWNGRADE = 4;
+  ACQUIRE_OP_UNLOCK = 4;
+  ACQUIRE_OP_SET_INIT_DONE = 5;
+  ACQUIRE_OP_SET_INIT_FAILED = 6;
 }
 
 enum LockState {
@@ -58,4 +60,9 @@ message KeyedLockRequest {
 message AcquireLockRequest {
   string key = 1;
   AcquireOp operation = 2;
+}
+
+message AcquireLockResponse {
+  LockState state = 1;
+  bool acquireInit = 2;
 }

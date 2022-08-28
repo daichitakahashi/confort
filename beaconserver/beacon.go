@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/daichitakahashi/confort"
+	"github.com/daichitakahashi/confort/internal/exclusion"
 	"github.com/daichitakahashi/confort/proto/beacon"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -13,12 +13,11 @@ import (
 
 type beaconServer struct {
 	beacon.UnimplementedBeaconServiceServer
-	ex        confort.ExclusionControl
+	l         *exclusion.Locker
 	interrupt func() error
 }
 
-func (b *beaconServer) NamespaceLock(stream beacon.BeaconService_NamespaceLockServer) error {
-	ctx := stream.Context()
+func (b *beaconServer) LockForNamespace(stream beacon.BeaconService_LockForNamespaceServer) error {
 	var unlock func()
 	defer func() {
 		if unlock != nil {
@@ -40,10 +39,7 @@ func (b *beaconServer) NamespaceLock(stream beacon.BeaconService_NamespaceLockSe
 			if unlock != nil {
 				return status.Error(codes.InvalidArgument, "trying second lock")
 			}
-			unlock, err = b.ex.LockForNamespace(ctx)
-			if err != nil {
-				return err
-			}
+			unlock = b.l.LockForNamespace()
 			err = stream.Send(&beacon.LockResponse{
 				State: beacon.LockState_LOCK_STATE_LOCKED,
 			})
@@ -66,7 +62,7 @@ func (b *beaconServer) NamespaceLock(stream beacon.BeaconService_NamespaceLockSe
 	}
 }
 
-func (b *beaconServer) BuildLock(stream beacon.BeaconService_BuildLockServer) error {
+func (b *beaconServer) LockForBuild(stream beacon.BeaconService_LockForBuildServer) error {
 	ctx := stream.Context()
 	var key string
 	var unlock func()
@@ -95,7 +91,7 @@ func (b *beaconServer) BuildLock(stream beacon.BeaconService_BuildLockServer) er
 				return status.Error(codes.InvalidArgument, "trying second lock")
 			}
 			key = k
-			unlock, err = b.ex.LockForBuild(ctx, key)
+			unlock, err = b.l.LockForBuild(ctx, key)
 			if err != nil {
 				return err
 			}
@@ -122,7 +118,7 @@ func (b *beaconServer) BuildLock(stream beacon.BeaconService_BuildLockServer) er
 	}
 }
 
-func (b *beaconServer) InitContainerLock(stream beacon.BeaconService_InitContainerLockServer) error {
+func (b *beaconServer) LockForContainerSetup(stream beacon.BeaconService_LockForContainerSetupServer) error {
 	ctx := stream.Context()
 	var key string
 	var unlock func()
@@ -151,7 +147,7 @@ func (b *beaconServer) InitContainerLock(stream beacon.BeaconService_InitContain
 				return status.Error(codes.InvalidArgument, "trying second lock")
 			}
 			key = k
-			unlock, err = b.ex.LockForContainerSetup(ctx, key)
+			unlock, err = b.l.LockForContainerSetup(ctx, key)
 			if err != nil {
 				return err
 			}
@@ -181,11 +177,11 @@ func (b *beaconServer) InitContainerLock(stream beacon.BeaconService_InitContain
 func (b *beaconServer) AcquireContainerLock(stream beacon.BeaconService_AcquireContainerLockServer) error {
 	ctx := stream.Context()
 	var key string
-	var unlock func()
-	var downgrade func() (func(), error)
+	var op beacon.AcquireOp = -1
+	var lock *exclusion.ContainerLock
 	defer func() {
-		if unlock != nil {
-			unlock()
+		if lock != nil {
+			lock.Release()
 		}
 	}()
 
@@ -204,93 +200,106 @@ func (b *beaconServer) AcquireContainerLock(stream beacon.BeaconService_AcquireC
 
 		switch req.GetOperation() {
 		case beacon.AcquireOp_ACQUIRE_OP_LOCK:
-			if unlock != nil {
+			if lock != nil {
 				return status.Error(codes.InvalidArgument, "trying second lock")
 			}
 			key = k
-			unlock, err = b.ex.LockForContainerUse(ctx, key, true)
+			lock, err = b.l.AcquireContainerLock(ctx, key, true, false)
 			if err != nil {
 				return err
 			}
-			err = stream.Send(&beacon.LockResponse{
-				State: beacon.LockState_LOCK_STATE_LOCKED,
+			err = stream.Send(&beacon.AcquireLockResponse{
+				State:       beacon.LockState_LOCK_STATE_LOCKED,
+				AcquireInit: false,
 			})
+		case beacon.AcquireOp_ACQUIRE_OP_INIT_LOCK:
+			if lock != nil {
+				return status.Error(codes.InvalidArgument, "trying second lock")
+			}
+			key = k
+			op = beacon.AcquireOp_ACQUIRE_OP_INIT_LOCK
+			lock, err = b.l.AcquireContainerLock(ctx, key, true, true)
 			if err != nil {
 				return err
 			}
-		case beacon.AcquireOp_ACQUIRE_OP_UNLOCK:
-			if unlock == nil || key != k {
-				return status.Error(codes.InvalidArgument, "unlock on unlocked key")
-			}
-			unlock()
-			key = ""
-			unlock = nil
-			downgrade = nil
-			err = stream.Send(&beacon.LockResponse{
-				State: beacon.LockState_LOCK_STATE_UNLOCKED,
+			err = stream.Send(&beacon.AcquireLockResponse{
+				State:       beacon.LockState_LOCK_STATE_LOCKED,
+				AcquireInit: lock.InitAcquired(),
 			})
 		case beacon.AcquireOp_ACQUIRE_OP_SHARED_LOCK:
-			if unlock != nil {
+			if lock != nil {
 				return status.Error(codes.InvalidArgument, "trying second lock")
 			}
 			key = k
-			unlock, err = b.ex.LockForContainerUse(ctx, key, false)
+			lock, err = b.l.AcquireContainerLock(ctx, key, false, false)
 			if err != nil {
 				return err
 			}
-			err = stream.Send(&beacon.LockResponse{
-				State: beacon.LockState_LOCK_STATE_SHARED_LOCKED,
+			err = stream.Send(&beacon.AcquireLockResponse{
+				State:       beacon.LockState_LOCK_STATE_SHARED_LOCKED,
+				AcquireInit: false,
 			})
-			if err != nil {
-				return err
-			}
 		case beacon.AcquireOp_ACQUIRE_OP_INIT_SHARED_LOCK:
-			if unlock != nil {
+			if lock != nil {
 				return status.Error(codes.InvalidArgument, "trying second lock")
 			}
 			key = k
-			down, cancel, ok, err := b.ex.TryLockForContainerInitAndUse(ctx, key)
+			op = beacon.AcquireOp_ACQUIRE_OP_INIT_SHARED_LOCK
+			lock, err = b.l.AcquireContainerLock(ctx, key, false, true)
 			if err != nil {
 				return err
 			}
-			if ok {
-				downgrade = down
-				unlock = cancel
-				err = stream.Send(&beacon.LockResponse{
-					State: beacon.LockState_LOCK_STATE_LOCKED,
-				})
-				if err != nil {
-					return err
-				}
-			} else {
-				unlock, err = down()
-				if err != nil {
-					cancel()
-					return err
-				}
-				err = stream.Send(&beacon.LockResponse{
-					State: beacon.LockState_LOCK_STATE_SHARED_LOCKED,
-				})
-				if err != nil {
-					return err
-				}
-			}
-		case beacon.AcquireOp_ACQUIRE_OP_DOWNGRADE:
-			if downgrade == nil {
-				return status.Error(codes.InvalidArgument, "downgrade on unlocked key")
-			}
-			_unlock, err := downgrade()
-			if err != nil {
-				return err
-			}
-			unlock = _unlock
-			downgrade = nil
-			err = stream.Send(&beacon.LockResponse{
-				State: beacon.LockState_LOCK_STATE_SHARED_LOCKED,
+			err = stream.Send(&beacon.AcquireLockResponse{
+				State:       beacon.LockState_LOCK_STATE_LOCKED,
+				AcquireInit: lock.InitAcquired(),
 			})
-			if err != nil {
-				return err
+		case beacon.AcquireOp_ACQUIRE_OP_UNLOCK:
+			if lock == nil || key != k {
+				return status.Error(codes.InvalidArgument, "unlock on unlocked key")
 			}
+			lock.Release()
+			key = ""
+			op = -1
+			lock = nil
+			err = stream.Send(&beacon.AcquireLockResponse{
+				State:       beacon.LockState_LOCK_STATE_UNLOCKED,
+				AcquireInit: false,
+			})
+		case beacon.AcquireOp_ACQUIRE_OP_SET_INIT_DONE:
+			if lock == nil || key != k {
+				return status.Error(codes.InvalidArgument, "set init result on unlocked key")
+			}
+			if !lock.InitAcquired() {
+				return status.Error(codes.InvalidArgument, "set init result on lock without init")
+			}
+			lock.SetInitResult(true)
+			state := beacon.LockState_LOCK_STATE_LOCKED
+			if op == beacon.AcquireOp_ACQUIRE_OP_INIT_SHARED_LOCK {
+				state = beacon.LockState_LOCK_STATE_SHARED_LOCKED
+			}
+			err = stream.Send(&beacon.AcquireLockResponse{
+				State:       state,
+				AcquireInit: false,
+			})
+		case beacon.AcquireOp_ACQUIRE_OP_SET_INIT_FAILED:
+			if lock == nil || key != k {
+				return status.Error(codes.InvalidArgument, "set init result on unlocked key")
+			}
+			if !lock.InitAcquired() {
+				return status.Error(codes.InvalidArgument, "set init result on lock without init")
+			}
+			lock.SetInitResult(false)
+			lock.Release()
+			key = ""
+			op = -1
+			lock = nil
+			err = stream.Send(&beacon.AcquireLockResponse{
+				State:       beacon.LockState_LOCK_STATE_UNLOCKED,
+				AcquireInit: false,
+			})
+		}
+		if err != nil {
+			return err
 		}
 	}
 }

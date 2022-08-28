@@ -3,6 +3,9 @@ package exclusion
 import (
 	"context"
 	"fmt"
+
+	"github.com/daichitakahashi/confort/proto/beacon"
+	"go.uber.org/multierr"
 )
 
 type Control interface {
@@ -41,15 +44,7 @@ func (c *control) LockForContainerUse(ctx context.Context, name string, exclusiv
 		return nil, err
 	}
 	if lock.InitAcquired() {
-		err = func() (err error) {
-			defer func() {
-				r := recover()
-				if r != nil {
-					err = fmt.Errorf("%v", r)
-				}
-			}()
-			return init()
-		}()
+		err = initSafe(init)
 		lock.SetInitResult(err == nil)
 		if err != nil {
 			lock.Release()
@@ -59,4 +54,169 @@ func (c *control) LockForContainerUse(ctx context.Context, name string, exclusiv
 	return lock.Release, nil
 }
 
+func initSafe(init func() error) (err error) {
+	defer func() {
+		r := recover()
+		if r != nil {
+			err = fmt.Errorf("%v", r)
+		}
+	}()
+	return init()
+}
+
 var _ Control = (*control)(nil)
+
+type beaconControl struct {
+	cli beacon.BeaconServiceClient
+}
+
+func NewBeaconControl(cli beacon.BeaconServiceClient) Control {
+	return &beaconControl{
+		cli: cli,
+	}
+}
+
+func (b *beaconControl) LockForNamespace(ctx context.Context) (func(), error) {
+	stream, err := b.cli.LockForNamespace(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	err = stream.Send(&beacon.LockRequest{
+		Operation: beacon.LockOp_LOCK_OP_LOCK,
+	})
+	if err != nil {
+		return nil, err
+	}
+	_, err = stream.Recv()
+	if err != nil {
+		return nil, err
+	}
+	return func() {
+		err := stream.Send(&beacon.LockRequest{
+			Operation: beacon.LockOp_LOCK_OP_UNLOCK,
+		})
+		_ = err // TODO: error handling
+		_ = stream.CloseSend()
+	}, nil
+}
+
+func (b *beaconControl) LockForBuild(ctx context.Context, image string) (func(), error) {
+	stream, err := b.cli.LockForBuild(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	err = stream.Send(&beacon.KeyedLockRequest{
+		Key:       image,
+		Operation: beacon.LockOp_LOCK_OP_LOCK,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = stream.Recv()
+	if err != nil {
+		return nil, err
+	}
+	return func() {
+		err := stream.Send(&beacon.KeyedLockRequest{
+			Key:       image,
+			Operation: beacon.LockOp_LOCK_OP_UNLOCK,
+		})
+		_ = err // TODO: error handling
+		_ = stream.CloseSend()
+	}, nil
+}
+
+func (b *beaconControl) LockForContainerSetup(ctx context.Context, name string) (func(), error) {
+	stream, err := b.cli.LockForContainerSetup(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	err = stream.Send(&beacon.KeyedLockRequest{
+		Key:       name,
+		Operation: beacon.LockOp_LOCK_OP_LOCK,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = stream.Recv()
+	if err != nil {
+		return nil, err
+	}
+	return func() {
+		err := stream.Send(&beacon.KeyedLockRequest{
+			Key:       name,
+			Operation: beacon.LockOp_LOCK_OP_UNLOCK,
+		})
+		_ = err // TODO: error handling
+		_ = stream.CloseSend()
+	}, nil
+}
+
+func (b *beaconControl) LockForContainerUse(ctx context.Context, name string, exclusive bool, init func() error) (func(), error) {
+	var op beacon.AcquireOp
+	if exclusive {
+		if init == nil {
+			op = beacon.AcquireOp_ACQUIRE_OP_LOCK
+		} else {
+			op = beacon.AcquireOp_ACQUIRE_OP_INIT_LOCK
+		}
+	} else {
+		if init == nil {
+			op = beacon.AcquireOp_ACQUIRE_OP_SHARED_LOCK
+		} else {
+			op = beacon.AcquireOp_ACQUIRE_OP_INIT_SHARED_LOCK
+		}
+	}
+
+	stream, err := b.cli.AcquireContainerLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	err = stream.Send(&beacon.AcquireLockRequest{
+		Key:       name,
+		Operation: op,
+	})
+	if err != nil {
+		return nil, err
+	}
+	resp, err := stream.Recv()
+	if err != nil {
+		return nil, err
+	}
+	if resp.GetAcquireInit() {
+		initErr := initSafe(init)
+		op := beacon.AcquireOp_ACQUIRE_OP_SET_INIT_DONE
+		if initErr != nil {
+			op = beacon.AcquireOp_ACQUIRE_OP_SET_INIT_FAILED
+		}
+		err = stream.Send(&beacon.AcquireLockRequest{
+			Key:       name,
+			Operation: op,
+		})
+		if err != nil {
+			return nil, multierr.Append(initErr, err)
+		}
+		_, err = stream.Recv()
+		if err != nil {
+			return nil, multierr.Append(initErr, err)
+		}
+		if initErr != nil {
+			return nil, initErr
+		}
+	}
+	return func() {
+		err := stream.Send(&beacon.AcquireLockRequest{
+			Key:       name,
+			Operation: beacon.AcquireOp_ACQUIRE_OP_UNLOCK,
+		})
+		_ = err // TODO: error handling
+		_ = stream.CloseSend()
+	}, nil
+}
+
+var _ Control = (*beaconControl)(nil)
