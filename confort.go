@@ -547,7 +547,7 @@ func WithReleaseFunc(f *func()) UseOption {
 	}.use()
 }
 
-type InitFunc func(ctx context.Context) error
+type InitFunc func(ctx context.Context, ports Ports) error
 
 func WithInitFunc(init InitFunc) UseOption {
 	return useOption{
@@ -584,7 +584,7 @@ func (cft *Confort) use(tb testing.TB, ctx context.Context, name string, exclusi
 	var init func() error
 	if initFunc != nil {
 		init = func() error {
-			return initFunc(ctx)
+			return initFunc(ctx, ports)
 		}
 	}
 	release, err := cft.ex.LockForContainerUse(ctx, name, exclusive, init)
