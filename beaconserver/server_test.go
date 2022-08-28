@@ -5,16 +5,11 @@ import (
 	"net"
 	"testing"
 
-	"github.com/daichitakahashi/confort"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func startServer(t *testing.T, ex confort.ExclusionControl, hc HealthChecker) func(t *testing.T) *grpc.ClientConn {
-	exclusionCtl := ex
-	if exclusionCtl == nil {
-		exclusionCtl = confort.NewExclusionControl()
-	}
+func startServer(t *testing.T, hc HealthChecker) func(t *testing.T) *grpc.ClientConn {
 	healthChecker := hc
 	if healthChecker == nil {
 		healthChecker = HealthCheckFunc(func(ctx context.Context) error {

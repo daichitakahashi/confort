@@ -1,18 +1,74 @@
-package exclusion
+package exclusion_test
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/daichitakahashi/confort/beaconserver"
+	"github.com/daichitakahashi/confort/internal/exclusion"
+	"github.com/daichitakahashi/confort/proto/beacon"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
-func testLockForNamespace(t *testing.T, c Control) {
+func newBeaconControl(t *testing.T) exclusion.Control {
+	t.Helper()
+
+	srv := grpc.NewServer()
+	beaconserver.Register(srv, func() error {
+		return nil
+	})
+
+	ln, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		_ = srv.Serve(ln)
+		_ = ln.Close()
+	}()
+	t.Cleanup(func() {
+		srv.Stop()
+	})
+
+	conn, err := grpc.Dial(ln.Addr().String(), grpc.WithTransportCredentials(
+		insecure.NewCredentials(),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = conn.Close()
+	})
+
+	return exclusion.NewBeaconControl(beacon.NewBeaconServiceClient(conn))
+}
+
+type control struct {
+	name    string
+	control exclusion.Control
+}
+
+func controls(t *testing.T) [2]control {
+	return [2]control{
+		{
+			name:    "control",
+			control: exclusion.NewControl(),
+		}, {
+			name:    "beaconControl",
+			control: newBeaconControl(t),
+		},
+	}
+}
+
+func testLockForNamespace(t *testing.T, c exclusion.Control) {
 	ctx := context.Background()
 
 	store := map[string]bool{} // race detector
@@ -63,10 +119,16 @@ func testLockForNamespace(t *testing.T, c Control) {
 func TestControl_LockForNamespace(t *testing.T) {
 	t.Parallel()
 
-	testLockForNamespace(t, NewControl())
+	for _, c := range controls(t) {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			testLockForNamespace(t, c.control)
+		})
+	}
 }
 
-func lockForBuild(c Control, image string) error {
+func lockForBuild(c exclusion.Control, image string) error {
 	ctx := context.Background()
 
 	store := map[string]bool{} // race detector
@@ -115,7 +177,7 @@ func lockForBuild(c Control, image string) error {
 	return nil
 }
 
-func testLockForBuild(t *testing.T, c Control) {
+func testLockForBuild(t *testing.T, c exclusion.Control) {
 	var eg errgroup.Group
 	for i := 0; i < 10; i++ {
 		eg.Go(func() error {
@@ -131,10 +193,16 @@ func testLockForBuild(t *testing.T, c Control) {
 func TestControl_LockForBuild(t *testing.T) {
 	t.Parallel()
 
-	testLockForBuild(t, NewControl())
+	for _, c := range controls(t) {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			testLockForBuild(t, c.control)
+		})
+	}
 }
 
-func lockForContainerSetup(c Control, name string) error {
+func lockForContainerSetup(c exclusion.Control, name string) error {
 	ctx := context.Background()
 
 	store := map[string]bool{} // race detector
@@ -183,7 +251,7 @@ func lockForContainerSetup(c Control, name string) error {
 	return nil
 }
 
-func testLockForContainerSetup(t *testing.T, c Control) {
+func testLockForContainerSetup(t *testing.T, c exclusion.Control) {
 	var eg errgroup.Group
 	for i := 0; i < 10; i++ {
 		eg.Go(func() error {
@@ -199,10 +267,16 @@ func testLockForContainerSetup(t *testing.T, c Control) {
 func TestControl_LockForContainerSetup(t *testing.T) {
 	t.Parallel()
 
-	testLockForContainerSetup(t, NewControl())
+	for _, c := range controls(t) {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			testLockForContainerSetup(t, c.control)
+		})
+	}
 }
 
-func lockForContainerUse(c Control, name string) error {
+func lockForContainerUse(c exclusion.Control, name string) error {
 	ctx := context.Background()
 
 	store := map[string]bool{} // race detector
@@ -212,11 +286,13 @@ func lockForContainerUse(c Control, name string) error {
 	stop := make(chan bool)
 	go func() {
 		errSink := make(chan error)
+		sem := make(chan struct{}, 10)
 		for {
 			// exclusive lock continues 100 microseconds.
 			// during that, more than two shared locks will be acquired.
 			time.Sleep(40 * time.Microsecond)
 			go func() {
+				sem <- struct{}{}
 				unlock, err := c.LockForContainerUse(ctx, name, false, nil)
 				if err != nil {
 					errSink <- err
@@ -225,7 +301,10 @@ func lockForContainerUse(c Control, name string) error {
 
 				_ = store[key]
 				atomic.AddInt32(&count, 1)
-				time.AfterFunc(50*time.Microsecond, unlock)
+				time.AfterFunc(10*time.Microsecond, func() {
+					unlock()
+					<-sem
+				})
 			}()
 			select {
 			case <-stop:
@@ -259,12 +338,13 @@ func lockForContainerUse(c Control, name string) error {
 			return fmt.Errorf("lack of shared lock: %d < 2000", cnt)
 		}
 	case <-time.After(10 * time.Second):
+		close(stop)
 		return errors.New("can't acquire lock in 10 seconds")
 	}
 	return nil
 }
 
-func testLockForContainerUse(t *testing.T, c Control) {
+func testLockForContainerUse(t *testing.T, c exclusion.Control) {
 	var eg errgroup.Group
 	for i := 0; i < 10; i++ {
 		eg.Go(func() error {
@@ -280,10 +360,16 @@ func testLockForContainerUse(t *testing.T, c Control) {
 func TestControl_LockForContainerUse(t *testing.T) {
 	t.Parallel()
 
-	testLockForContainerUse(t, NewControl())
+	for _, c := range controls(t) {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			testLockForContainerUse(t, c.control)
+		})
+	}
 }
 
-func lockForContainerUseWithInit(c Control, name string, exclusive bool) error {
+func lockForContainerUseWithInit(c exclusion.Control, name string, exclusive bool) error {
 	ctx := context.Background()
 
 	store := map[string][]int{} // race detector
@@ -323,7 +409,7 @@ func lockForContainerUseWithInit(c Control, name string, exclusive bool) error {
 	return nil
 }
 
-func testLockForContainerUseWithInit(t *testing.T, c Control, exclusive bool) {
+func testLockForContainerUseWithInit(t *testing.T, c exclusion.Control, exclusive bool) {
 	var eg errgroup.Group
 	for i := 0; i < 10; i++ {
 		eg.Go(func() error {
@@ -338,15 +424,21 @@ func testLockForContainerUseWithInit(t *testing.T, c Control, exclusive bool) {
 
 func TestControl_LockForContainerUse_WithInit(t *testing.T) {
 	t.Parallel()
-	c := NewControl()
 
-	t.Run("exclusive", func(t *testing.T) {
-		t.Parallel()
-		testLockForContainerUseWithInit(t, c, true)
-	})
+	for _, c := range controls(t) {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 
-	t.Run("shared", func(t *testing.T) {
-		t.Parallel()
-		testLockForContainerUseWithInit(t, c, false)
-	})
+			t.Run("exclusive", func(t *testing.T) {
+				t.Parallel()
+				testLockForContainerUseWithInit(t, c.control, true)
+			})
+
+			t.Run("shared", func(t *testing.T) {
+				t.Parallel()
+				testLockForContainerUseWithInit(t, c.control, false)
+			})
+		})
+	}
 }

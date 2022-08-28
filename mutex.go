@@ -113,7 +113,7 @@ func NewBeaconControl(cli beacon.BeaconServiceClient) *beaconControl {
 }
 
 func (b *beaconControl) LockForNamespace(ctx context.Context) (func(), error) {
-	stream, err := b.cli.NamespaceLock(ctx)
+	stream, err := b.cli.LockForNamespace(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +139,7 @@ func (b *beaconControl) LockForNamespace(ctx context.Context) (func(), error) {
 }
 
 func (b *beaconControl) LockForBuild(ctx context.Context, image string) (func(), error) {
-	stream, err := b.cli.BuildLock(ctx)
+	stream, err := b.cli.LockForBuild(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +167,7 @@ func (b *beaconControl) LockForBuild(ctx context.Context, image string) (func(),
 }
 
 func (b *beaconControl) LockForContainerSetup(ctx context.Context, name string) (func(), error) {
-	stream, err := b.cli.InitContainerLock(ctx)
+	stream, err := b.cli.LockForContainerSetup(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +258,7 @@ func (b *beaconControl) TryLockForContainerInitAndUse(ctx context.Context, name 
 		downgrade = func() (func(), error) {
 			err := stream.Send(&beacon.AcquireLockRequest{
 				Key:       name,
-				Operation: beacon.AcquireOp_ACQUIRE_OP_DOWNGRADE,
+				Operation: 0, // beacon.AcquireOp_ACQUIRE_OP_DOWNGRADE,
 			})
 			if err != nil {
 				return nil, err

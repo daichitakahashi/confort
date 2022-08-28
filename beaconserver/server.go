@@ -3,7 +3,7 @@ package beaconserver
 import (
 	"context"
 
-	"github.com/daichitakahashi/confort"
+	"github.com/daichitakahashi/confort/internal/exclusion"
 	"github.com/daichitakahashi/confort/proto/beacon"
 	"google.golang.org/grpc"
 	health "google.golang.org/grpc/health/grpc_health_v1"
@@ -11,7 +11,7 @@ import (
 
 func Register(serv *grpc.Server, interrupt func() error) {
 	beacon.RegisterBeaconServiceServer(serv, &beaconServer{
-		ex:        confort.NewExclusionControl(),
+		l:         exclusion.NewLocker(),
 		interrupt: interrupt,
 	})
 	beacon.RegisterUniqueValueServiceServer(serv, &uniqueValueServer{})

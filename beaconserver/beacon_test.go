@@ -14,111 +14,7 @@ var unique = confort.NewUnique(func() (string, error) {
 	return uuid.New().String(), nil
 })
 
-/*func TestBeaconServer_NamespaceLock(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	connect := startServer(t, nil, nil)
-	cli1 := beacon.NewBeaconServiceClient(connect(t))
-	cli2 := beacon.NewBeaconServiceClient(connect(t))
-
-	stream1, err := cli1.NamespaceLock(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	stream2, err := cli2.NamespaceLock(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	store := map[string]bool{} // race detector
-	const key = "key"
-
-	lock := func(stream beacon.BeaconService_NamespaceLockClient) error {
-		err := stream.Send(&beacon.LockRequest{
-			Operation: beacon.LockOp_LOCK_OP_LOCK,
-		})
-		if err != nil {
-			return err
-		}
-		resp, err := stream.Recv()
-		if err != nil {
-			return err
-		}
-		if resp.GetState() != beacon.LockState_LOCK_STATE_LOCKED {
-			return fmt.Errorf("not locked: %s", resp.GetState())
-		}
-		return nil
-	}
-
-	unlock := func(stream beacon.BeaconService_NamespaceLockClient) error {
-		err := stream.Send(&beacon.LockRequest{
-			Operation: beacon.LockOp_LOCK_OP_UNLOCK,
-		})
-		if err != nil {
-			return err
-		}
-		resp, err := stream.Recv()
-		if err != nil {
-			return err
-		}
-		if resp.GetState() != beacon.LockState_LOCK_STATE_UNLOCKED {
-			return fmt.Errorf("not unlocked: %s", resp.GetState())
-		}
-		return nil
-	}
-
-	stop := make(chan bool)
-	defer close(stop)
-	go func() {
-		for {
-			err := lock(stream1)
-			if err != nil {
-				goto check
-			}
-			store[key] = true
-			time.Sleep(100 * time.Microsecond)
-			err = unlock(stream1)
-			if err != nil {
-				goto check
-			}
-		check:
-			select {
-			case <-stop:
-				_ = stream1.CloseSend()
-				return
-			default:
-				if err != nil {
-					panic(err)
-				}
-			}
-		}
-	}()
-	done := make(chan bool, 1)
-	go func() {
-		for i := 0; i < 1000; i++ {
-			time.Sleep(100 * time.Microsecond)
-			err := lock(stream2)
-			if err != nil {
-				panic(err)
-			}
-			store[key] = false
-			err = unlock(stream2)
-			if err != nil {
-				panic(err)
-			}
-		}
-		_ = stream2.CloseSend()
-		done <- true
-	}()
-	select {
-	case <-done:
-	case <-time.After(10 * time.Second):
-		t.Fatalf("can't acquire lock in 10 seconds")
-	}
-}*/
-
-func lock(t *testing.T, stream beacon.BeaconService_NamespaceLockClient, op beacon.LockOp) (*beacon.LockResponse, error) {
+func lock(t *testing.T, stream beacon.BeaconService_LockForNamespaceClient, op beacon.LockOp) (*beacon.LockResponse, error) {
 	t.Helper()
 
 	err := stream.Send(&beacon.LockRequest{
@@ -130,17 +26,17 @@ func lock(t *testing.T, stream beacon.BeaconService_NamespaceLockClient, op beac
 	return stream.Recv()
 }
 
-func TestBeaconServer_NamespaceLock_Error(t *testing.T) {
+func TestBeaconServer_LockForNamespace_Error(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
 	t.Run("trying second lock", func(t *testing.T) {
 		t.Parallel()
 
-		connect := startServer(t, nil, nil)
+		connect := startServer(t, nil)
 		cli := beacon.NewBeaconServiceClient(connect(t))
 
-		stream, err := cli.NamespaceLock(ctx)
+		stream, err := cli.LockForNamespace(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -164,10 +60,10 @@ func TestBeaconServer_NamespaceLock_Error(t *testing.T) {
 	t.Run("unlock of unlocked", func(t *testing.T) {
 		t.Parallel()
 
-		connect := startServer(t, nil, nil)
+		connect := startServer(t, nil)
 		cli := beacon.NewBeaconServiceClient(connect(t))
 
-		stream, err := cli.NamespaceLock(ctx)
+		stream, err := cli.LockForNamespace(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -206,110 +102,17 @@ func keyedLock(t *testing.T, stream keyedLockStream, key string, op beacon.LockO
 	return stream.Recv()
 }
 
-/*func TestBeaconServer_BuildLock(t *testing.T) {
+func TestBeaconServer_LockForBuild_Error(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	connect := startServer(t, nil, nil)
-	cli1 := beacon.NewBeaconServiceClient(connect(t))
-	cli2 := beacon.NewBeaconServiceClient(connect(t))
-
-	stream1, err := cli1.BuildLock(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	stream2, err := cli2.BuildLock(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	store := map[string]bool{} // race detector
-	const key = "key"
-
-	image := unique.Must(t)
-	lock := func(t *testing.T, stream beacon.BeaconService_BuildLockClient) error {
-		resp, err := keyedLock(t, stream, image, beacon.LockOp_LOCK_OP_LOCK)
-		if err != nil {
-			return err
-		}
-		if resp.GetState() != beacon.LockState_LOCK_STATE_LOCKED {
-			return fmt.Errorf("not locked: %s", resp.GetState())
-		}
-		return nil
-	}
-
-	unlock := func(t *testing.T, stream beacon.BeaconService_BuildLockClient) error {
-		resp, err := keyedLock(t, stream, image, beacon.LockOp_LOCK_OP_UNLOCK)
-		if err != nil {
-			return err
-		}
-		if resp.GetState() != beacon.LockState_LOCK_STATE_UNLOCKED {
-			return fmt.Errorf("not unlocked: %s", resp.GetState())
-		}
-		return nil
-	}
-
-	stop := make(chan bool)
-	defer close(stop)
-	go func() {
-		for {
-			err := lock(nil, stream1)
-			if err != nil {
-				goto check
-			}
-			store[key] = true
-			time.Sleep(100 * time.Microsecond)
-			err = unlock(nil, stream1)
-			if err != nil {
-				goto check
-			}
-		check:
-			select {
-			case <-stop:
-				_ = stream1.CloseSend()
-				return
-			default:
-				if err != nil {
-					panic(err)
-				}
-			}
-		}
-	}()
-	done := make(chan bool, 1)
-	go func() {
-		for i := 0; i < 1000; i++ {
-			time.Sleep(100 * time.Microsecond)
-			err := lock(t, stream2)
-			if err != nil {
-				panic(err)
-			}
-			store[key] = false
-			err = unlock(t, stream2)
-			if err != nil {
-				panic(err)
-			}
-		}
-		_ = stream2.CloseSend()
-		done <- true
-	}()
-	select {
-	case <-done:
-	case <-time.After(10 * time.Second):
-		t.Fatalf("can't acquire lock in 10 seconds")
-	}
-}*/
-
-func TestBeaconServer_BuildLock_Error(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	connect := startServer(t, nil, nil)
+	connect := startServer(t, nil)
 	cli := beacon.NewBeaconServiceClient(connect(t))
 
 	t.Run("empty key", func(t *testing.T) {
 		t.Parallel()
 
-		stream, err := cli.BuildLock(ctx)
+		stream, err := cli.LockForBuild(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -325,7 +128,7 @@ func TestBeaconServer_BuildLock_Error(t *testing.T) {
 	t.Run("trying second lock", func(t *testing.T) {
 		t.Parallel()
 
-		stream, err := cli.BuildLock(ctx)
+		stream, err := cli.LockForBuild(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -350,7 +153,7 @@ func TestBeaconServer_BuildLock_Error(t *testing.T) {
 	t.Run("unlock of unlocked", func(t *testing.T) {
 		t.Parallel()
 
-		stream, err := cli.BuildLock(ctx)
+		stream, err := cli.LockForBuild(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -366,110 +169,17 @@ func TestBeaconServer_BuildLock_Error(t *testing.T) {
 	})
 }
 
-/*func TestBeaconServer_InitContainerLock(t *testing.T) {
+func TestBeaconServer_LockForContainerSetup_Error(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	connect := startServer(t, nil, nil)
-	cli1 := beacon.NewBeaconServiceClient(connect(t))
-	cli2 := beacon.NewBeaconServiceClient(connect(t))
-
-	stream1, err := cli1.InitContainerLock(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	stream2, err := cli2.InitContainerLock(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	store := map[string]bool{} // race detector
-	const key = "key"
-
-	name := unique.Must(t)
-	lock := func(t *testing.T, stream beacon.BeaconService_InitContainerLockClient) error {
-		resp, err := keyedLock(t, stream, name, beacon.LockOp_LOCK_OP_LOCK)
-		if err != nil {
-			return err
-		}
-		if resp.GetState() != beacon.LockState_LOCK_STATE_LOCKED {
-			return fmt.Errorf("not locked: %s", resp.GetState())
-		}
-		return nil
-	}
-
-	unlock := func(t *testing.T, stream beacon.BeaconService_InitContainerLockClient) error {
-		resp, err := keyedLock(t, stream, name, beacon.LockOp_LOCK_OP_UNLOCK)
-		if err != nil {
-			return err
-		}
-		if resp.GetState() != beacon.LockState_LOCK_STATE_UNLOCKED {
-			return fmt.Errorf("not unlocked: %s", resp.GetState())
-		}
-		return nil
-	}
-
-	stop := make(chan bool)
-	defer close(stop)
-	go func() {
-		for {
-			err := lock(nil, stream1)
-			if err != nil {
-				goto check
-			}
-			store[key] = true
-			time.Sleep(100 * time.Microsecond)
-			err = unlock(nil, stream1)
-			if err != nil {
-				goto check
-			}
-		check:
-			select {
-			case <-stop:
-				_ = stream1.CloseSend()
-				return
-			default:
-				if err != nil {
-					panic(err)
-				}
-			}
-		}
-	}()
-	done := make(chan bool, 1)
-	go func() {
-		for i := 0; i < 1000; i++ {
-			time.Sleep(100 * time.Microsecond)
-			err := lock(t, stream2)
-			if err != nil {
-				panic(err)
-			}
-			store[key] = false
-			err = unlock(t, stream2)
-			if err != nil {
-				panic(err)
-			}
-		}
-		_ = stream2.CloseSend()
-		done <- true
-	}()
-	select {
-	case <-done:
-	case <-time.After(10 * time.Second):
-		t.Fatalf("can't acquire lock in 10 seconds")
-	}
-}*/
-
-func TestBeaconServer_InitContainerLock_Error(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	connect := startServer(t, nil, nil)
+	connect := startServer(t, nil)
 	cli := beacon.NewBeaconServiceClient(connect(t))
 
 	t.Run("empty key", func(t *testing.T) {
 		t.Parallel()
 
-		stream, err := cli.InitContainerLock(ctx)
+		stream, err := cli.LockForContainerSetup(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -485,7 +195,7 @@ func TestBeaconServer_InitContainerLock_Error(t *testing.T) {
 	t.Run("trying second lock", func(t *testing.T) {
 		t.Parallel()
 
-		stream, err := cli.InitContainerLock(ctx)
+		stream, err := cli.LockForContainerSetup(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -510,7 +220,7 @@ func TestBeaconServer_InitContainerLock_Error(t *testing.T) {
 	t.Run("unlock of unlocked", func(t *testing.T) {
 		t.Parallel()
 
-		stream, err := cli.InitContainerLock(ctx)
+		stream, err := cli.LockForContainerSetup(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -526,14 +236,27 @@ func TestBeaconServer_InitContainerLock_Error(t *testing.T) {
 	})
 }
 
-/*func TestBeaconServer_AcquireContainerLock(t *testing.T) {
+func TestBeaconServer_AcquireContainerLock(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	connect := startServer(t, nil, nil)
+	connect := startServer(t, nil)
 	cli := beacon.NewBeaconServiceClient(connect(t))
 
-	anyLock := func(t *testing.T, stream beacon.BeaconService_AcquireContainerLockClient, name string, op beacon.AcquireOp) *beacon.LockResponse {
+	newStream := func(t *testing.T) beacon.BeaconService_AcquireContainerLockClient {
+		t.Helper()
+
+		stream, err := cli.AcquireContainerLock(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			_ = stream.CloseSend()
+		})
+		return stream
+	}
+
+	lock := func(t *testing.T, stream beacon.BeaconService_AcquireContainerLockClient, name string, op beacon.AcquireOp) (*beacon.AcquireLockResponse, error) {
 		t.Helper()
 		err := stream.Send(&beacon.AcquireLockRequest{
 			Key:       name,
@@ -542,193 +265,124 @@ func TestBeaconServer_InitContainerLock_Error(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		resp, err := stream.Recv()
-		if err != nil {
-			t.Fatal(err)
-		}
-		return resp
+		return stream.Recv()
 	}
 
-	lock := func(t *testing.T, name string) (time.Time, func()) {
+	assertError := func(t *testing.T, resp *beacon.AcquireLockResponse, err error) {
 		t.Helper()
+		if err == nil {
+			t.Fatalf("error expected but succeeded: %#v", resp)
+		}
+	}
 
-		stream, err := cli.AcquireContainerLock(ctx)
-		if err != nil {
-			t.Fatal(err)
+	t.Run("empty key", func(t *testing.T) {
+		t.Parallel()
+
+		resp, err := lock(t, newStream(t), "", beacon.AcquireOp_ACQUIRE_OP_LOCK)
+		assertError(t, resp, err)
+	})
+
+	t.Run("trying second lock", func(t *testing.T) {
+		t.Parallel()
+
+		operations := []beacon.AcquireOp{
+			beacon.AcquireOp_ACQUIRE_OP_LOCK,
+			beacon.AcquireOp_ACQUIRE_OP_SHARED_LOCK,
+			beacon.AcquireOp_ACQUIRE_OP_INIT_LOCK,
+			beacon.AcquireOp_ACQUIRE_OP_INIT_SHARED_LOCK,
 		}
-		resp := anyLock(t, stream, name, beacon.AcquireOp_ACQUIRE_OP_LOCK)
-		if resp.State != beacon.LockState_LOCK_STATE_LOCKED {
-			t.Fatalf("not locked: %s", resp.GetState())
+		for _, op := range operations {
+			op := op
+			t.Run(op.String(), func(t *testing.T) {
+				t.Parallel()
+				stream := newStream(t)
+				name := unique.Must(t)
+				_, err := lock(t, stream, name, op)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				resp, err := lock(t, stream, name, op)
+				assertError(t, resp, err)
+			})
 		}
-		return time.Now(), func() {
-			t.Helper()
-			resp := anyLock(t, stream, name, beacon.AcquireOp_ACQUIRE_OP_UNLOCK)
-			if resp.State != beacon.LockState_LOCK_STATE_UNLOCKED {
-				t.Fatalf("not unlocked: %s", resp.GetState())
-			}
-			err = stream.CloseSend()
+	})
+
+	t.Run("unlock on unlocked key", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("unlocked", func(t *testing.T) {
+			t.Parallel()
+			resp, err := lock(t, newStream(t), unique.Must(t), beacon.AcquireOp_ACQUIRE_OP_UNLOCK)
+			assertError(t, resp, err)
+		})
+
+		t.Run("different key", func(t *testing.T) {
+			t.Parallel()
+			stream := newStream(t)
+			_, err := lock(t, stream, unique.Must(t), beacon.AcquireOp_ACQUIRE_OP_LOCK)
 			if err != nil {
 				t.Fatal(err)
 			}
-		}
-	}
+			resp, err := lock(t, stream, unique.Must(t), beacon.AcquireOp_ACQUIRE_OP_UNLOCK)
+			assertError(t, resp, err)
+		})
+	})
 
-	rLock := func(t *testing.T, name string) (time.Time, func()) {
-		t.Helper()
-
-		stream, err := cli.AcquireContainerLock(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp := anyLock(t, stream, name, beacon.AcquireOp_ACQUIRE_OP_SHARED_LOCK)
-		if resp.State != beacon.LockState_LOCK_STATE_SHARED_LOCKED {
-			t.Fatalf("not locked: %s", resp.GetState())
-		}
-		return time.Now(), func() {
-			t.Helper()
-			resp := anyLock(t, stream, name, beacon.AcquireOp_ACQUIRE_OP_UNLOCK)
-			if resp.State != beacon.LockState_LOCK_STATE_UNLOCKED {
-				t.Fatalf("not unlocked: %s", resp.GetState())
-			}
-			err = stream.CloseSend()
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-
-	t.Run("double exclusive lock", func(t *testing.T) {
+	t.Run("set init result on unlocked key", func(t *testing.T) {
 		t.Parallel()
 
-		name := unique.Must(t)
-		order := make(chan struct{})
-
-		var first, second time.Time
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			var unlock func()
-			first, unlock = lock(t, name)
-			close(order)
-			time.Sleep(time.Millisecond * 500)
-			unlock()
-		}()
-		go func() {
-			defer wg.Done()
-			var unlock func()
-			<-order
-			second, unlock = lock(t, name)
-			unlock()
-		}()
-		wg.Wait()
-
-		if !first.Before(second) {
-			t.Fatalf("unexpected lock order: first=%s second=%s", first, second)
+		operations := []beacon.AcquireOp{
+			beacon.AcquireOp_ACQUIRE_OP_SET_INIT_DONE,
+			beacon.AcquireOp_ACQUIRE_OP_SET_INIT_FAILED,
 		}
-		if second.Sub(first) < time.Millisecond*500 {
-			t.Fatal("too early")
+
+		for _, op := range operations {
+			op := op
+			t.Run(op.String(), func(t *testing.T) {
+				t.Parallel()
+
+				t.Run("unlocked", func(t *testing.T) {
+					t.Parallel()
+					resp, err := lock(t, newStream(t), unique.Must(t), op)
+					assertError(t, resp, err)
+				})
+
+				t.Run("different key", func(t *testing.T) {
+					t.Parallel()
+					stream := newStream(t)
+					_, err := lock(t, stream, unique.Must(t), beacon.AcquireOp_ACQUIRE_OP_INIT_LOCK)
+					if err != nil {
+						t.Fatal(err)
+					}
+					resp, err := lock(t, stream, unique.Must(t), op)
+					assertError(t, resp, err)
+				})
+			})
 		}
 	})
 
-	t.Run("double shared lock", func(t *testing.T) {
+	t.Run("set init result on lock without init", func(t *testing.T) {
 		t.Parallel()
 
-		name := unique.Must(t)
-		start := time.Now()
+		operations := []beacon.AcquireOp{
+			beacon.AcquireOp_ACQUIRE_OP_SET_INIT_DONE,
+			beacon.AcquireOp_ACQUIRE_OP_SET_INIT_FAILED,
+		}
 
-		var first, second time.Time
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			var unlock func()
-			first, unlock = rLock(t, name)
-			time.Sleep(time.Millisecond * 500)
-			unlock()
-		}()
-		go func() {
-			defer wg.Done()
-			var unlock func()
-			second, unlock = rLock(t, name)
-			time.Sleep(time.Millisecond * 500)
-			unlock()
-		}()
-		wg.Wait()
-
-		firstDur := first.Sub(start)
-		secondDur := second.Sub(start)
-		if firstDur > time.Millisecond*500 || secondDur > time.Millisecond*500 {
-			t.Fatalf("it takes too long: first=%s, second=%s", firstDur, secondDur)
+		for _, op := range operations {
+			op := op
+			t.Run(op.String(), func(t *testing.T) {
+				t.Parallel()
+				stream := newStream(t)
+				name := unique.Must(t)
+				_, err := lock(t, stream, name, beacon.AcquireOp_ACQUIRE_OP_LOCK)
+				if err != nil {
+					t.Fatal(err)
+				}
+				resp, err := lock(t, stream, name, op)
+				assertError(t, resp, err)
+			})
 		}
 	})
-
-	t.Run("shared lock during exclusive lock", func(t *testing.T) {
-		t.Parallel()
-
-		name := unique.Must(t)
-		order := make(chan struct{})
-
-		var first, second time.Time
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			var unlock func()
-			first, unlock = lock(t, name)
-			close(order)
-			time.Sleep(time.Millisecond * 500)
-			unlock()
-		}()
-		go func() {
-			defer wg.Done()
-			var unlock func()
-			<-order
-			second, unlock = rLock(t, name)
-			unlock()
-		}()
-		wg.Wait()
-
-		if !first.Before(second) {
-			t.Fatalf("unexpected lock order: first=%s second=%s", first, second)
-		}
-		if second.Sub(first) < time.Millisecond*500 {
-			t.Fatal("too early")
-		}
-	})
-
-	t.Run("exclusive lock during shared lock", func(t *testing.T) {
-		t.Parallel()
-
-		name := unique.Must(t)
-		order := make(chan struct{})
-
-		var first, second time.Time
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			var unlock func()
-			first, unlock = rLock(t, name)
-			close(order)
-			time.Sleep(time.Millisecond * 500)
-			unlock()
-		}()
-		go func() {
-			defer wg.Done()
-			var unlock func()
-			<-order
-			second, unlock = lock(t, name)
-			unlock()
-		}()
-		wg.Wait()
-
-		if !first.Before(second) {
-			t.Fatalf("unexpected lock order: first=%s second=%s", first, second)
-		}
-		if second.Sub(first) < time.Millisecond*500 {
-			t.Fatal("too early")
-		}
-	})
-
-}*/
+}
