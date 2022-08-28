@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/daichitakahashi/confort/internal/beaconutil"
+	"github.com/daichitakahashi/confort/internal/exclusion"
 	"github.com/daichitakahashi/confort/proto/beacon"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -95,7 +96,7 @@ func WithBeacon(conn *Connection) NewOption {
 func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func()) {
 	tb.Helper()
 
-	var ex ExclusionControl = NewExclusionControl()
+	var ex exclusion.Control = exclusion.NewControl()
 	var skipDeletion bool
 	var beaconAddr string
 
@@ -131,9 +132,9 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 		case identOptionBeacon{}:
 			c := opt.Value().(*Connection)
 			if c.Enabled() {
-				ex = &beaconControl{
-					cli: beacon.NewBeaconServiceClient(c.conn),
-				}
+				ex = exclusion.NewBeaconControl(
+					beacon.NewBeaconServiceClient(c.conn),
+				)
 				skipDeletion = true
 				beaconAddr = c.addr
 			}
@@ -190,7 +191,7 @@ type Confort struct {
 	backend        Backend
 	namespace      Namespace
 	defaultTimeout time.Duration
-	ex             ExclusionControl
+	ex             exclusion.Control
 }
 
 func applyTimeout(ctx context.Context, defaultTimeout time.Duration) (context.Context, context.CancelFunc) {
@@ -573,51 +574,23 @@ func (cft *Confort) use(tb testing.TB, ctx context.Context, name string, exclusi
 	if err != nil {
 		tb.Fatal(err)
 	}
-	var unlocked bool
-	defer func() {
-		if !unlocked {
-			unlock()
-		}
-	}()
+	defer unlock()
 
 	ports, err := cft.namespace.StartContainer(ctx, name)
 	if err != nil {
 		tb.Fatalf("confort: %s", err)
 	}
-	var release func()
-	if !exclusive && initFunc != nil {
-		downgrade, cancel, ok, err := cft.ex.TryLockForContainerInitAndUse(ctx, name)
-		if err != nil {
-			tb.Fatal(err)
-		}
-		if ok {
-			err = initFunc(ctx)
-			if err != nil {
-				cancel()
-				tb.Fatal(err)
-			}
-		}
-		release, err = downgrade()
-		if err != nil {
-			cancel()
-			tb.Fatal(err)
-		}
-	} else {
-		release, err = cft.ex.LockForContainerUse(ctx, name, exclusive)
-		if err != nil {
-			tb.Fatal(err)
-		}
-		if initFunc != nil {
-			err = initFunc(ctx)
-			if err != nil {
-				release()
-				tb.Fatalf("initFunc: %s", err)
-			}
+
+	var init func() error
+	if initFunc != nil {
+		init = func() error {
+			return initFunc(ctx)
 		}
 	}
-
-	unlock()
-	unlocked = true
+	release, err := cft.ex.LockForContainerUse(ctx, name, exclusive, init)
+	if err != nil {
+		tb.Fatalf("confort: %s", err)
+	}
 
 	if releaseFunc != nil {
 		*releaseFunc = release
