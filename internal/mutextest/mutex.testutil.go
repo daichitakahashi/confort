@@ -25,7 +25,7 @@ func TestNamespaceLock(t *testing.T, ex confort.ExclusionControl) {
 	defer close(stop)
 	go func() {
 		for {
-			unlock, err := ex.NamespaceLock(ctx)
+			unlock, err := ex.LockForNamespace(ctx)
 			if err != nil {
 				goto check
 			}
@@ -47,7 +47,7 @@ func TestNamespaceLock(t *testing.T, ex confort.ExclusionControl) {
 	go func() {
 		for i := 0; i < 1000; i++ {
 			time.Sleep(100 * time.Microsecond)
-			unlock, err := ex.NamespaceLock(ctx)
+			unlock, err := ex.LockForNamespace(ctx)
 			if err != nil {
 				panic(err)
 			}
@@ -75,7 +75,7 @@ func TestBuildLock(t *testing.T, ex confort.ExclusionControl) {
 	defer close(stop)
 	go func() {
 		for {
-			unlock, err := ex.BuildLock(ctx, image)
+			unlock, err := ex.LockForBuild(ctx, image)
 			if err != nil {
 				goto check
 			}
@@ -97,7 +97,7 @@ func TestBuildLock(t *testing.T, ex confort.ExclusionControl) {
 	go func() {
 		for i := 0; i < 1000; i++ {
 			time.Sleep(100 * time.Microsecond)
-			unlock, err := ex.BuildLock(ctx, image)
+			unlock, err := ex.LockForBuild(ctx, image)
 			if err != nil {
 				panic(err)
 			}
@@ -125,7 +125,7 @@ func TestInitContainerLock(t *testing.T, ex confort.ExclusionControl) {
 	defer close(stop)
 	go func() {
 		for {
-			unlock, err := ex.InitContainerLock(ctx, name)
+			unlock, err := ex.LockForContainerSetup(ctx, name)
 			if err != nil {
 				goto check
 			}
@@ -147,7 +147,7 @@ func TestInitContainerLock(t *testing.T, ex confort.ExclusionControl) {
 	go func() {
 		for i := 0; i < 1000; i++ {
 			time.Sleep(100 * time.Microsecond)
-			unlock, err := ex.InitContainerLock(ctx, name)
+			unlock, err := ex.LockForContainerSetup(ctx, name)
 			if err != nil {
 				panic(err)
 			}
@@ -174,7 +174,7 @@ func TestAcquireContainerLock(t *testing.T, ex confort.ExclusionControl) {
 	stop := make(chan bool)
 	go func() {
 		for {
-			unlock, err := ex.AcquireContainerLock(ctx, name, false)
+			unlock, err := ex.LockForContainerUse(ctx, name, false)
 			if err != nil {
 				goto check
 			}
@@ -197,7 +197,7 @@ func TestAcquireContainerLock(t *testing.T, ex confort.ExclusionControl) {
 	go func() {
 		for i := 0; i < 1000; i++ {
 			time.Sleep(100 * time.Microsecond)
-			unlock, err := ex.AcquireContainerLock(ctx, name, true)
+			unlock, err := ex.LockForContainerUse(ctx, name, true)
 			if err != nil {
 				panic(err)
 			}
@@ -228,7 +228,7 @@ func TestTryAcquireContainerInitLock(t *testing.T, ex confort.ExclusionControl, 
 	} else {
 		started := make(chan struct{})
 		go func() {
-			unlock, err := ex.AcquireContainerLock(ctx, name, true)
+			unlock, err := ex.LockForContainerUse(ctx, name, true)
 			if err != nil {
 				panic(err)
 			}
@@ -246,7 +246,7 @@ func TestTryAcquireContainerInitLock(t *testing.T, ex confort.ExclusionControl, 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			downgrade, _, ok, err := ex.TryAcquireContainerInitLock(ctx, name)
+			downgrade, _, ok, err := ex.TryLockForContainerInitAndUse(ctx, name)
 			if err != nil {
 				panic(err)
 			}

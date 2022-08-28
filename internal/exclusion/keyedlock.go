@@ -1,4 +1,4 @@
-package keyedlock
+package exclusion
 
 import (
 	"context"
@@ -11,7 +11,7 @@ type KeyedLock struct {
 	m *sync.Map
 }
 
-func New() *KeyedLock {
+func NewKeyedLock() *KeyedLock {
 	return &KeyedLock{
 		m: new(sync.Map),
 	}

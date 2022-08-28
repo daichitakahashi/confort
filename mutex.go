@@ -5,39 +5,39 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/daichitakahashi/confort/internal/keyedlock"
+	"github.com/daichitakahashi/confort/internal/exclusion"
 	"github.com/daichitakahashi/confort/proto/beacon"
 )
 
 type ExclusionControl interface {
-	NamespaceLock(ctx context.Context) (func(), error)
-	BuildLock(ctx context.Context, image string) (func(), error)
-	InitContainerLock(ctx context.Context, name string) (func(), error)
-	AcquireContainerLock(ctx context.Context, name string, exclusive bool) (func(), error)
-	TryAcquireContainerInitLock(ctx context.Context, name string) (downgrade func() (func(), error), cancel func(), ok bool, _ error)
+	LockForNamespace(ctx context.Context) (func(), error)
+	LockForBuild(ctx context.Context, image string) (func(), error)
+	LockForContainerSetup(ctx context.Context, name string) (func(), error)
+	LockForContainerUse(ctx context.Context, name string, exclusive bool) (func(), error)
+	TryLockForContainerInitAndUse(ctx context.Context, name string) (downgrade func() (func(), error), cancel func(), ok bool, _ error)
 }
 
 type exclusionControl struct {
 	namespace sync.Mutex
-	build     *keyedlock.KeyedLock
-	init      *keyedlock.KeyedLock
-	container *keyedlock.KeyedLock
+	build     *exclusion.KeyedLock
+	init      *exclusion.KeyedLock
+	container *exclusion.KeyedLock
 }
 
 func NewExclusionControl() *exclusionControl {
 	return &exclusionControl{
-		build:     keyedlock.New(),
-		init:      keyedlock.New(),
-		container: keyedlock.New(),
+		build:     exclusion.NewKeyedLock(),
+		init:      exclusion.NewKeyedLock(),
+		container: exclusion.NewKeyedLock(),
 	}
 }
 
-func (c *exclusionControl) NamespaceLock(_ context.Context) (func(), error) {
+func (c *exclusionControl) LockForNamespace(_ context.Context) (func(), error) {
 	c.namespace.Lock()
 	return c.namespace.Unlock, nil
 }
 
-func (c *exclusionControl) BuildLock(ctx context.Context, image string) (func(), error) {
+func (c *exclusionControl) LockForBuild(ctx context.Context, image string) (func(), error) {
 	err := c.build.Lock(ctx, image)
 	if err != nil {
 		return nil, err
@@ -47,7 +47,7 @@ func (c *exclusionControl) BuildLock(ctx context.Context, image string) (func(),
 	}, nil
 }
 
-func (c *exclusionControl) InitContainerLock(ctx context.Context, name string) (func(), error) {
+func (c *exclusionControl) LockForContainerSetup(ctx context.Context, name string) (func(), error) {
 	err := c.init.Lock(ctx, name)
 	if err != nil {
 		return nil, err
@@ -57,7 +57,7 @@ func (c *exclusionControl) InitContainerLock(ctx context.Context, name string) (
 	}, nil
 }
 
-func (c *exclusionControl) AcquireContainerLock(ctx context.Context, name string, exclusive bool) (func(), error) {
+func (c *exclusionControl) LockForContainerUse(ctx context.Context, name string, exclusive bool) (func(), error) {
 	if exclusive {
 		err := c.container.Lock(ctx, name)
 		if err != nil {
@@ -77,7 +77,7 @@ func (c *exclusionControl) AcquireContainerLock(ctx context.Context, name string
 	}, nil
 }
 
-func (c *exclusionControl) TryAcquireContainerInitLock(ctx context.Context, name string) (downgrade func() (func(), error), cancel func(), ok bool, _ error) {
+func (c *exclusionControl) TryLockForContainerInitAndUse(ctx context.Context, name string) (downgrade func() (func(), error), cancel func(), ok bool, _ error) {
 	ok = c.container.TryLock(name)
 	if ok {
 		return func() (func(), error) {
@@ -112,7 +112,7 @@ func NewBeaconControl(cli beacon.BeaconServiceClient) *beaconControl {
 	}
 }
 
-func (b *beaconControl) NamespaceLock(ctx context.Context) (func(), error) {
+func (b *beaconControl) LockForNamespace(ctx context.Context) (func(), error) {
 	stream, err := b.cli.NamespaceLock(ctx)
 	if err != nil {
 		return nil, err
@@ -138,7 +138,7 @@ func (b *beaconControl) NamespaceLock(ctx context.Context) (func(), error) {
 	}, nil
 }
 
-func (b *beaconControl) BuildLock(ctx context.Context, image string) (func(), error) {
+func (b *beaconControl) LockForBuild(ctx context.Context, image string) (func(), error) {
 	stream, err := b.cli.BuildLock(ctx)
 	if err != nil {
 		return nil, err
@@ -166,7 +166,7 @@ func (b *beaconControl) BuildLock(ctx context.Context, image string) (func(), er
 	}, nil
 }
 
-func (b *beaconControl) InitContainerLock(ctx context.Context, name string) (func(), error) {
+func (b *beaconControl) LockForContainerSetup(ctx context.Context, name string) (func(), error) {
 	stream, err := b.cli.InitContainerLock(ctx)
 	if err != nil {
 		return nil, err
@@ -194,7 +194,7 @@ func (b *beaconControl) InitContainerLock(ctx context.Context, name string) (fun
 	}, nil
 }
 
-func (b *beaconControl) AcquireContainerLock(ctx context.Context, name string, exclusive bool) (func(), error) {
+func (b *beaconControl) LockForContainerUse(ctx context.Context, name string, exclusive bool) (func(), error) {
 	stream, err := b.cli.AcquireContainerLock(ctx)
 	if err != nil {
 		return nil, err
@@ -226,7 +226,7 @@ func (b *beaconControl) AcquireContainerLock(ctx context.Context, name string, e
 	}, nil
 }
 
-func (b *beaconControl) TryAcquireContainerInitLock(ctx context.Context, name string) (downgrade func() (func(), error), cancel func(), ok bool, _ error) {
+func (b *beaconControl) TryLockForContainerInitAndUse(ctx context.Context, name string) (downgrade func() (func(), error), cancel func(), ok bool, _ error) {
 	stream, err := b.cli.AcquireContainerLock(ctx)
 	if err != nil {
 		return nil, nil, false, err

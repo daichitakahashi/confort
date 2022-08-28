@@ -40,7 +40,7 @@ func (b *beaconServer) NamespaceLock(stream beacon.BeaconService_NamespaceLockSe
 			if unlock != nil {
 				return status.Error(codes.InvalidArgument, "trying second lock")
 			}
-			unlock, err = b.ex.NamespaceLock(ctx)
+			unlock, err = b.ex.LockForNamespace(ctx)
 			if err != nil {
 				return err
 			}
@@ -95,7 +95,7 @@ func (b *beaconServer) BuildLock(stream beacon.BeaconService_BuildLockServer) er
 				return status.Error(codes.InvalidArgument, "trying second lock")
 			}
 			key = k
-			unlock, err = b.ex.BuildLock(ctx, key)
+			unlock, err = b.ex.LockForBuild(ctx, key)
 			if err != nil {
 				return err
 			}
@@ -151,7 +151,7 @@ func (b *beaconServer) InitContainerLock(stream beacon.BeaconService_InitContain
 				return status.Error(codes.InvalidArgument, "trying second lock")
 			}
 			key = k
-			unlock, err = b.ex.InitContainerLock(ctx, key)
+			unlock, err = b.ex.LockForContainerSetup(ctx, key)
 			if err != nil {
 				return err
 			}
@@ -208,7 +208,7 @@ func (b *beaconServer) AcquireContainerLock(stream beacon.BeaconService_AcquireC
 				return status.Error(codes.InvalidArgument, "trying second lock")
 			}
 			key = k
-			unlock, err = b.ex.AcquireContainerLock(ctx, key, true)
+			unlock, err = b.ex.LockForContainerUse(ctx, key, true)
 			if err != nil {
 				return err
 			}
@@ -234,7 +234,7 @@ func (b *beaconServer) AcquireContainerLock(stream beacon.BeaconService_AcquireC
 				return status.Error(codes.InvalidArgument, "trying second lock")
 			}
 			key = k
-			unlock, err = b.ex.AcquireContainerLock(ctx, key, false)
+			unlock, err = b.ex.LockForContainerUse(ctx, key, false)
 			if err != nil {
 				return err
 			}
@@ -249,7 +249,7 @@ func (b *beaconServer) AcquireContainerLock(stream beacon.BeaconService_AcquireC
 				return status.Error(codes.InvalidArgument, "trying second lock")
 			}
 			key = k
-			down, cancel, ok, err := b.ex.TryAcquireContainerInitLock(ctx, key)
+			down, cancel, ok, err := b.ex.TryLockForContainerInitAndUse(ctx, key)
 			if err != nil {
 				return err
 			}

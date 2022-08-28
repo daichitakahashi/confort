@@ -4,6 +4,7 @@ go 1.19
 
 require (
 	github.com/daichitakahashi/gocmd v1.0.0
+	github.com/daichitakahashi/oncewait v1.0.0
 	github.com/daichitakahashi/testingc v0.0.0-20220801231842-40b36baddcd3
 	github.com/docker/cli v20.10.16+incompatible
 	github.com/docker/docker v20.10.11+incompatible

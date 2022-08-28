@@ -1,4 +1,4 @@
-package keyedlock
+package exclusion
 
 import (
 	"context"
@@ -10,7 +10,7 @@ func TestKeyedLock(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	m := New()
+	m := NewKeyedLock()
 
 	timeout := func(t *testing.T, ctx context.Context, timeout time.Duration) context.Context {
 		ctx, cancel := context.WithTimeout(ctx, timeout)
@@ -149,7 +149,7 @@ func TestKeyedLock(t *testing.T) {
 
 func BenchmarkKeyedLock(b *testing.B) {
 	ctx := context.Background()
-	m := New()
+	m := NewKeyedLock()
 
 	key := b.Name()
 

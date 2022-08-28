@@ -99,7 +99,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 	var skipDeletion bool
 	var beaconAddr string
 
-	unlock, err := ex.NamespaceLock(ctx)
+	unlock, err := ex.LockForNamespace(ctx)
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -306,7 +306,7 @@ func (cft *Confort) Build(tb testing.TB, ctx context.Context, b *Build, opts ...
 	if len(buildOption.Tags) == 0 {
 		tb.Fatal("image tag not specified")
 	}
-	unlock, err := cft.ex.BuildLock(ctx, buildOption.Tags[0])
+	unlock, err := cft.ex.LockForBuild(ctx, buildOption.Tags[0])
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -480,7 +480,7 @@ func (cft *Confort) LazyRun(tb testing.TB, ctx context.Context, name string, c *
 	ctx, cancel := applyTimeout(ctx, cft.defaultTimeout)
 	defer cancel()
 
-	unlock, err := cft.ex.InitContainerLock(ctx, name)
+	unlock, err := cft.ex.LockForContainerSetup(ctx, name)
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -509,7 +509,7 @@ func (cft *Confort) Run(tb testing.TB, ctx context.Context, name string, c *Cont
 	ctx, cancel := applyTimeout(ctx, cft.defaultTimeout)
 	defer cancel()
 
-	unlock, err := cft.ex.InitContainerLock(ctx, name)
+	unlock, err := cft.ex.LockForContainerSetup(ctx, name)
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -569,7 +569,7 @@ func (cft *Confort) use(tb testing.TB, ctx context.Context, name string, exclusi
 		}
 	}
 
-	unlock, err := cft.ex.InitContainerLock(ctx, name)
+	unlock, err := cft.ex.LockForContainerSetup(ctx, name)
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -586,7 +586,7 @@ func (cft *Confort) use(tb testing.TB, ctx context.Context, name string, exclusi
 	}
 	var release func()
 	if !exclusive && initFunc != nil {
-		downgrade, cancel, ok, err := cft.ex.TryAcquireContainerInitLock(ctx, name)
+		downgrade, cancel, ok, err := cft.ex.TryLockForContainerInitAndUse(ctx, name)
 		if err != nil {
 			tb.Fatal(err)
 		}
@@ -603,7 +603,7 @@ func (cft *Confort) use(tb testing.TB, ctx context.Context, name string, exclusi
 			tb.Fatal(err)
 		}
 	} else {
-		release, err = cft.ex.AcquireContainerLock(ctx, name, exclusive)
+		release, err = cft.ex.LockForContainerUse(ctx, name, exclusive)
 		if err != nil {
 			tb.Fatal(err)
 		}
