@@ -6,7 +6,7 @@ sqlc:
 
 test:
 	go test -coverprofile=coverage.out.tmp -p 1 -coverpkg=./... ./...
-	cat coverage.out.tmp | grep -v ".pb." | grep -v ".gen." | grep -v ".testutil." > coverage.out
+	cat coverage.out.tmp | grep -v ".pb." | grep -v ".gen." > coverage.out
 	rm coverage.out.tmp
 
 test-cov: test
