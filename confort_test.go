@@ -3,6 +3,7 @@ package confort
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -1336,6 +1337,99 @@ func TestWithPullOptions(t *testing.T) {
 	removed := removeImageIfExists(t, cli, pullImage)
 	if !removed {
 		t.Fatalf("cannot remove pulled image %q", pullImage)
+	}
+}
+
+func TestWithReleaseFunc(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	cft, term := New(t, ctx, WithNamespace(t.Name(), true))
+	t.Cleanup(term)
+
+	cft.Run(t, ctx, "echo", &Container{
+		Image:        imageEcho,
+		ExposedPorts: []string{"80/tcp"},
+		Waiter:       Healthy(),
+	})
+
+	// test that the container is not released until the release is called.
+	var release func()
+	func() {
+		c, cleanup := NewControl()
+		defer cleanup()
+		cft.UseExclusive(c, ctx, "echo", WithReleaseFunc(&release))
+	}()
+
+	use := func() (r any) {
+		defer func() {
+			r = recover()
+		}()
+		c, cleanup := NewControl()
+		defer cleanup()
+		ctx, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+		cft.UseExclusive(c, ctx, "echo")
+		return nil
+	}
+	if use() == nil {
+		release()
+		t.Fatal("timeout expected")
+	}
+
+	release()
+	if v := use(); v != nil {
+		t.Fatalf("unexpected failure: %v", v)
+	}
+}
+
+func TestWithInitFunc(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	cft, term := New(t, ctx, WithNamespace(t.Name(), true))
+	t.Cleanup(term)
+
+	cft.Run(t, ctx, "echo", &Container{
+		Image:        imageEcho,
+		ExposedPorts: []string{"80/tcp"},
+		Waiter:       Healthy(),
+	})
+
+	var try, done int
+	use := func() (r any) {
+		defer func() {
+			r = recover()
+		}()
+		c, cleanup := NewControl()
+		defer cleanup()
+		cft.UseShared(c, ctx, "echo", WithInitFunc(func(ctx context.Context, ports Ports) error {
+			if try++; try < 3 {
+				return errors.New("dummy error")
+			}
+			if len(ports["80/tcp"]) == 0 {
+				return errors.New("port not found")
+			}
+			done++
+			return nil
+		}))
+		return nil
+	}
+
+	for i := 0; i < 5; i++ {
+		v := use()
+		if i < 2 {
+			if v == nil {
+				t.Fatal("expected error on init")
+			}
+			continue
+		}
+		if v != nil {
+			t.Fatalf("unexpected failure: %v", v)
+		}
+	}
+	if done != 1 {
+		t.Fatalf("expected call of init: 1, actual: %d", done)
 	}
 }
 
