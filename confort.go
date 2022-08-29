@@ -541,6 +541,8 @@ type (
 
 func (o useOption) use() UseOption { return o }
 
+// WithReleaseFunc extracts the function to release lock of the container.
+// With this option, the responsibility for releasing the container is passed to the user.
 func WithReleaseFunc(f *func()) UseOption {
 	return useOption{
 		Interface: option.New(identOptionReleaseFunc{}, f),
@@ -549,6 +551,12 @@ func WithReleaseFunc(f *func()) UseOption {
 
 type InitFunc func(ctx context.Context, ports Ports) error
 
+// WithInitFunc sets initializer to set up container using the given port.
+// The init will be performed only once per container, executed with an exclusive lock.
+// If you use a container with Confort.UseShared, the lock state is downgraded to the shared lock after init.
+//
+// The returned error makes the acquired lock released and testing.TB fail.
+// After that, you can attempt to use the container and init again.
 func WithInitFunc(init InitFunc) UseOption {
 	return useOption{
 		Interface: option.New(identOptionInitFunc{}, init),
