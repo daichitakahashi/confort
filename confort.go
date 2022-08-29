@@ -587,6 +587,9 @@ func (cft *Confort) use(tb testing.TB, ctx context.Context, name string, exclusi
 			return initFunc(ctx, ports)
 		}
 	}
+	// If initFunc is not nil, it will be called after acquisition of exclusive lock.
+	// After that, the lock is downgraded to shared lock when exclusive is false.
+	// When initFunc returns error, the acquisition of lock fails.
 	release, err := cft.ex.LockForContainerUse(ctx, name, exclusive, init)
 	if err != nil {
 		tb.Fatalf("confort: %s", err)
