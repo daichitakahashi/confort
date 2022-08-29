@@ -42,26 +42,40 @@ type (
 	}
 )
 
-type Ports map[nat.Port][]string
+type Ports nat.PortMap
 
-func fromPortMap(ports nat.PortMap) Ports {
-	p := make(Ports, len(ports))
-	for port, bindings := range ports {
-		endpoints := make([]string, len(bindings))
-		for i, b := range bindings {
-			endpoints[i] = b.HostIP + ":" + b.HostPort // TODO: specify host ip ???
-		}
-		p[port] = endpoints
+// Binding returns the first value associated with the given container port.
+// If there are no values associated with the port, Binding returns zero value.
+// To access multiple values, use the nat.PortMap directly.
+func (p Ports) Binding(port nat.Port) (b nat.PortBinding) {
+	bindings := p[port]
+	if len(bindings) == 0 {
+		return b
 	}
-	return p
+	return bindings[0]
 }
 
-func (p Ports) Binding(port nat.Port) (string, bool) {
-	bindings, ok := p[port]
-	if !ok || len(bindings) == 0 {
-		return "", false
+// HostPort returns "host:port" style string of the first value associated with the given container port.
+// If there are no values associated with the port, HostPort returns empty string.
+func (p Ports) HostPort(port nat.Port) string {
+	bindings := p[port]
+	if len(bindings) == 0 {
+		return ""
 	}
-	return bindings[0], true
+	return bindings[0].HostIP + ":" + bindings[0].HostPort
+}
+
+// URL returns "scheme://host:port" style string of the first value associated with the given container port.
+// If there are no values associated with the port, URL returns empty string.
+// And if scheme is empty, use "http" as a default scheme.
+func (p Ports) URL(port nat.Port, scheme string) string {
+	if scheme == "" {
+		scheme = "http"
+	}
+	if s := p.HostPort(port); s != "" {
+		return fmt.Sprintf("%s://%s", scheme, s)
+	}
+	return ""
 }
 
 type ResourcePolicy string
@@ -441,7 +455,7 @@ func (d *dockerNamespace) StartContainer(ctx context.Context, name string) (Port
 		return nil, err
 	}
 
-	p := fromPortMap(portMap)
+	p := Ports(portMap)
 	if c.wait != nil {
 		err = c.wait.Wait(ctx, &fetcher{
 			cli:         d.cli,

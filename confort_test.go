@@ -105,8 +105,8 @@ func TestConfort_Run_Communication(t *testing.T) {
 		Waiter:       LogContains("communicator is ready", 1),
 	})
 	portsOne := cft.UseExclusive(t, ctx, "one")
-	hostOne, ok := portsOne.Binding("80/tcp")
-	if !ok {
+	hostOne := portsOne.HostPort("80/tcp")
+	if hostOne == "" {
 		t.Logf("%#v", portsOne)
 		t.Fatal("one: bound port not found")
 	}
@@ -120,8 +120,8 @@ func TestConfort_Run_Communication(t *testing.T) {
 		Waiter:       LogContains("communicator is ready", 1),
 	})
 	portsTwo := cft.UseExclusive(t, ctx, "two")
-	hostTwo, ok := portsTwo.Binding("80/tcp")
-	if !ok {
+	hostTwo := portsTwo.HostPort("80/tcp")
+	if hostTwo == "" {
 		t.Fatal("two: bound port not found")
 	}
 
@@ -164,8 +164,8 @@ func TestConfort_Run_ContainerIdentification(t *testing.T) {
 			Waiter:       Healthy(),
 		})
 		ports := cft.UseShared(t, ctx, containerName)
-		endpoint, ok := ports.Binding(nat.Port(port))
-		if !ok {
+		endpoint := ports.HostPort(nat.Port(port))
+		if endpoint == "" {
 			t.Fatalf("cannot get endpoint of %q: %v", port, ports)
 		}
 		return endpoint, term
@@ -284,8 +284,8 @@ func TestConfort_LazyRun(t *testing.T) {
 		if diff := cmp.Diff(e1, e2); diff != "" {
 			t.Fatal(diff)
 		}
-		endpoint, ok := e1.Binding("80/tcp")
-		if !ok {
+		endpoint := e1.HostPort("80/tcp")
+		if endpoint == "" {
 			t.Fatal("endpoint not found")
 		}
 		assertEchoWorks(t, endpoint)
@@ -316,8 +316,8 @@ func TestConfort_LazyRun(t *testing.T) {
 			t.Fatal(diff)
 		}
 
-		endpoint, ok := e1.Binding("80/tcp")
-		if !ok {
+		endpoint := e1.HostPort("80/tcp")
+		if endpoint == "" {
 			t.Fatal("endpoint not found")
 		}
 		assertEchoWorks(t, endpoint)
@@ -386,8 +386,8 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		Waiter:       Healthy(),
 	})
 	e := cft1.UseShared(t, ctx, "foo-A")
-	hostA, ok := e.Binding("80/tcp")
-	if !ok {
+	hostA := e.HostPort("80/tcp")
+	if hostA == "" {
 		t.Fatal("failed to get host/port")
 	}
 
@@ -402,8 +402,8 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		Waiter:       Healthy(),
 	})
 	e = cft1.UseShared(t, ctx, "foo-B")
-	hostB, ok := e.Binding("80/tcp")
-	if !ok {
+	hostB := e.HostPort("80/tcp")
+	if hostB == "" {
 		t.Fatal("failed to get host/port")
 	}
 
@@ -421,8 +421,8 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		Waiter:       Healthy(),
 	})
 	e = cft2.UseShared(t, ctx, "B")
-	hostB2, ok := e.Binding("80/tcp")
-	if !ok {
+	hostB2 := e.HostPort("80/tcp")
+	if hostB2 == "" {
 		t.Fatal("failed to get host/port")
 	}
 	if hostB != hostB2 {
@@ -438,8 +438,8 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		Waiter:       Healthy(),
 	})
 	e = cft2.UseShared(t, ctx, "C")
-	hostC, ok := e.Binding("80/tcp")
-	if !ok {
+	hostC := e.HostPort("80/tcp")
+	if hostC == "" {
 		t.Fatal("failed to get host/port")
 	}
 
@@ -1147,8 +1147,8 @@ func TestWithHostConfig(t *testing.T) {
 	}))
 
 	ports := cft.UseExclusive(t, ctx, "communicator")
-	host, ok := ports.Binding("80/tcp")
-	if !ok {
+	host := ports.HostPort("80/tcp")
+	if host == "" {
 		t.Fatal("two: bound port not found")
 	}
 
@@ -1189,8 +1189,8 @@ func TestWithNetworkingConfig(t *testing.T) {
 			cfg.Aliases = append(cfg.Aliases, alias)
 		}
 	}))
-	host, ok := cft1.UseExclusive(t, ctx, name).Binding("80/tcp")
-	if !ok {
+	host := cft1.UseExclusive(t, ctx, name).HostPort("80/tcp")
+	if host == "" {
 		t.Fatalf("%s: bound port not found", name)
 	}
 
@@ -1323,8 +1323,8 @@ func TestWithPullOptions(t *testing.T) {
 
 	// check if container works
 	ports := cft.UseShared(t, ctx, containerName)
-	endpoint, ok := ports.Binding("80/tcp")
-	if !ok {
+	endpoint := ports.HostPort("80/tcp")
+	if endpoint == "" {
 		t.Fatal("endpoint not found")
 	}
 	assertEchoWorks(t, endpoint)

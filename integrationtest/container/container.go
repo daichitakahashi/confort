@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -57,12 +56,11 @@ func InitDatabase(tb testing.TB, ctx context.Context, beacon *confort.Connection
 	// release manually
 	defer release()
 
-	endpoint, ok := ports.Binding("5432/tcp")
-	if !ok {
+	binding := ports.Binding("5432/tcp")
+	if binding.HostIP == "" {
 		tb.Fatal("port not found")
 	}
-	_, port, _ := strings.Cut(endpoint, ":")
-	p, err := strconv.ParseUint(port, 10, 16)
+	p, err := strconv.ParseUint(binding.HostPort, 10, 16)
 	if err != nil {
 		tb.Fatal(err)
 	}
