@@ -18,6 +18,13 @@ import (
 	"github.com/lestrrat-go/option"
 )
 
+type Confort struct {
+	backend        Backend
+	namespace      Namespace
+	defaultTimeout time.Duration
+	ex             exclusion.Control
+}
+
 type (
 	NewOption interface {
 		option.Interface
@@ -32,6 +39,7 @@ type (
 	identOptionDefaultTimeout struct{}
 	identOptionResourcePolicy struct{}
 	identOptionBeacon         struct{}
+	identOptionTerminateFunc  struct{}
 	newOption                 struct{ option.Interface }
 )
 
@@ -93,7 +101,15 @@ func WithBeacon(conn *Connection) NewOption {
 	}.new()
 }
 
-func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func()) {
+// WithTerminateFunc extracts the function to release all resources created by Confort.
+// With this option, the responsibility for releasing is passed to the user.
+func WithTerminateFunc(f *func()) NewOption {
+	return newOption{
+		Interface: option.New(identOptionTerminateFunc{}, f),
+	}
+}
+
+func New(tb testing.TB, ctx context.Context, opts ...NewOption) *Confort {
 	tb.Helper()
 
 	var (
@@ -104,9 +120,10 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 		clientOps = []client.Opt{
 			client.FromEnv,
 		}
-		namespace = os.Getenv(beaconutil.NamespaceEnv)
-		timeout   = time.Minute
-		policy    = ResourcePolicyReuse
+		namespace     = os.Getenv(beaconutil.NamespaceEnv)
+		timeout       = time.Minute
+		policy        = ResourcePolicyReuse
+		terminateFunc *func()
 	)
 	if s := os.Getenv(beaconutil.ResourcePolicyEnv); s != "" {
 		policy = ResourcePolicy(s)
@@ -134,6 +151,8 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 				skipDeletion = true
 				beaconAddr = c.addr
 			}
+		case identOptionTerminateFunc{}:
+			terminateFunc = opt.Value().(*func())
 		}
 	}
 	if namespace == "" {
@@ -181,20 +200,18 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 			tb.Log(err)
 		}
 	}
+	if terminateFunc != nil {
+		*terminateFunc = term
+	} else {
+		tb.Cleanup(term)
+	}
 
 	return &Confort{
 		backend:        backend,
 		namespace:      ns,
 		defaultTimeout: timeout,
 		ex:             ex,
-	}, term
-}
-
-type Confort struct {
-	backend        Backend
-	namespace      Namespace
-	defaultTimeout time.Duration
-	ex             exclusion.Control
+	}
 }
 
 func applyTimeout(ctx context.Context, defaultTimeout time.Duration) (context.Context, context.CancelFunc) {
@@ -634,4 +651,9 @@ func (cft *Confort) UseExclusive(tb testing.TB, ctx context.Context, name string
 	tb.Helper()
 
 	return cft.use(tb, ctx, name, true, opts...)
+}
+
+// Network returns docker network representation associated with Confort.
+func (cft *Confort) Network() *types.NetworkResource {
+	return cft.namespace.Network()
 }

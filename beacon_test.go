@@ -52,10 +52,12 @@ func TestConnectBeacon(t *testing.T) {
 	t.Run("confort", func(t *testing.T) {
 		t.Parallel()
 
+		var term func()
 		namespace := strings.ReplaceAll(t.Name(), "/", "_")
-		cft, term := confort.New(t, ctx,
+		cft := confort.New(t, ctx,
 			confort.WithBeacon(beacon),
 			confort.WithNamespace(namespace, true),
+			confort.WithTerminateFunc(&term),
 		)
 		var done bool
 		t.Cleanup(func() {

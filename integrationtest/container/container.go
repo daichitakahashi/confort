@@ -26,11 +26,10 @@ const (
 func InitDatabase(tb testing.TB, ctx context.Context, beacon *confort.Connection) ConnectFunc {
 	tb.Helper()
 
-	cft, cleanup := confort.New(tb, ctx,
+	cft := confort.New(tb, ctx,
 		confort.WithBeacon(beacon),
 		confort.WithNamespace("integrationtest", false),
 	)
-	tb.Cleanup(cleanup)
 
 	cft.Run(tb, ctx, "db", &confort.Container{
 		Image: "postgres:14.4-alpine3.16",

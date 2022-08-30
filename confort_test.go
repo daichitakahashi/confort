@@ -39,7 +39,11 @@ func TestMain(m *testing.M) {
 	c, cleanup := NewControl()
 	defer cleanup()
 
-	cft, term := New(c, ctx, WithNamespace("for-build", false))
+	var term func()
+	cft := New(c, ctx,
+		WithNamespace("for-build", false),
+		WithTerminateFunc(&term),
+	)
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
 		c.Fatal(err)
@@ -92,10 +96,9 @@ func TestConfort_Run_Communication(t *testing.T) {
 
 	ctx := context.Background()
 
-	cft, term := New(t, ctx,
+	cft := New(t, ctx,
 		WithNamespace(t.Name(), false),
 	)
-	t.Cleanup(term)
 
 	cft.Run(t, ctx, "one", &Container{
 		Image: imageCommunicator,
@@ -154,11 +157,11 @@ func TestConfort_Run_ContainerIdentification(t *testing.T) {
 		port          = "80/tcp"
 	)
 
-	createContainer := func(t *testing.T, namespace string) (string, func()) {
+	createContainer := func(t *testing.T, namespace string) string {
 		t.Helper()
 
 		ctx := context.Background()
-		cft, term := New(t, ctx, WithNamespace(namespace, true))
+		cft := New(t, ctx, WithNamespace(namespace, true))
 		cft.Run(t, ctx, containerName, &Container{
 			Image:        imageEcho,
 			ExposedPorts: []string{port},
@@ -169,17 +172,15 @@ func TestConfort_Run_ContainerIdentification(t *testing.T) {
 		if endpoint == "" {
 			t.Fatalf("cannot get endpoint of %q: %v", port, ports)
 		}
-		return endpoint, term
+		return endpoint
 	}
 
-	expectedEndpoint, term := createContainer(t, namespace)
-	t.Cleanup(term)
+	expectedEndpoint := createContainer(t, namespace)
 
 	t.Run(fmt.Sprintf("try to create container %q in same namespace", containerName), func(t *testing.T) {
 		t.Parallel()
 
-		actualEndpoint, term := createContainer(t, namespace)
-		t.Cleanup(term)
+		actualEndpoint := createContainer(t, namespace)
 
 		if expectedEndpoint != actualEndpoint {
 			t.Fatalf("unexpected endpoint: want %q, got: %q", expectedEndpoint, actualEndpoint)
@@ -190,8 +191,7 @@ func TestConfort_Run_ContainerIdentification(t *testing.T) {
 		t.Parallel()
 
 		namespace := uniqueName.Must(t)
-		actualEndpoint, term := createContainer(t, namespace)
-		t.Cleanup(term)
+		actualEndpoint := createContainer(t, namespace)
 
 		if expectedEndpoint == actualEndpoint {
 			t.Fatalf("each endpoint must differ because they are in different namespaces: %q, %q",
@@ -212,10 +212,9 @@ func TestConfort_Run_SameNameButAnotherImage(t *testing.T) {
 	)
 	t.Cleanup(term)
 
-	cft1, term1 := New(t, ctx,
+	cft1 := New(t, ctx,
 		WithNamespace(namespace, true),
 	)
-	t.Cleanup(term1)
 
 	recovered := func() (v any) {
 		defer func() { v = recover() }()
@@ -230,10 +229,9 @@ func TestConfort_Run_SameNameButAnotherImage(t *testing.T) {
 		t.Fatalf("unexpected error: %v", recovered)
 	}
 
-	cft2, term2 := New(t, ctx,
+	cft2 := New(t, ctx,
 		WithNamespace(namespace, true),
 	)
-	t.Cleanup(term2)
 
 	recovered = func() (v any) {
 		defer func() { v = recover() }()
@@ -264,10 +262,9 @@ func TestConfort_LazyRun(t *testing.T) {
 		namespace = uniqueName.Must(t)
 	)
 
-	cft, term := New(t, ctx,
+	cft := New(t, ctx,
 		WithNamespace(namespace, true),
 	)
-	t.Cleanup(term)
 
 	t.Run("Use after LazyRun", func(t *testing.T) {
 		t.Parallel()
@@ -306,10 +303,9 @@ func TestConfort_LazyRun(t *testing.T) {
 		cft.LazyRun(t, ctx, containerName, c)
 		e1 := cft.UseShared(t, ctx, containerName)
 
-		cft2, term := New(t, ctx,
+		cft2 := New(t, ctx,
 			WithNamespace(namespace, true),
 		)
-		t.Cleanup(term)
 
 		cft2.Run(t, ctx, containerName, c)
 		e2 := cft2.UseShared(t, ctx, containerName)
@@ -335,10 +331,9 @@ func TestConfort_LazyRun(t *testing.T) {
 			Waiter:       Healthy(),
 		})
 
-		cft2, term := New(t, ctx,
+		cft2 := New(t, ctx,
 			WithNamespace(namespace, true),
 		)
-		t.Cleanup(term)
 
 		ctl, _ := NewControl()
 
@@ -373,10 +368,9 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 	//          ┗ Container "namespace-foo-B" ┳　Network2
 	//            Container "namespace-foo-C" ┛
 
-	cft1, term1 := New(t, ctx,
+	cft1 := New(t, ctx,
 		WithNamespace(namespaceA, true),
 	)
-	t.Cleanup(term1)
 
 	cft1.Run(t, ctx, "foo-A", &Container{
 		Image: imageCommunicator,
@@ -408,10 +402,9 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		t.Fatal("failed to get host/port")
 	}
 
-	cft2, term2 := New(t, ctx,
+	cft2 := New(t, ctx,
 		WithNamespace(namespaceB, true),
 	)
-	t.Cleanup(term2)
 
 	cft2.Run(t, ctx, "B", &Container{ // same name container
 		Image: imageCommunicator,
@@ -519,11 +512,10 @@ func TestWithClientOptions(t *testing.T) {
 		return resp, err
 	})
 
-	_, term := New(t, ctx,
+	New(t, ctx,
 		WithClientOptions(client.FromEnv, client.WithHTTPClient(httpCli)),
 		WithNamespace(uuid.NewString(), true),
 	)
-	term()
 
 	if logOut.Len() == 0 {
 		t.Fatal("no log output")
@@ -576,8 +568,7 @@ func TestWithNamespace(t *testing.T) {
 			if tc.envNamespace != "" {
 				t.Setenv(beaconutil.NamespaceEnv, tc.envNamespace)
 			}
-			cft, term := New(t, ctx, WithNamespace(tc.optNamespace, tc.force))
-			t.Cleanup(term)
+			cft := New(t, ctx, WithNamespace(tc.optNamespace, tc.force))
 
 			actual := cft.Namespace()
 			if tc.expectedNamespace != actual {
@@ -599,10 +590,9 @@ func TestWithNamespace_empty(t *testing.T) {
 			t.Fatal("expected to fail, but succeeded")
 		}
 	}()
-	_, term := New(c, context.Background(),
+	New(c, context.Background(),
 		WithNamespace("", true),
 	)
-	t.Cleanup(term)
 }
 
 func TestWithDefaultTimeout(t *testing.T) {
@@ -721,8 +711,7 @@ func TestWithDefaultTimeout(t *testing.T) {
 				ctx, cancel = tc.newCtx()
 				t.Cleanup(cancel)
 			}
-			_, term := New(t, ctx, opts...)
-			t.Cleanup(term)
+			New(t, ctx, opts...)
 		})
 	}
 }
@@ -842,8 +831,7 @@ func TestWithResourcePolicy(t *testing.T) {
 
 				// create preceding network
 				networkName := uniqueName.Must(t)
-				precedes, termPrecedes := New(t, ctx, WithNamespace(networkName, true))
-				t.Cleanup(termPrecedes)
+				precedes := New(t, ctx, WithNamespace(networkName, true))
 
 				// try to re-create
 				var cft *Confort
@@ -855,9 +843,10 @@ func TestWithResourcePolicy(t *testing.T) {
 						r = recover()
 					}()
 					c, _ := NewControl()
-					cft, term = New(c, ctx,
+					cft = New(c, ctx,
 						WithNamespace(networkName, true),
 						WithResourcePolicy(tc.policy),
+						WithTerminateFunc(&term),
 					)
 					if cft != nil && cft.namespace != nil {
 						networkID = cft.namespace.Network().ID
@@ -884,10 +873,9 @@ func TestWithResourcePolicy(t *testing.T) {
 				namespacePrefix := uniqueName.Must(t)
 				middleName := uniqueName.Must(t)
 				containerNameSuffix := uniqueName.Must(t)
-				precedes, termPrecedes := New(t, ctx,
+				precedes := New(t, ctx,
 					WithNamespace(fmt.Sprintf("%s-%s", namespacePrefix, middleName), true),
 				)
-				t.Cleanup(termPrecedes)
 
 				precedingContainerID, err := precedes.namespace.CreateContainer(ctx, precedes.namespace.Namespace()+containerNameSuffix, &container.Config{
 					Image: imageEcho,
@@ -906,9 +894,10 @@ func TestWithResourcePolicy(t *testing.T) {
 						r = recover()
 					}()
 					c, _ := NewControl()
-					cft, term = New(c, ctx,
+					cft = New(c, ctx,
 						WithNamespace(namespacePrefix, true),
 						WithResourcePolicy(tc.policy),
+						WithTerminateFunc(&term),
 					)
 					containerID, err = cft.namespace.CreateContainer(ctx, fmt.Sprintf("%s%s-%s", cft.namespace.Namespace(), middleName, containerNameSuffix), &container.Config{
 						Image: imageEcho,
@@ -946,10 +935,9 @@ func TestWithResourcePolicy_invalid(t *testing.T) {
 				t.Fatal("expected to fail, but succeeded")
 			}
 		}()
-		_, term := New(c, context.Background(),
+		New(c, context.Background(),
 			WithNamespace(uuid.NewString(), true),
 		)
-		t.Cleanup(term)
 	})
 
 	t.Run("invalid policy from WithResourcePolicy", func(t *testing.T) {
@@ -962,22 +950,58 @@ func TestWithResourcePolicy_invalid(t *testing.T) {
 				t.Fatal("expected to fail, but succeeded")
 			}
 		}()
-		_, term := New(c, context.Background(),
+		New(c, context.Background(),
 			WithNamespace(uuid.NewString(), true),
 			WithResourcePolicy("invalid"),
 		)
-		t.Cleanup(term)
 	})
+}
+
+func TestWithTerminateFunc(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var nw *types.NetworkResource
+	var term func()
+
+	func() {
+		c, cleanup := NewControl()
+		defer cleanup()
+		cft := New(c, ctx,
+			WithNamespace(t.Name(), true),
+			WithTerminateFunc(&term),
+		)
+		nw = cft.Network()
+	}()
+
+	// check network is alive
+	_, err = cli.NetworkInspect(ctx, nw.ID, types.NetworkInspectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// terminate
+	term()
+
+	// check network is removed
+	actual, err := cli.NetworkInspect(ctx, nw.ID, types.NetworkInspectOptions{})
+	if err == nil {
+		t.Fatalf("network expected to be removed, but exists: name=%q", actual.Name)
+	}
 }
 
 func TestWithImageBuildOptions(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	cft, term := New(t, ctx,
+	cft := New(t, ctx,
 		WithNamespace(t.Name(), true),
 	)
-	t.Cleanup(term)
 
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
@@ -1032,10 +1056,9 @@ func TestWithForceBuild_WithBuildOutput(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	cft, term := New(t, ctx,
+	cft := New(t, ctx,
 		WithNamespace(t.Name(), true),
 	)
-	t.Cleanup(term)
 
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
@@ -1092,10 +1115,9 @@ func TestWithContainerConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cft, term := New(t, ctx,
+	cft := New(t, ctx,
 		WithNamespace(t.Name(), true),
 	)
-	t.Cleanup(term)
 
 	var (
 		label      = "daichitakahashi.confort.test"
@@ -1130,10 +1152,9 @@ func TestWithHostConfig(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	cft, term := New(t, ctx,
+	cft := New(t, ctx,
 		WithNamespace(t.Name(), true),
 	)
-	t.Cleanup(term)
 
 	cft.Run(t, ctx, "communicator", &Container{
 		Image: imageCommunicator,
@@ -1175,8 +1196,7 @@ func TestWithNetworkingConfig(t *testing.T) {
 	)
 
 	// create a communicator with two aliases
-	cft1, term1 := New(t, ctx, WithNamespace(t.Name(), true))
-	t.Cleanup(term1)
+	cft1 := New(t, ctx, WithNamespace(t.Name(), true))
 	cft1.Run(t, ctx, name, &Container{
 		Image: imageCommunicator,
 		Env: map[string]string{
@@ -1212,8 +1232,7 @@ func TestWithConfigConsistency(t *testing.T) {
 	ctx := context.Background()
 
 	namespace := t.Name()
-	cft, term := New(t, ctx, WithNamespace(namespace, true))
-	t.Cleanup(term)
+	cft := New(t, ctx, WithNamespace(namespace, true))
 
 	cft.Run(t, ctx, "echo", &Container{
 		Image:        imageEcho,
@@ -1252,8 +1271,7 @@ func TestWithConfigConsistency(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
-			cft, term := New(t, ctx, WithNamespace(namespace, true))
-			t.Cleanup(term)
+			cft := New(t, ctx, WithNamespace(namespace, true))
 
 			var opts []RunOption
 			if !tc.configConsistencyEnabled {
@@ -1292,8 +1310,10 @@ func TestWithPullOptions(t *testing.T) {
 	namespace := uniqueName.Must(t)
 	containerName := uniqueName.Must(t)
 
-	cft, term := New(t, ctx,
+	var term func()
+	cft := New(t, ctx,
 		WithNamespace(namespace, true),
+		WithTerminateFunc(&term),
 	)
 	t.Cleanup(func() {
 		if t.Failed() {
@@ -1344,8 +1364,7 @@ func TestWithReleaseFunc(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	cft, term := New(t, ctx, WithNamespace(t.Name(), true))
-	t.Cleanup(term)
+	cft := New(t, ctx, WithNamespace(t.Name(), true))
 
 	cft.Run(t, ctx, "echo", &Container{
 		Image:        imageEcho,
@@ -1387,8 +1406,7 @@ func TestWithInitFunc(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	cft, term := New(t, ctx, WithNamespace(t.Name(), true))
-	t.Cleanup(term)
+	cft := New(t, ctx, WithNamespace(t.Name(), true))
 
 	cft.Run(t, ctx, "echo", &Container{
 		Image:        imageEcho,
@@ -1491,10 +1509,9 @@ func TestConfort_Run_UnsupportedStatus(t *testing.T) {
 	namespace := uniqueName.Must(t)
 	containerName := namespace + "-" + "foo"
 
-	cft, term := New(t, ctx,
+	cft := New(t, ctx,
 		WithNamespace(namespace, true),
 	)
-	t.Cleanup(term)
 
 	// start container
 	cli, err := client.NewClientWithOpts(client.FromEnv)
