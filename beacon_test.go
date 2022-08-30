@@ -111,7 +111,6 @@ func TestConnectBeacon(t *testing.T) {
 			t.Fatalf("network %q not found", namespace)
 		}
 		for _, network := range networks {
-			t.Logf("%#v", network)
 			err = cli.NetworkRemove(ctx, network.ID)
 			if err != nil {
 				t.Fatal(err)
