@@ -96,22 +96,18 @@ func WithBeacon(conn *Connection) NewOption {
 func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func()) {
 	tb.Helper()
 
-	var ex exclusion.Control = exclusion.NewControl()
-	var skipDeletion bool
-	var beaconAddr string
+	var (
+		skipDeletion bool
+		beaconAddr   string
+		ex           = exclusion.NewControl()
 
-	unlock, err := ex.LockForNamespace(ctx)
-	if err != nil {
-		tb.Fatal(err)
-	}
-	defer unlock()
-
-	clientOps := []client.Opt{
-		client.FromEnv,
-	}
-	namespace := os.Getenv(beaconutil.NamespaceEnv)
-	timeout := time.Minute
-	policy := ResourcePolicyReuse
+		clientOps = []client.Opt{
+			client.FromEnv,
+		}
+		namespace = os.Getenv(beaconutil.NamespaceEnv)
+		timeout   = time.Minute
+		policy    = ResourcePolicyReuse
+	)
 	if s := os.Getenv(beaconutil.ResourcePolicyEnv); s != "" {
 		policy = ResourcePolicy(s)
 	}
@@ -162,6 +158,13 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) (*Confort, func(
 			beaconutil.LabelAddr: beaconAddr,
 		},
 	}
+
+	unlock, err := ex.LockForNamespace(ctx)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	defer unlock()
+
 	ns, err := backend.Namespace(ctx, namespace)
 	if err != nil {
 		tb.Fatalf("confort: %s", err)
