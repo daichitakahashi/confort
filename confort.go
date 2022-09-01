@@ -102,7 +102,7 @@ func WithBeacon(conn *Connection) NewOption {
 }
 
 // WithTerminateFunc extracts the function to release all resources created by Confort.
-// With this option, the responsibility for releasing is passed to the user.
+// With this option, the responsibility for termination is passed to the user.
 func WithTerminateFunc(f *func()) NewOption {
 	return newOption{
 		Interface: option.New(identOptionTerminateFunc{}, f),
