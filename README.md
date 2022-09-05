@@ -61,14 +61,14 @@ func TestExample(t *testing.T) {
     )
     
     // use container exclusively. the container will be released after the test finished
-	// UseShared is also available
+    // UseShared is also available
     ports := cft.UseExclusive(t, ctx, "db")
     addr := ports.HostPort("5432/tcp")
     // connect PostgreSQL using `addr`
 	
-	unique := confort.UniqueString(12)
-	schema := unique.Must(t)
-	// create a schema using `schema` as its name
+    unique := confort.UniqueString(12)
+    schema := unique.Must(t)
+    // create a schema using `schema` as its name
 }
 ```
 
@@ -97,7 +97,7 @@ func TestExample(t *testing.T) {
         // and helps create unique one.
         confort.WithGlobalUniqueness(beacon, "schema"), 
     )
-	// ...
+    // ...
 }
 ```
 
@@ -121,6 +121,8 @@ configurable with option "-policy").
 ### In your CI script
 Short example of *.gitlab-ci.yml*:
 ```yaml
+variables:
+  CFT_NAMESPACE: $CI_JOB_ID # use job id to avoid conflict with other tests
 test:
   before_script:
     - confort start # launch beacon server
@@ -133,7 +135,7 @@ test:
 Off course, you can also use `confort test` command.
 
 ### Further detail
-Please see the [package doc](https://pkg.go.dev/github.com/daichitakahashi/confort)) and the help of `confort` command:
+Please see the [package doc](https://pkg.go.dev/github.com/daichitakahashi/confort) and the help of `confort` command:
 ```shell
 $ confort help [test/start/stop]
 ```
