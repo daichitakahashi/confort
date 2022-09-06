@@ -203,7 +203,11 @@ If you want to use options of "go test", put them after "--".
 func (t *TestCommand) SetFlags(f *flag.FlagSet) {
 	f.StringVar(&t.namespace, "namespace", "", "namespace")
 	t.policy = beaconutil.ResourcePolicyReuse
-	f.Var(&t.policy, "policy", `resource policy("error", "reuse", "reusable" or "takeover")`)
+	f.Var(&t.policy, "policy", `resource policy
+  * With "error", the existing same resource(network and container) makes test failed
+  * With "reuse", tests reuse resources if already exist. It is default.
+  * "reusable" is similar to "reuse", but created resources with this policy will not be removed after the tests finished
+  * "takeover" is also similar to "reuse", but reused resources with this policy will be removed after the tests`)
 	f.StringVar(&t.goVer, "go", "", `specify go version. "-go=mod" enables to use go version written in your go.mod`)
 	t.goMode = goMode(gocmd.ModeFallback)
 	f.Var(&t.goMode, "go-mode", `use with -go option
