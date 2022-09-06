@@ -83,6 +83,7 @@ type ResourcePolicy string
 const (
 	ResourcePolicyError    ResourcePolicy = beaconutil.ResourcePolicyError
 	ResourcePolicyReuse    ResourcePolicy = beaconutil.ResourcePolicyReuse
+	ResourcePolicyReusable ResourcePolicy = beaconutil.ResourcePolicyReusable
 	ResourcePolicyTakeOver ResourcePolicy = beaconutil.ResourcePolicyTakeOver
 )
 
@@ -133,7 +134,7 @@ func (d *dockerBackend) Namespace(ctx context.Context, namespace string) (Namesp
 	}
 
 	var term []func(context.Context) error
-	if nwCreated || d.policy == ResourcePolicyTakeOver {
+	if (nwCreated && d.policy != ResourcePolicyReusable) || d.policy == ResourcePolicyTakeOver {
 		term = append(term, func(ctx context.Context) error {
 			return d.cli.NetworkRemove(ctx, nw.ID)
 		})
@@ -362,7 +363,7 @@ LOOP:
 		containerID = created.ID
 	}
 
-	if existing == nil || d.policy == ResourcePolicyTakeOver {
+	if (existing == nil && d.policy != ResourcePolicyReusable) || d.policy == ResourcePolicyTakeOver {
 		d.terminate = append(d.terminate, func(ctx context.Context) error {
 			return d.cli.ContainerRemove(ctx, containerID, types.ContainerRemoveOptions{
 				Force:         true,

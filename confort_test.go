@@ -806,6 +806,13 @@ func TestWithResourcePolicy(t *testing.T) {
 			afterContainerTerminated: assertContainer(false),
 		},
 		{
+			policy:                   ResourcePolicyReusable,
+			afterNamespaceCreated:    assertReused,
+			afterNamespaceTerminated: assertNetwork(false),
+			afterContainerCreated:    assertReused,
+			afterContainerTerminated: assertContainer(false),
+		},
+		{
 			policy:                   ResourcePolicyTakeOver,
 			afterNamespaceCreated:    assertReused,
 			afterNamespaceTerminated: assertNetwork(true),
@@ -918,6 +925,76 @@ func TestWithResourcePolicy(t *testing.T) {
 				tc.afterContainerTerminated(t, precedingContainerID)
 			})
 		})
+	}
+}
+
+func TestWithResourcePolicy_reusable(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var term func()
+	cft := New(t, ctx,
+		WithNamespace(t.Name(), true),
+		WithResourcePolicy(ResourcePolicyReusable),
+		WithTerminateFunc(&term),
+	)
+	networkID := cft.namespace.Network().ID
+	containerID, err := cft.namespace.CreateContainer(ctx, cft.Namespace()+"echo", &container.Config{
+		Image: imageEcho,
+	}, &container.HostConfig{}, &network.NetworkingConfig{}, true, nil, nil, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	term()
+	t.Cleanup(func() {
+		err := cli.NetworkRemove(ctx, networkID)
+		if err != nil {
+			t.Log(err)
+		}
+		err = cli.ContainerRemove(ctx, containerID, types.ContainerRemoveOptions{
+			Force: true,
+		})
+		if err != nil {
+			t.Log(err)
+		}
+	})
+
+	// check created resources are alive
+	networks, err := cli.NetworkList(ctx, types.NetworkListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var networkFound bool
+	for _, nw := range networks {
+		if nw.ID == networkID {
+			networkFound = true
+			break
+		}
+	}
+	if !networkFound {
+		t.Errorf("network %s not found", networkID)
+	}
+
+	containers, err := cli.ContainerList(ctx, types.ContainerListOptions{
+		All: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var containerFound bool
+	for _, c := range containers {
+		if c.ID == containerID {
+			containerFound = true
+		}
+		break
+	}
+	if !containerFound {
+		t.Errorf("container %s not found", containerID)
 	}
 }
 
