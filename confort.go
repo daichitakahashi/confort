@@ -174,7 +174,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) *Confort {
 		cli:    cli,
 		policy: policy,
 		labels: map[string]string{
-			beaconutil.LabelAddr: beaconAddr,
+			beaconutil.LabelIdentifier: beaconutil.Identifier(beaconAddr),
 		},
 	}
 

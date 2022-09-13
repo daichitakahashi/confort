@@ -125,7 +125,7 @@ variables:
   CFT_NAMESPACE: $CI_JOB_ID # use job id to avoid conflict with other tests
 test:
   before_script:
-    - confort start # launch beacon server
+    - confort start & # launch beacon server
   script:
     - go test ./... # run test using beacon server
   after_script:

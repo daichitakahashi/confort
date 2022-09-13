@@ -153,7 +153,7 @@ func (s *StopCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interfa
 	}
 
 	// delete all docker resources created in test
-	err = s.Operation.CleanupResources(ctx, beaconutil.LabelAddr, addr)
+	err = s.Operation.CleanupResources(ctx, beaconutil.LabelIdentifier, beaconutil.Identifier(addr))
 	if err != nil {
 		log.Println(err)
 		return subcommands.ExitFailure
@@ -201,7 +201,7 @@ If you want to use options of "go test", put them after "--".
 }
 
 func (t *TestCommand) SetFlags(f *flag.FlagSet) {
-	f.StringVar(&t.namespace, "namespace", "", "namespace")
+	f.StringVar(&t.namespace, "namespace", os.Getenv(beaconutil.NamespaceEnv), "namespace")
 	t.policy = beaconutil.ResourcePolicyReuse
 	f.Var(&t.policy, "policy", `resource policy
   * With "error", the existing same resource(network and container) makes test failed
@@ -217,6 +217,12 @@ func (t *TestCommand) SetFlags(f *flag.FlagSet) {
 }
 
 func (t *TestCommand) Execute(ctx context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
+	workingDir, err := os.Getwd()
+	if err != nil {
+		log.Println(err)
+		return subcommands.ExitFailure
+	}
+
 	// start server asynchronously
 	addr, _, err := t.Operation.StartBeaconServer(ctx)
 	if err != nil {
@@ -237,6 +243,8 @@ func (t *TestCommand) Execute(ctx context.Context, f *flag.FlagSet, _ ...interfa
 	}
 	fmt.Println("use go version:", ver)
 
+	identifier := beaconutil.Identifier(workingDir + ":" + t.namespace)
+
 	// prepare environment variables
 	env := os.Environ()
 	env = append(env, fmt.Sprintf("%s=%s", beaconutil.AddressEnv, addr))
@@ -244,6 +252,7 @@ func (t *TestCommand) Execute(ctx context.Context, f *flag.FlagSet, _ ...interfa
 		env = append(env, fmt.Sprintf("%s=%s", beaconutil.NamespaceEnv, t.namespace))
 	}
 	env = append(env, fmt.Sprintf("%s=%s", beaconutil.ResourcePolicyEnv, t.policy))
+	env = append(env, fmt.Sprintf("%s=%s", beaconutil.IdentifierEnv, identifier))
 
 	// execute test
 	var status subcommands.ExitStatus
@@ -258,11 +267,13 @@ func (t *TestCommand) Execute(ctx context.Context, f *flag.FlagSet, _ ...interfa
 		status = subcommands.ExitSuccess
 	}
 
-	// delete all docker resources created in TestCommand
-	err = t.Operation.CleanupResources(ctx, beaconutil.LabelAddr, addr)
-	if err != nil {
-		log.Println(err)
-		return subcommands.ExitFailure
+	if t.policy != beaconutil.ResourcePolicyReusable {
+		// delete all docker resources created in TestCommand
+		err = t.Operation.CleanupResources(ctx, beaconutil.LabelIdentifier, identifier)
+		if err != nil {
+			log.Println(err)
+			return subcommands.ExitFailure
+		}
 	}
 
 	return status
