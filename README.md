@@ -39,7 +39,7 @@ func TestExample(t *testing.T) {
     )
     
     // start container
-    cft.Run(t, ctx, "db", &cofort.Container{
+    cft.Run(t, ctx, "db", &confort.Container{
         Image: "postgres:14.4-alpine3.16",
         Env: map[string]string{
             "POSTGRES_USER":     dbUser,
