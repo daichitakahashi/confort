@@ -923,6 +923,9 @@ func TestWithResourcePolicy(t *testing.T) {
 				term()
 				terminated = true
 				tc.afterContainerTerminated(t, precedingContainerID)
+
+				// remove network if it exists
+				_ = cli.NetworkRemove(ctx, cft.Network().ID)
 			})
 		})
 	}
