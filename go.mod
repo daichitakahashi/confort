@@ -6,11 +6,11 @@ require (
 	github.com/daichitakahashi/gocmd v1.0.0
 	github.com/daichitakahashi/oncewait v1.0.0
 	github.com/daichitakahashi/testingc v0.0.0-20220801231842-40b36baddcd3
-	github.com/docker/cli v20.10.16+incompatible
-	github.com/docker/docker v20.10.11+incompatible
+	github.com/docker/cli v20.10.18+incompatible
+	github.com/docker/docker v20.10.18+incompatible
 	github.com/docker/go-connections v0.4.0
-	github.com/goccy/go-reflect v1.1.1-0.20210520085854-e1eb8c5193d0
-	github.com/google/go-cmp v0.5.8
+	github.com/goccy/go-reflect v1.2.0
+	github.com/google/go-cmp v0.5.9
 	github.com/google/subcommands v1.2.0
 	github.com/google/uuid v1.3.0
 	github.com/jackc/pgconn v1.12.1
@@ -18,7 +18,7 @@ require (
 	github.com/lestrrat-go/backoff/v2 v2.0.8
 	github.com/lestrrat-go/option v1.0.0
 	go.uber.org/multierr v1.8.0
-	golang.org/x/sync v0.0.0-20220513210516-0976fa681c29
+	golang.org/x/sync v0.0.0-20220907140024-f12130a52804
 	google.golang.org/grpc v1.45.0
 	google.golang.org/protobuf v1.28.0
 )
