@@ -31,7 +31,8 @@ func InitDatabase(tb testing.TB, ctx context.Context, beacon *confort.Connection
 		confort.WithNamespace("integrationtest", false),
 	)
 
-	cft.Run(tb, ctx, "db", &confort.ContainerParams{
+	cft.Run(tb, ctx, &confort.ContainerParams{
+		Name:  "db",
 		Image: "postgres:14.4-alpine3.16",
 		Env: map[string]string{
 			"POSTGRES_USER":     dbUser,

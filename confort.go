@@ -340,6 +340,7 @@ func (cft *Confort) Build(tb testing.TB, ctx context.Context, b *BuildParams, op
 }
 
 type ContainerParams struct {
+	Name         string
 	Image        string
 	Env          map[string]string
 	Cmd          []string
@@ -348,7 +349,7 @@ type ContainerParams struct {
 	Waiter       *Waiter
 }
 
-func (cft *Confort) createContainer(ctx context.Context, name, alias string, c *ContainerParams, opts ...RunOption) error {
+func (cft *Confort) createContainer(ctx context.Context, name, alias string, c *ContainerParams, opts ...RunOption) (string, error) {
 	var modifyContainer func(config *container.Config)
 	var modifyHost func(config *container.HostConfig)
 	var modifyNetworking func(config *network.NetworkingConfig)
@@ -377,7 +378,7 @@ func (cft *Confort) createContainer(ctx context.Context, name, alias string, c *
 
 	portSet, portBindings, err := nat.ParsePortSpecs(c.ExposedPorts)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	env := make([]string, 0, len(c.Env))
@@ -415,8 +416,7 @@ func (cft *Confort) createContainer(ctx context.Context, name, alias string, c *
 		modifyNetworking(nc)
 	}
 
-	_, err = cft.namespace.CreateContainer(ctx, name, cc, hc, nc, checkConsistency, c.Waiter, pullOpts, pullOut)
-	return err
+	return cft.namespace.CreateContainer(ctx, name, cc, hc, nc, checkConsistency, c.Waiter, pullOpts, pullOut)
 }
 
 type (
@@ -488,15 +488,24 @@ func WithPullOptions(opts *types.ImagePullOptions, out io.Writer) RunOption {
 	}.run()
 }
 
+// Container represents a created container and its controller.
+type Container struct {
+	cft     *Confort
+	id      string
+	name    string
+	alias   string
+	started bool
+}
+
 // LazyRun creates container but doesn't start.
 // When container is required by UseShared or UseExclusive, the container starts.
 //
 // If container is already created/started by other test or process, LazyRun just
 // store container info. It makes no error.
-func (cft *Confort) LazyRun(tb testing.TB, ctx context.Context, name string, c *ContainerParams, opts ...RunOption) {
+func (cft *Confort) LazyRun(tb testing.TB, ctx context.Context, c *ContainerParams, opts ...RunOption) *Container {
 	tb.Helper()
-	alias := name
-	name = cft.namespace.Namespace() + name
+	alias := c.Name
+	name := cft.namespace.Namespace() + c.Name
 
 	ctx, cancel := applyTimeout(ctx, cft.defaultTimeout)
 	defer cancel()
@@ -507,9 +516,16 @@ func (cft *Confort) LazyRun(tb testing.TB, ctx context.Context, name string, c *
 	}
 	defer unlock()
 
-	err = cft.createContainer(ctx, name, alias, c, opts...)
+	containerID, err := cft.createContainer(ctx, name, alias, c, opts...)
 	if err != nil {
 		tb.Fatalf("confort: %s", err)
+	}
+	return &Container{
+		cft:     cft,
+		id:      containerID,
+		name:    name,
+		alias:   alias,
+		started: false,
 	}
 }
 
@@ -522,10 +538,10 @@ func (cft *Confort) LazyRun(tb testing.TB, ctx context.Context, name string, c *
 // For now, without specifying host port, container loses the port binding occasionally.
 // If you want to use port binding and use a container with several network,
 // and encounter such trouble, give it a try.
-func (cft *Confort) Run(tb testing.TB, ctx context.Context, name string, c *ContainerParams, opts ...RunOption) {
+func (cft *Confort) Run(tb testing.TB, ctx context.Context, c *ContainerParams, opts ...RunOption) *Container {
 	tb.Helper()
-	alias := name
-	name = cft.namespace.Namespace() + name
+	alias := c.Name
+	name := cft.namespace.Namespace() + c.Name
 
 	ctx, cancel := applyTimeout(ctx, cft.defaultTimeout)
 	defer cancel()
@@ -536,7 +552,7 @@ func (cft *Confort) Run(tb testing.TB, ctx context.Context, name string, c *Cont
 	}
 	defer unlock()
 
-	err = cft.createContainer(ctx, name, alias, c, opts...)
+	containerID, err := cft.createContainer(ctx, name, alias, c, opts...)
 	if err != nil {
 		tb.Fatalf("confort: %s", err)
 	}
@@ -544,6 +560,13 @@ func (cft *Confort) Run(tb testing.TB, ctx context.Context, name string, c *Cont
 	_, err = cft.namespace.StartContainer(ctx, name)
 	if err != nil {
 		tb.Fatalf("confort: %s", err)
+	}
+	return &Container{
+		cft:     cft,
+		id:      containerID,
+		name:    name,
+		alias:   alias,
+		started: true,
 	}
 }
 
@@ -581,6 +604,67 @@ func WithInitFunc(init InitFunc) UseOption {
 	return useOption{
 		Interface: option.New(identOptionInitFunc{}, init),
 	}.use()
+}
+
+func (c *Container) Use(tb testing.TB, ctx context.Context, exclusive bool, opts ...UseOption) Ports {
+	tb.Helper()
+
+	var releaseFunc *func()
+	var initFunc InitFunc
+	for _, opt := range opts {
+		switch opt.Ident() {
+		case identOptionReleaseFunc{}:
+			releaseFunc = opt.Value().(*func())
+		case identOptionInitFunc{}:
+			initFunc = opt.Value().(InitFunc)
+		}
+	}
+
+	// TODO: following lines can be optional(c.started == false)?
+	// begin
+	unlock, err := c.cft.ex.LockForContainerSetup(ctx, c.name)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	defer unlock()
+
+	ports, err := c.cft.namespace.StartContainer(ctx, c.name)
+	if err != nil {
+		tb.Fatalf("confort: %s", err)
+	}
+	// end
+
+	var init func() error
+	if initFunc != nil {
+		init = func() error {
+			return initFunc(ctx, ports)
+		}
+	}
+	// If initFunc is not nil, it will be called after acquisition of exclusive lock.
+	// After that, the lock is downgraded to shared lock when exclusive is false.
+	// When initFunc returns error, the acquisition of lock fails.
+	release, err := c.cft.ex.LockForContainerUse(ctx, c.name, exclusive, init)
+	if err != nil {
+		tb.Fatalf("confort: %s", err)
+	}
+
+	if releaseFunc != nil {
+		*releaseFunc = release
+	} else {
+		tb.Cleanup(release)
+	}
+
+	return ports
+}
+
+func (c *Container) UseExclusive(tb testing.TB, ctx context.Context, opts ...UseOption) Ports {
+	tb.Helper()
+	return c.Use(tb, ctx, true, opts...)
+}
+
+func (c *Container) UseShared(tb testing.TB, ctx context.Context, opts ...UseOption) Ports {
+	tb.Helper()
+	return c.Use(tb, ctx, false, opts...)
 }
 
 func (cft *Confort) use(tb testing.TB, ctx context.Context, name string, exclusive bool, opts ...UseOption) Ports {
