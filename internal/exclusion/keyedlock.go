@@ -32,11 +32,6 @@ func (k *KeyedLock) Unlock(key string) {
 	v.(*semaphore.Weighted).Release(max)
 }
 
-func (k *KeyedLock) TryLock(key string) bool {
-	v, _ := k.m.LoadOrStore(key, semaphore.NewWeighted(max))
-	return v.(*semaphore.Weighted).TryAcquire(max)
-}
-
 func (k *KeyedLock) Downgrade(key string) {
 	v, ok := k.m.Load(key)
 	if !ok {
