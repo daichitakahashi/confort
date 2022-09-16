@@ -265,7 +265,7 @@ func WithBuildOutput(dst io.Writer) BuildOption {
 	}.build()
 }
 
-type Build struct {
+type BuildParams struct {
 	Image      string
 	Dockerfile string
 	ContextDir string
@@ -277,7 +277,7 @@ type Build struct {
 //
 // When same name image already exists, it doesn't perform building.
 // WithForceBuild enables us to build image on every call of Build.
-func (cft *Confort) Build(tb testing.TB, ctx context.Context, b *Build, opts ...BuildOption) {
+func (cft *Confort) Build(tb testing.TB, ctx context.Context, b *BuildParams, opts ...BuildOption) {
 	tb.Helper()
 
 	buildOut := io.Discard
@@ -339,7 +339,7 @@ func (cft *Confort) Build(tb testing.TB, ctx context.Context, b *Build, opts ...
 	}
 }
 
-type Container struct {
+type ContainerParams struct {
 	Image        string
 	Env          map[string]string
 	Cmd          []string
@@ -348,7 +348,7 @@ type Container struct {
 	Waiter       *Waiter
 }
 
-func (cft *Confort) createContainer(ctx context.Context, name, alias string, c *Container, opts ...RunOption) error {
+func (cft *Confort) createContainer(ctx context.Context, name, alias string, c *ContainerParams, opts ...RunOption) error {
 	var modifyContainer func(config *container.Config)
 	var modifyHost func(config *container.HostConfig)
 	var modifyNetworking func(config *network.NetworkingConfig)
@@ -493,7 +493,7 @@ func WithPullOptions(opts *types.ImagePullOptions, out io.Writer) RunOption {
 //
 // If container is already created/started by other test or process, LazyRun just
 // store container info. It makes no error.
-func (cft *Confort) LazyRun(tb testing.TB, ctx context.Context, name string, c *Container, opts ...RunOption) {
+func (cft *Confort) LazyRun(tb testing.TB, ctx context.Context, name string, c *ContainerParams, opts ...RunOption) {
 	tb.Helper()
 	alias := name
 	name = cft.namespace.Namespace() + name
@@ -522,7 +522,7 @@ func (cft *Confort) LazyRun(tb testing.TB, ctx context.Context, name string, c *
 // For now, without specifying host port, container loses the port binding occasionally.
 // If you want to use port binding and use a container with several network,
 // and encounter such trouble, give it a try.
-func (cft *Confort) Run(tb testing.TB, ctx context.Context, name string, c *Container, opts ...RunOption) {
+func (cft *Confort) Run(tb testing.TB, ctx context.Context, name string, c *ContainerParams, opts ...RunOption) {
 	tb.Helper()
 	alias := name
 	name = cft.namespace.Namespace() + name

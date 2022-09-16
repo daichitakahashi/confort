@@ -66,7 +66,7 @@ func TestConnectBeacon(t *testing.T) {
 				return
 			}
 		})
-		cft.Run(t, ctx, "tester", &confort.Container{
+		cft.Run(t, ctx, "tester", &confort.ContainerParams{
 			Image: "github.com/daichitakahashi/confort/testdata/echo:test",
 		})
 		term()
