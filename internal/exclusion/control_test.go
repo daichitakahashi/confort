@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"sync/atomic"
 	"testing"
@@ -102,7 +103,8 @@ func testLockForNamespace(t *testing.T, c exclusion.Control) {
 			time.Sleep(100 * time.Microsecond)
 			unlock, err := c.LockForNamespace(ctx)
 			if err != nil {
-				panic(err)
+				log.Printf("%d/1000 %s", i+1, err)
+				return
 			}
 			store[key] = false
 			unlock()
@@ -162,7 +164,8 @@ func lockForBuild(c exclusion.Control, image string) error {
 			time.Sleep(100 * time.Microsecond)
 			unlock, err := c.LockForBuild(ctx, image)
 			if err != nil {
-				panic(err)
+				log.Printf("%d/1000 %s", i+1, err)
+				return
 			}
 			store[key] = false
 			unlock()
@@ -236,7 +239,8 @@ func lockForContainerSetup(c exclusion.Control, name string) error {
 			time.Sleep(100 * time.Microsecond)
 			unlock, err := c.LockForContainerSetup(ctx, name)
 			if err != nil {
-				panic(err)
+				log.Printf("%d/1000 %s", i+1, err)
+				return
 			}
 			store[key] = false
 			unlock()
@@ -253,7 +257,7 @@ func lockForContainerSetup(c exclusion.Control, name string) error {
 
 func testLockForContainerSetup(t *testing.T, c exclusion.Control) {
 	var eg errgroup.Group
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 40; i++ {
 		eg.Go(func() error {
 			return lockForContainerSetup(c, uuid.NewString())
 		})
@@ -322,7 +326,8 @@ func lockForContainerUse(c exclusion.Control, name string) error {
 		for i := 0; i < 1000; i++ {
 			unlock, err := c.LockForContainerUse(ctx, name, true, nil)
 			if err != nil {
-				panic(err)
+				log.Printf("%d/1000 %s", i+1, err)
+				return
 			}
 			time.Sleep(100 * time.Microsecond)
 			store[key] = true
