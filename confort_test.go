@@ -100,7 +100,8 @@ func TestConfort_Run_Communication(t *testing.T) {
 		WithNamespace(t.Name(), false),
 	)
 
-	cft.Run(t, ctx, "one", &ContainerParams{
+	cft.Run(t, ctx, &ContainerParams{
+		Name:  "one",
 		Image: imageCommunicator,
 		Env: map[string]string{
 			"CM_TARGET": "two",
@@ -115,7 +116,8 @@ func TestConfort_Run_Communication(t *testing.T) {
 		t.Fatal("one: bound port not found")
 	}
 
-	cft.Run(t, ctx, "two", &ContainerParams{
+	cft.Run(t, ctx, &ContainerParams{
+		Name:  "two",
 		Image: imageCommunicator,
 		Env: map[string]string{
 			"CM_TARGET": "one",
@@ -162,7 +164,8 @@ func TestConfort_Run_ContainerIdentification(t *testing.T) {
 
 		ctx := context.Background()
 		cft := New(t, ctx, WithNamespace(namespace, true))
-		cft.Run(t, ctx, containerName, &ContainerParams{
+		cft.Run(t, ctx, &ContainerParams{
+			Name:         containerName,
 			Image:        imageEcho,
 			ExposedPorts: []string{port},
 			Waiter:       Healthy(),
@@ -218,7 +221,8 @@ func TestConfort_Run_SameNameButAnotherImage(t *testing.T) {
 
 	recovered := func() (v any) {
 		defer func() { v = recover() }()
-		cft1.Run(ctl, ctx, containerName, &ContainerParams{
+		cft1.Run(ctl, ctx, &ContainerParams{
+			Name:         containerName,
 			Image:        imageEcho,
 			ExposedPorts: []string{"80/tcp"},
 			Waiter:       Healthy(),
@@ -235,7 +239,8 @@ func TestConfort_Run_SameNameButAnotherImage(t *testing.T) {
 
 	recovered = func() (v any) {
 		defer func() { v = recover() }()
-		cft2.Run(ctl, ctx, containerName, &ContainerParams{ // same name, but different image
+		cft2.Run(ctl, ctx, &ContainerParams{ // same name, but different image
+			Name:  containerName,
 			Image: imageCommunicator,
 		})
 		return
@@ -271,7 +276,8 @@ func TestConfort_LazyRun(t *testing.T) {
 
 		containerName := uniqueName.Must(t)
 
-		cft.LazyRun(t, ctx, containerName, &ContainerParams{
+		cft.LazyRun(t, ctx, &ContainerParams{
+			Name:         containerName,
 			Image:        imageEcho,
 			ExposedPorts: []string{"80/tcp"},
 			Waiter:       Healthy(),
@@ -295,19 +301,20 @@ func TestConfort_LazyRun(t *testing.T) {
 		containerName := uniqueName.Must(t)
 
 		c := &ContainerParams{
+			Name:         containerName,
 			Image:        imageEcho,
 			ExposedPorts: []string{"80/tcp"},
 			Waiter:       Healthy(),
 		}
 
-		cft.LazyRun(t, ctx, containerName, c)
+		cft.LazyRun(t, ctx, c)
 		e1 := cft.UseShared(t, ctx, containerName)
 
 		cft2 := New(t, ctx,
 			WithNamespace(namespace, true),
 		)
 
-		cft2.Run(t, ctx, containerName, c)
+		cft2.Run(t, ctx, c)
 		e2 := cft2.UseShared(t, ctx, containerName)
 		if diff := cmp.Diff(e1, e2); diff != "" {
 			t.Fatal(diff)
@@ -325,7 +332,8 @@ func TestConfort_LazyRun(t *testing.T) {
 
 		containerName := uniqueName.Must(t)
 
-		cft.LazyRun(t, ctx, containerName, &ContainerParams{
+		cft.LazyRun(t, ctx, &ContainerParams{
+			Name:         containerName,
 			Image:        imageEcho,
 			ExposedPorts: []string{"80/tcp"},
 			Waiter:       Healthy(),
@@ -372,7 +380,8 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		WithNamespace(namespaceA, true),
 	)
 
-	cft1.Run(t, ctx, "foo-A", &ContainerParams{
+	cft1.Run(t, ctx, &ContainerParams{
+		Name:  "foo-A",
 		Image: imageCommunicator,
 		Env: map[string]string{
 			"CM_TARGET": "foo-B",
@@ -386,7 +395,8 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		t.Fatal("failed to get host/port")
 	}
 
-	cft1.Run(t, ctx, "foo-B", &ContainerParams{
+	cft1.Run(t, ctx, &ContainerParams{
+		Name:  "foo-B",
 		Image: imageCommunicator,
 		Env: map[string]string{
 			"CM_TARGET": "C",
@@ -406,7 +416,8 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		WithNamespace(namespaceB, true),
 	)
 
-	cft2.Run(t, ctx, "B", &ContainerParams{ // same name container
+	cft2.Run(t, ctx, &ContainerParams{ // same name container
+		Name:  "B",
 		Image: imageCommunicator,
 		Env: map[string]string{
 			"CM_TARGET": "C",
@@ -423,7 +434,8 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		t.Fatalf("expected same host: want %q, got %q", hostB, hostB2)
 	}
 
-	cft2.Run(t, ctx, "C", &ContainerParams{
+	cft2.Run(t, ctx, &ContainerParams{
+		Name:  "C",
 		Image: imageCommunicator,
 		Env: map[string]string{
 			"CM_TARGET": "B", // CHECK THIS WORKS
@@ -1204,7 +1216,8 @@ func TestWithContainerConfig(t *testing.T) {
 		labelValue = t.Name()
 	)
 
-	cft.Run(t, ctx, "echo", &ContainerParams{
+	cft.Run(t, ctx, &ContainerParams{
+		Name:  "echo",
 		Image: imageEcho,
 	}, WithContainerConfig(func(config *container.Config) {
 		if config.Labels == nil {
@@ -1236,7 +1249,8 @@ func TestWithHostConfig(t *testing.T) {
 		WithNamespace(t.Name(), true),
 	)
 
-	cft.Run(t, ctx, "communicator", &ContainerParams{
+	cft.Run(t, ctx, &ContainerParams{
+		Name:  "communicator",
 		Image: imageCommunicator,
 		Env: map[string]string{
 			"CM_TARGET": "reflect",
@@ -1277,7 +1291,8 @@ func TestWithNetworkingConfig(t *testing.T) {
 
 	// create a communicator with two aliases
 	cft1 := New(t, ctx, WithNamespace(t.Name(), true))
-	cft1.Run(t, ctx, name, &ContainerParams{
+	cft1.Run(t, ctx, &ContainerParams{
+		Name:  name,
 		Image: imageCommunicator,
 		Env: map[string]string{
 			"CM_TARGET": alias,
@@ -1314,7 +1329,8 @@ func TestWithConfigConsistency(t *testing.T) {
 	namespace := t.Name()
 	cft := New(t, ctx, WithNamespace(namespace, true))
 
-	cft.Run(t, ctx, "echo", &ContainerParams{
+	cft.Run(t, ctx, &ContainerParams{
+		Name:         "echo",
 		Image:        imageEcho,
 		ExposedPorts: []string{"80/tcp", "8080/tcp"},
 		Waiter:       Healthy(),
@@ -1365,7 +1381,8 @@ func TestWithConfigConsistency(t *testing.T) {
 				c, term := NewControl()
 				defer term()
 
-				cft.Run(c, ctx, "echo", &ContainerParams{
+				cft.Run(c, ctx, &ContainerParams{
+					Name:         "echo",
 					Image:        imageEcho,
 					ExposedPorts: tc.ports,
 					Waiter:       Healthy(),
@@ -1411,7 +1428,8 @@ func TestWithPullOptions(t *testing.T) {
 
 	// pull and run
 	out := &bytes.Buffer{}
-	cft.Run(t, ctx, containerName, &ContainerParams{
+	cft.Run(t, ctx, &ContainerParams{
+		Name:         containerName,
 		Image:        pullImage,
 		ExposedPorts: []string{"80/tcp"},
 		Waiter:       Healthy(),
@@ -1446,7 +1464,8 @@ func TestWithReleaseFunc(t *testing.T) {
 
 	cft := New(t, ctx, WithNamespace(t.Name(), true))
 
-	cft.Run(t, ctx, "echo", &ContainerParams{
+	cft.Run(t, ctx, &ContainerParams{
+		Name:         "echo",
 		Image:        imageEcho,
 		ExposedPorts: []string{"80/tcp"},
 		Waiter:       Healthy(),
@@ -1488,7 +1507,8 @@ func TestWithInitFunc(t *testing.T) {
 
 	cft := New(t, ctx, WithNamespace(t.Name(), true))
 
-	cft.Run(t, ctx, "echo", &ContainerParams{
+	cft.Run(t, ctx, &ContainerParams{
+		Name:         "echo",
 		Image:        imageEcho,
 		ExposedPorts: []string{"80/tcp"},
 		Waiter:       Healthy(),
@@ -1620,7 +1640,8 @@ func TestConfort_Run_UnsupportedStatus(t *testing.T) {
 			r = recover()
 		}()
 		c, _ := NewControl()
-		cft.Run(c, ctx, "foo", &ContainerParams{
+		cft.Run(c, ctx, &ContainerParams{
+			Name:  "foo",
 			Image: imageEcho,
 		})
 		return nil
