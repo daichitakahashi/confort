@@ -100,7 +100,7 @@ func TestConfort_Run_Communication(t *testing.T) {
 		WithNamespace(t.Name(), false),
 	)
 
-	cft.Run(t, ctx, &ContainerParams{
+	comOne := cft.Run(t, ctx, &ContainerParams{
 		Name:  "one",
 		Image: imageCommunicator,
 		Env: map[string]string{
@@ -109,14 +109,14 @@ func TestConfort_Run_Communication(t *testing.T) {
 		ExposedPorts: []string{"80/tcp"},
 		Waiter:       LogContains("communicator is ready", 1),
 	})
-	portsOne := cft.UseExclusive(t, ctx, "one")
+	portsOne := comOne.UseExclusive(t, ctx)
 	hostOne := portsOne.HostPort("80/tcp")
 	if hostOne == "" {
 		t.Logf("%#v", portsOne)
 		t.Fatal("one: bound port not found")
 	}
 
-	cft.Run(t, ctx, &ContainerParams{
+	comTwo := cft.Run(t, ctx, &ContainerParams{
 		Name:  "two",
 		Image: imageCommunicator,
 		Env: map[string]string{
@@ -125,7 +125,7 @@ func TestConfort_Run_Communication(t *testing.T) {
 		ExposedPorts: []string{"80/tcp"},
 		Waiter:       LogContains("communicator is ready", 1),
 	})
-	portsTwo := cft.UseExclusive(t, ctx, "two")
+	portsTwo := comTwo.UseExclusive(t, ctx)
 	hostTwo := portsTwo.HostPort("80/tcp")
 	if hostTwo == "" {
 		t.Fatal("two: bound port not found")
@@ -164,13 +164,13 @@ func TestConfort_Run_ContainerIdentification(t *testing.T) {
 
 		ctx := context.Background()
 		cft := New(t, ctx, WithNamespace(namespace, true))
-		cft.Run(t, ctx, &ContainerParams{
+		echo := cft.Run(t, ctx, &ContainerParams{
 			Name:         containerName,
 			Image:        imageEcho,
 			ExposedPorts: []string{port},
 			Waiter:       Healthy(),
 		})
-		ports := cft.UseShared(t, ctx, containerName)
+		ports := echo.UseShared(t, ctx)
 		endpoint := ports.HostPort(nat.Port(port))
 		if endpoint == "" {
 			t.Fatalf("cannot get endpoint of %q: %v", port, ports)
@@ -276,15 +276,15 @@ func TestConfort_LazyRun(t *testing.T) {
 
 		containerName := uniqueName.Must(t)
 
-		cft.LazyRun(t, ctx, &ContainerParams{
+		echo := cft.LazyRun(t, ctx, &ContainerParams{
 			Name:         containerName,
 			Image:        imageEcho,
 			ExposedPorts: []string{"80/tcp"},
 			Waiter:       Healthy(),
 		})
 
-		e1 := cft.UseShared(t, ctx, containerName)
-		e2 := cft.UseShared(t, ctx, containerName)
+		e1 := echo.UseShared(t, ctx)
+		e2 := echo.UseShared(t, ctx)
 		if diff := cmp.Diff(e1, e2); diff != "" {
 			t.Fatal(diff)
 		}
@@ -307,15 +307,15 @@ func TestConfort_LazyRun(t *testing.T) {
 			Waiter:       Healthy(),
 		}
 
-		cft.LazyRun(t, ctx, c)
-		e1 := cft.UseShared(t, ctx, containerName)
+		echo1 := cft.LazyRun(t, ctx, c)
+		e1 := echo1.UseShared(t, ctx)
 
 		cft2 := New(t, ctx,
 			WithNamespace(namespace, true),
 		)
 
-		cft2.Run(t, ctx, c)
-		e2 := cft2.UseShared(t, ctx, containerName)
+		echo2 := cft2.Run(t, ctx, c)
+		e2 := echo2.UseShared(t, ctx)
 		if diff := cmp.Diff(e1, e2); diff != "" {
 			t.Fatal(diff)
 		}
@@ -327,39 +327,39 @@ func TestConfort_LazyRun(t *testing.T) {
 		assertEchoWorks(t, endpoint)
 	})
 
-	t.Run("unknown Use", func(t *testing.T) {
-		t.Parallel()
-
-		containerName := uniqueName.Must(t)
-
-		cft.LazyRun(t, ctx, &ContainerParams{
-			Name:         containerName,
-			Image:        imageEcho,
-			ExposedPorts: []string{"80/tcp"},
-			Waiter:       Healthy(),
-		})
-
-		cft2 := New(t, ctx,
-			WithNamespace(namespace, true),
-		)
-
-		ctl, _ := NewControl()
-
-		recovered := func() (v any) {
-			defer func() { v = recover() }()
-			cft2.UseShared(ctl, ctx, containerName)
-			return
-		}()
-		if recovered == nil {
-			t.Fatal("error expected on use container without LazyRun")
-		}
-		expectedMsg := containerNotFound(
-			fmt.Sprintf("%s-%s", namespace, containerName),
-		)
-		if !strings.Contains(fmt.Sprint(recovered), expectedMsg) {
-			t.Fatalf("unexpected error: %v", recovered)
-		}
-	})
+	// t.Run("unknown Use", func(t *testing.T) {
+	// 	t.Parallel()
+	//
+	// 	containerName := uniqueName.Must(t)
+	//
+	// 	echo := cft.LazyRun(t, ctx, &ContainerParams{
+	// 		Name:         containerName,
+	// 		Image:        imageEcho,
+	// 		ExposedPorts: []string{"80/tcp"},
+	// 		Waiter:       Healthy(),
+	// 	})
+	//
+	// 	cft2 := New(t, ctx,
+	// 		WithNamespace(namespace, true),
+	// 	)
+	//
+	// 	ctl, _ := NewControl()
+	//
+	// 	recovered := func() (v any) {
+	// 		defer func() { v = recover() }()
+	// 		cft2.UseShared(ctl, ctx, containerName)
+	// 		return
+	// 	}()
+	// 	if recovered == nil {
+	// 		t.Fatal("error expected on use container without LazyRun")
+	// 	}
+	// 	expectedMsg := containerNotFound(
+	// 		fmt.Sprintf("%s-%s", namespace, containerName),
+	// 	)
+	// 	if !strings.Contains(fmt.Sprint(recovered), expectedMsg) {
+	// 		t.Fatalf("unexpected error: %v", recovered)
+	// 	}
+	// })
 }
 
 // test if container can join different networks simultaneously
@@ -380,7 +380,7 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		WithNamespace(namespaceA, true),
 	)
 
-	cft1.Run(t, ctx, &ContainerParams{
+	com1 := cft1.Run(t, ctx, &ContainerParams{
 		Name:  "foo-A",
 		Image: imageCommunicator,
 		Env: map[string]string{
@@ -389,13 +389,13 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		ExposedPorts: []string{"80/tcp"},
 		Waiter:       Healthy(),
 	})
-	e := cft1.UseShared(t, ctx, "foo-A")
+	e := com1.UseShared(t, ctx)
 	hostA := e.HostPort("80/tcp")
 	if hostA == "" {
 		t.Fatal("failed to get host/port")
 	}
 
-	cft1.Run(t, ctx, &ContainerParams{
+	com2 := cft1.Run(t, ctx, &ContainerParams{
 		Name:  "foo-B",
 		Image: imageCommunicator,
 		Env: map[string]string{
@@ -406,7 +406,7 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		ExposedPorts: []string{"8080:80/tcp"},
 		Waiter:       Healthy(),
 	})
-	e = cft1.UseShared(t, ctx, "foo-B")
+	e = com2.UseShared(t, ctx)
 	hostB := e.HostPort("80/tcp")
 	if hostB == "" {
 		t.Fatal("failed to get host/port")
@@ -416,7 +416,7 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		WithNamespace(namespaceB, true),
 	)
 
-	cft2.Run(t, ctx, &ContainerParams{ // same name container
+	com3 := cft2.Run(t, ctx, &ContainerParams{ // same name container
 		Name:  "B",
 		Image: imageCommunicator,
 		Env: map[string]string{
@@ -425,7 +425,7 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		ExposedPorts: []string{"8080:80/tcp"},
 		Waiter:       Healthy(),
 	})
-	e = cft2.UseShared(t, ctx, "B")
+	e = com3.UseShared(t, ctx)
 	hostB2 := e.HostPort("80/tcp")
 	if hostB2 == "" {
 		t.Fatal("failed to get host/port")
@@ -434,7 +434,7 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		t.Fatalf("expected same host: want %q, got %q", hostB, hostB2)
 	}
 
-	cft2.Run(t, ctx, &ContainerParams{
+	com4 := cft2.Run(t, ctx, &ContainerParams{
 		Name:  "C",
 		Image: imageCommunicator,
 		Env: map[string]string{
@@ -443,7 +443,7 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		ExposedPorts: []string{"80/tcp"},
 		Waiter:       Healthy(),
 	})
-	e = cft2.UseShared(t, ctx, "C")
+	e = com4.UseShared(t, ctx)
 	hostC := e.HostPort("80/tcp")
 	if hostC == "" {
 		t.Fatal("failed to get host/port")
@@ -1249,7 +1249,7 @@ func TestWithHostConfig(t *testing.T) {
 		WithNamespace(t.Name(), true),
 	)
 
-	cft.Run(t, ctx, &ContainerParams{
+	communicator := cft.Run(t, ctx, &ContainerParams{
 		Name:  "communicator",
 		Image: imageCommunicator,
 		Env: map[string]string{
@@ -1262,7 +1262,7 @@ func TestWithHostConfig(t *testing.T) {
 		config.ExtraHosts = append(config.ExtraHosts, "reflect:127.0.0.1")
 	}))
 
-	ports := cft.UseExclusive(t, ctx, "communicator")
+	ports := communicator.UseExclusive(t, ctx)
 	host := ports.HostPort("80/tcp")
 	if host == "" {
 		t.Fatal("two: bound port not found")
@@ -1291,7 +1291,7 @@ func TestWithNetworkingConfig(t *testing.T) {
 
 	// create a communicator with two aliases
 	cft1 := New(t, ctx, WithNamespace(t.Name(), true))
-	cft1.Run(t, ctx, &ContainerParams{
+	communicator := cft1.Run(t, ctx, &ContainerParams{
 		Name:  name,
 		Image: imageCommunicator,
 		Env: map[string]string{
@@ -1305,7 +1305,7 @@ func TestWithNetworkingConfig(t *testing.T) {
 			cfg.Aliases = append(cfg.Aliases, alias)
 		}
 	}))
-	host := cft1.UseExclusive(t, ctx, name).HostPort("80/tcp")
+	host := communicator.UseExclusive(t, ctx).HostPort("80/tcp")
 	if host == "" {
 		t.Fatalf("%s: bound port not found", name)
 	}
@@ -1428,7 +1428,7 @@ func TestWithPullOptions(t *testing.T) {
 
 	// pull and run
 	out := &bytes.Buffer{}
-	cft.Run(t, ctx, &ContainerParams{
+	c := cft.Run(t, ctx, &ContainerParams{
 		Name:         containerName,
 		Image:        pullImage,
 		ExposedPorts: []string{"80/tcp"},
@@ -1441,7 +1441,7 @@ func TestWithPullOptions(t *testing.T) {
 	}
 
 	// check if container works
-	ports := cft.UseShared(t, ctx, containerName)
+	ports := c.UseShared(t, ctx)
 	endpoint := ports.HostPort("80/tcp")
 	if endpoint == "" {
 		t.Fatal("endpoint not found")
@@ -1464,7 +1464,7 @@ func TestWithReleaseFunc(t *testing.T) {
 
 	cft := New(t, ctx, WithNamespace(t.Name(), true))
 
-	cft.Run(t, ctx, &ContainerParams{
+	echo := cft.Run(t, ctx, &ContainerParams{
 		Name:         "echo",
 		Image:        imageEcho,
 		ExposedPorts: []string{"80/tcp"},
@@ -1476,7 +1476,7 @@ func TestWithReleaseFunc(t *testing.T) {
 	func() {
 		c, cleanup := NewControl()
 		defer cleanup()
-		cft.UseExclusive(c, ctx, "echo", WithReleaseFunc(&release))
+		echo.UseExclusive(c, ctx, WithReleaseFunc(&release))
 	}()
 
 	use := func() (r any) {
@@ -1487,7 +1487,7 @@ func TestWithReleaseFunc(t *testing.T) {
 		defer cleanup()
 		ctx, cancel := context.WithTimeout(ctx, time.Second)
 		defer cancel()
-		cft.UseExclusive(c, ctx, "echo")
+		echo.UseExclusive(c, ctx)
 		return nil
 	}
 	if use() == nil {
@@ -1507,7 +1507,7 @@ func TestWithInitFunc(t *testing.T) {
 
 	cft := New(t, ctx, WithNamespace(t.Name(), true))
 
-	cft.Run(t, ctx, &ContainerParams{
+	echo := cft.Run(t, ctx, &ContainerParams{
 		Name:         "echo",
 		Image:        imageEcho,
 		ExposedPorts: []string{"80/tcp"},
@@ -1521,7 +1521,7 @@ func TestWithInitFunc(t *testing.T) {
 		}()
 		c, cleanup := NewControl()
 		defer cleanup()
-		cft.UseShared(c, ctx, "echo", WithInitFunc(func(ctx context.Context, ports Ports) error {
+		echo.UseShared(c, ctx, WithInitFunc(func(ctx context.Context, ports Ports) error {
 			if try++; try < 3 {
 				return errors.New("dummy error")
 			}
