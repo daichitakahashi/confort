@@ -16,7 +16,9 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 func newBeaconControl(t *testing.T) exclusion.Control {
@@ -444,6 +446,61 @@ func TestControl_LockForContainerUse_WithInit(t *testing.T) {
 				t.Parallel()
 				testLockForContainerUseWithInit(t, c.control, false)
 			})
+		})
+	}
+}
+
+func testLockForContainerUseDowngrade(t *testing.T, c exclusion.Control) {
+	ctx := context.Background()
+
+	// exclusive
+	t.Run("shared lock after exclusive lock", func(t *testing.T) {
+		t.Parallel()
+
+		name := uuid.NewString()
+		unlock, err := c.LockForContainerUse(ctx, name, true, func() error { return nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer unlock()
+
+		ctx, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+		_, err = c.LockForContainerUse(ctx, name, false, nil)
+		if err == nil {
+			t.Fatalf("unexpected lock acquisition")
+		} else if !errors.Is(err, context.DeadlineExceeded) && status.Code(err) != codes.DeadlineExceeded {
+			t.Fatalf("unexpected error: %#v", err)
+		}
+	})
+
+	// shared
+	t.Run("consecutive shared lock", func(t *testing.T) {
+		t.Parallel()
+
+		name := uuid.NewString()
+		unlock, err := c.LockForContainerUse(ctx, name, false, func() error { return nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer unlock()
+
+		unlock, err = c.LockForContainerUse(ctx, name, false, func() error { return nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer unlock()
+	})
+}
+
+func TestControl_LockForContainerUse_Downgrade(t *testing.T) {
+	t.Parallel()
+
+	for _, c := range controls(t) {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			testLockForContainerUseDowngrade(t, c.control)
 		})
 	}
 }
