@@ -2,7 +2,6 @@ package tests
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/daichitakahashi/confort"
@@ -16,11 +15,8 @@ var (
 	uniqueEmployeeUserName *confort.Unique[string]
 )
 
-func TestMain(m *testing.M) {
-	os.Exit(
-		testingc.M(m, testMain),
-	)
-}
+func TestMain(m *testing.M) { testingc.M(m, testMain) }
+
 func testMain(c *testingc.C) int {
 	ctx := context.Background()
 	beacon := confort.ConnectBeacon(c, ctx)
