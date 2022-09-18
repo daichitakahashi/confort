@@ -55,6 +55,7 @@ type ContainerLock struct {
 	once       *oncewait.Factory
 	name       string
 	init       bool
+	exclusive  bool
 	downgraded int32
 }
 
@@ -64,16 +65,18 @@ func (l *ContainerLock) InitAcquired() bool {
 
 func (l *ContainerLock) SetInitResult(ok bool) {
 	if l.init {
-		if ok && atomic.CompareAndSwapInt32(&l.downgraded, 0, 1) {
-			l.l.Downgrade(l.name)
-		} else if !ok {
+		if ok {
+			if !l.exclusive && atomic.CompareAndSwapInt32(&l.downgraded, 0, 1) {
+				l.l.Downgrade(l.name)
+			}
+		} else {
 			l.once.Refresh(l.name)
 		}
 	}
 }
 
 func (l *ContainerLock) Release() {
-	if atomic.LoadInt32(&l.downgraded) == 0 { // exclusive
+	if l.exclusive || atomic.LoadInt32(&l.downgraded) == 0 { // exclusive
 		l.l.Unlock(l.name)
 	} else { // shared/downgraded
 		l.l.RUnlock(l.name)
@@ -101,6 +104,7 @@ func (l *Locker) AcquireContainerLock(ctx context.Context, name string, exclusiv
 				once:       l.once,
 				name:       name,
 				init:       true,
+				exclusive:  exclusive,
 				downgraded: 0,
 			}, nil
 		}
@@ -123,6 +127,7 @@ func (l *Locker) AcquireContainerLock(ctx context.Context, name string, exclusiv
 		once:       l.once,
 		name:       name,
 		init:       false,
+		exclusive:  exclusive,
 		downgraded: downgraded,
 	}, nil
 }
