@@ -2,6 +2,7 @@ package container
 
 import (
 	"context"
+	"errors"
 	"os"
 	"strconv"
 	"testing"
@@ -31,7 +32,7 @@ func InitDatabase(tb testing.TB, ctx context.Context, beacon *confort.Connection
 		confort.WithNamespace("integrationtest", false),
 	)
 
-	cft.Run(tb, ctx, &confort.ContainerParams{
+	db := cft.Run(tb, ctx, &confort.ContainerParams{
 		Name:  "db",
 		Image: "postgres:14.4-alpine3.16",
 		Env: map[string]string{
@@ -51,48 +52,27 @@ func InitDatabase(tb testing.TB, ctx context.Context, beacon *confort.Connection
 		}),
 	)
 
-	var release func()
-	ports := cft.UseExclusive(tb, ctx, "db", confort.WithReleaseFunc(&release))
-	// release manually
-	defer release()
-
-	binding := ports.Binding("5432/tcp")
-	if binding.HostIP == "" {
-		tb.Fatal("port not found")
-	}
-	p, err := strconv.ParseUint(binding.HostPort, 10, 16)
-	if err != nil {
-		tb.Fatal(err)
-	}
-
-	connCfg := pgconn.Config{
-		Host:     "127.0.0.1",
-		Port:     uint16(p),
-		User:     dbUser,
-		Password: dbPassword,
-		Database: Database,
-	}
-
-	pool, err := database.Connect(ctx, connCfg)
-	if err != nil {
-		tb.Fatal(err)
-	}
-	err = database.CreateTableIfNotExists(ctx, pool)
-	if err != nil {
-		tb.Fatal("LaunchDatabase:", err)
-	}
-	pool.Close()
-
 	return func(tb testing.TB, ctx context.Context, exclusive bool) *pgxpool.Pool {
 		tb.Helper()
 
-		if exclusive {
-			cft.UseExclusive(tb, ctx, "db")
-		} else {
-			cft.UseShared(tb, ctx, "db")
-		}
+		ports := db.Use(tb, ctx, exclusive, confort.WithInitFunc(func(ctx context.Context, ports confort.Ports) error {
+			cfg, err := configFromPorts(ports)
+			if err != nil {
+				return err
+			}
+			pool, err := database.Connect(ctx, cfg)
+			if err != nil {
+				return err
+			}
+			defer pool.Close()
+			return database.CreateTableIfNotExists(ctx, pool)
+		}))
 
-		pool, err := database.Connect(ctx, connCfg)
+		cfg, err := configFromPorts(ports)
+		if err != nil {
+			tb.Fatal(err)
+		}
+		pool, err := database.Connect(ctx, cfg)
 		if err != nil {
 			tb.Fatal("ConnectFunc:", err)
 		}
@@ -101,4 +81,23 @@ func InitDatabase(tb testing.TB, ctx context.Context, beacon *confort.Connection
 		})
 		return pool
 	}
+}
+
+func configFromPorts(ports confort.Ports) (cfg pgconn.Config, err error) {
+	binding := ports.Binding("5432/tcp")
+	if binding.HostIP == "" {
+		return cfg, errors.New("port not found")
+	}
+	p, err := strconv.ParseUint(binding.HostPort, 10, 16)
+	if err != nil {
+		return cfg, err
+	}
+
+	return pgconn.Config{
+		Host:     "127.0.0.1",
+		Port:     uint16(p),
+		User:     dbUser,
+		Password: dbPassword,
+		Database: Database,
+	}, nil
 }

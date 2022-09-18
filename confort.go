@@ -490,11 +490,11 @@ func WithPullOptions(opts *types.ImagePullOptions, out io.Writer) RunOption {
 
 // Container represents a created container and its controller.
 type Container struct {
-	cft     *Confort
-	id      string
-	name    string
-	alias   string
-	started bool
+	cft   *Confort
+	id    string
+	name  string
+	alias string
+	ports Ports
 }
 
 // LazyRun creates container but doesn't start.
@@ -521,11 +521,10 @@ func (cft *Confort) LazyRun(tb testing.TB, ctx context.Context, c *ContainerPara
 		tb.Fatalf("confort: %s", err)
 	}
 	return &Container{
-		cft:     cft,
-		id:      containerID,
-		name:    name,
-		alias:   alias,
-		started: false,
+		cft:   cft,
+		id:    containerID,
+		name:  name,
+		alias: alias,
 	}
 }
 
@@ -557,16 +556,16 @@ func (cft *Confort) Run(tb testing.TB, ctx context.Context, c *ContainerParams, 
 		tb.Fatalf("confort: %s", err)
 	}
 
-	_, err = cft.namespace.StartContainer(ctx, name)
+	ports, err := cft.namespace.StartContainer(ctx, name)
 	if err != nil {
 		tb.Fatalf("confort: %s", err)
 	}
 	return &Container{
-		cft:     cft,
-		id:      containerID,
-		name:    name,
-		alias:   alias,
-		started: true,
+		cft:   cft,
+		id:    containerID,
+		name:  name,
+		alias: alias,
+		ports: ports,
 	}
 }
 
@@ -606,6 +605,10 @@ func WithInitFunc(init InitFunc) UseOption {
 	}.use()
 }
 
+// Use acquires a lock for using the container and returns its endpoint. If exclusive is true, it requires to
+// use the container exclusively.
+// When other tests have already acquired an exclusive or shared lock for the container, it blocks until all
+// previous locks are released.
 func (c *Container) Use(tb testing.TB, ctx context.Context, exclusive bool, opts ...UseOption) Ports {
 	tb.Helper()
 
@@ -620,24 +623,23 @@ func (c *Container) Use(tb testing.TB, ctx context.Context, exclusive bool, opts
 		}
 	}
 
-	// TODO: following lines can be optional(c.started == false)?
-	// begin
-	unlock, err := c.cft.ex.LockForContainerSetup(ctx, c.name)
-	if err != nil {
-		tb.Fatal(err)
-	}
-	defer unlock()
+	if c.ports == nil {
+		unlock, err := c.cft.ex.LockForContainerSetup(ctx, c.name)
+		if err != nil {
+			tb.Fatal(err)
+		}
+		defer unlock()
 
-	ports, err := c.cft.namespace.StartContainer(ctx, c.name)
-	if err != nil {
-		tb.Fatalf("confort: %s", err)
+		c.ports, err = c.cft.namespace.StartContainer(ctx, c.name)
+		if err != nil {
+			tb.Fatalf("confort: %s", err)
+		}
 	}
-	// end
 
 	var init func() error
 	if initFunc != nil {
 		init = func() error {
-			return initFunc(ctx, ports)
+			return initFunc(ctx, c.ports)
 		}
 	}
 	// If initFunc is not nil, it will be called after acquisition of exclusive lock.
@@ -653,8 +655,7 @@ func (c *Container) Use(tb testing.TB, ctx context.Context, exclusive bool, opts
 	} else {
 		tb.Cleanup(release)
 	}
-
-	return ports
+	return c.ports
 }
 
 func (c *Container) UseExclusive(tb testing.TB, ctx context.Context, opts ...UseOption) Ports {
@@ -665,76 +666,6 @@ func (c *Container) UseExclusive(tb testing.TB, ctx context.Context, opts ...Use
 func (c *Container) UseShared(tb testing.TB, ctx context.Context, opts ...UseOption) Ports {
 	tb.Helper()
 	return c.Use(tb, ctx, false, opts...)
-}
-
-func (cft *Confort) use(tb testing.TB, ctx context.Context, name string, exclusive bool, opts ...UseOption) Ports {
-	tb.Helper()
-	name = cft.namespace.Namespace() + name
-
-	var releaseFunc *func()
-	var initFunc InitFunc
-	for _, opt := range opts {
-		switch opt.Ident() {
-		case identOptionReleaseFunc{}:
-			releaseFunc = opt.Value().(*func())
-		case identOptionInitFunc{}:
-			initFunc = opt.Value().(InitFunc)
-		}
-	}
-
-	unlock, err := cft.ex.LockForContainerSetup(ctx, name)
-	if err != nil {
-		tb.Fatal(err)
-	}
-	defer unlock()
-
-	ports, err := cft.namespace.StartContainer(ctx, name)
-	if err != nil {
-		tb.Fatalf("confort: %s", err)
-	}
-
-	var init func() error
-	if initFunc != nil {
-		init = func() error {
-			return initFunc(ctx, ports)
-		}
-	}
-	// If initFunc is not nil, it will be called after acquisition of exclusive lock.
-	// After that, the lock is downgraded to shared lock when exclusive is false.
-	// When initFunc returns error, the acquisition of lock fails.
-	release, err := cft.ex.LockForContainerUse(ctx, name, exclusive, init)
-	if err != nil {
-		tb.Fatalf("confort: %s", err)
-	}
-
-	if releaseFunc != nil {
-		*releaseFunc = release
-	} else {
-		tb.Cleanup(release)
-	}
-
-	return ports
-}
-
-// UseShared tries to start container created by Run or LazyRun and returns endpoint info.
-// If the container is already started by other test or process, UseShared reuse it.
-//
-// UseShared marks container "in use", but other call of UseShared is permitted.
-func (cft *Confort) UseShared(tb testing.TB, ctx context.Context, name string, opts ...UseOption) Ports {
-	tb.Helper()
-
-	return cft.use(tb, ctx, name, false, opts...)
-}
-
-// UseExclusive tries to start container created by Run or LazyRun and returns endpoint
-// info.
-//
-// UseExclusive requires to use container exclusively. When other UseShared marks
-// the container "in use", it blocks until acquire exclusive control.
-func (cft *Confort) UseExclusive(tb testing.TB, ctx context.Context, name string, opts ...UseOption) Ports {
-	tb.Helper()
-
-	return cft.use(tb, ctx, name, true, opts...)
 }
 
 // Network returns docker network representation associated with Confort.
