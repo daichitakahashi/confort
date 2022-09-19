@@ -71,7 +71,7 @@ func controls(t *testing.T) [2]control {
 	}
 }
 
-func testLockForNamespace(t *testing.T, c exclusion.Control) {
+func testLock(acquireLock func(ctx context.Context) (func(), error)) error {
 	ctx := context.Background()
 
 	store := map[string]bool{} // race detector
@@ -81,12 +81,12 @@ func testLockForNamespace(t *testing.T, c exclusion.Control) {
 	defer close(stop)
 	go func() {
 		for {
-			unlock, err := c.LockForNamespace(ctx)
+			time.Sleep(time.Millisecond)
+			unlock, err := acquireLock(ctx)
 			if err != nil {
 				goto check
 			}
 			store[key] = true
-			time.Sleep(100 * time.Microsecond)
 			unlock()
 		check:
 			select {
@@ -101,72 +101,10 @@ func testLockForNamespace(t *testing.T, c exclusion.Control) {
 	}()
 	done := make(chan bool, 1)
 	go func() {
-		for i := 0; i < 1000; i++ {
-			time.Sleep(100 * time.Microsecond)
-			unlock, err := c.LockForNamespace(ctx)
+		for i := 0; i < 200; i++ {
+			unlock, err := acquireLock(ctx)
 			if err != nil {
-				log.Printf("%d/1000 %s", i+1, err)
-				return
-			}
-			store[key] = false
-			unlock()
-		}
-		done <- true
-	}()
-	select {
-	case <-done:
-	case <-time.After(10 * time.Second):
-		t.Fatalf("can't acquire lock in 10 seconds")
-	}
-}
-
-func TestControl_LockForNamespace(t *testing.T) {
-	t.Parallel()
-
-	for _, c := range controls(t) {
-		c := c
-		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
-			testLockForNamespace(t, c.control)
-		})
-	}
-}
-
-func lockForBuild(c exclusion.Control, image string) error {
-	ctx := context.Background()
-
-	store := map[string]bool{} // race detector
-	const key = "key"
-
-	stop := make(chan bool)
-	defer close(stop)
-	go func() {
-		for {
-			unlock, err := c.LockForBuild(ctx, image)
-			if err != nil {
-				goto check
-			}
-			store[key] = true
-			time.Sleep(100 * time.Microsecond)
-			unlock()
-		check:
-			select {
-			case <-stop:
-				return
-			default:
-				if err != nil {
-					panic(err)
-				}
-			}
-		}
-	}()
-	done := make(chan bool, 1)
-	go func() {
-		for i := 0; i < 1000; i++ {
-			time.Sleep(100 * time.Microsecond)
-			unlock, err := c.LockForBuild(ctx, image)
-			if err != nil {
-				log.Printf("%d/1000 %s", i+1, err)
+				log.Printf("%d/200 %s", i+1, err)
 				return
 			}
 			store[key] = false
@@ -182,11 +120,31 @@ func lockForBuild(c exclusion.Control, image string) error {
 	return nil
 }
 
+func TestControl_LockForNamespace(t *testing.T) {
+	t.Parallel()
+
+	for _, c := range controls(t) {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			err := testLock(func(ctx context.Context) (func(), error) {
+				return c.control.LockForNamespace(ctx)
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func testLockForBuild(t *testing.T, c exclusion.Control) {
 	var eg errgroup.Group
 	for i := 0; i < 10; i++ {
 		eg.Go(func() error {
-			return lockForBuild(c, uuid.NewString())
+			name := uuid.NewString()
+			return testLock(func(ctx context.Context) (func(), error) {
+				return c.LockForBuild(ctx, name)
+			})
 		})
 	}
 	err := eg.Wait()
@@ -207,61 +165,14 @@ func TestControl_LockForBuild(t *testing.T) {
 	}
 }
 
-func lockForContainerSetup(c exclusion.Control, name string) error {
-	ctx := context.Background()
-
-	store := map[string]bool{} // race detector
-	const key = "key"
-
-	stop := make(chan bool)
-	defer close(stop)
-	go func() {
-		for {
-			unlock, err := c.LockForContainerSetup(ctx, name)
-			if err != nil {
-				goto check
-			}
-			store[key] = true
-			time.Sleep(100 * time.Microsecond)
-			unlock()
-		check:
-			select {
-			case <-stop:
-				return
-			default:
-				if err != nil {
-					panic(err)
-				}
-			}
-		}
-	}()
-	done := make(chan bool, 1)
-	go func() {
-		for i := 0; i < 1000; i++ {
-			time.Sleep(100 * time.Microsecond)
-			unlock, err := c.LockForContainerSetup(ctx, name)
-			if err != nil {
-				log.Printf("%d/1000 %s", i+1, err)
-				return
-			}
-			store[key] = false
-			unlock()
-		}
-		done <- true
-	}()
-	select {
-	case <-done:
-	case <-time.After(10 * time.Second):
-		return errors.New("can't acquire lock in 10 seconds")
-	}
-	return nil
-}
-
 func testLockForContainerSetup(t *testing.T, c exclusion.Control) {
 	var eg errgroup.Group
 	for i := 0; i < 40; i++ {
 		eg.Go(func() error {
-			return lockForContainerSetup(c, uuid.NewString())
+			name := uuid.NewString()
+			return testLock(func(ctx context.Context) (func(), error) {
+				return c.LockForContainerSetup(ctx, name)
+			})
 		})
 	}
 	err := eg.Wait()
@@ -291,49 +202,41 @@ func lockForContainerUse(c exclusion.Control, name string) error {
 	var count int32
 	stop := make(chan bool)
 	go func() {
-		errSink := make(chan error)
-		sem := make(chan struct{}, 10)
 		for {
-			// exclusive lock continues 100 microseconds.
+			// exclusive lock continues a millisecond.
 			// during that, more than two shared locks will be acquired.
-			time.Sleep(40 * time.Microsecond)
-			go func() {
-				sem <- struct{}{}
-				unlock, err := c.LockForContainerUse(ctx, name, false, nil)
-				if err != nil {
-					errSink <- err
-					return
-				}
+			time.Sleep(time.Millisecond / 2)
 
-				_ = store[key]
-				atomic.AddInt32(&count, 1)
-				time.AfterFunc(10*time.Microsecond, func() {
-					unlock()
-					<-sem
-				})
-			}()
+			unlock, err := c.LockForContainerUse(ctx, name, false, nil)
+			if err != nil {
+				if status.Code(err) != codes.Canceled {
+					panic(err)
+				}
+				return
+			}
+
+			_ = store[key]
+			atomic.AddInt32(&count, 1)
+			unlock()
+
 			select {
 			case <-stop:
 				return
-			case err := <-errSink:
-				if err != nil {
-					panic(err)
-				}
 			default:
 			}
 		}
 	}()
 	done := make(chan bool)
 	go func() {
-		for i := 0; i < 1000; i++ {
+		for i := 0; i < 200; i++ {
 			unlock, err := c.LockForContainerUse(ctx, name, true, nil)
 			if err != nil {
-				log.Printf("%d/1000 %s", i+1, err)
+				log.Printf("%d/200 %s", i+1, err)
 				return
 			}
-			time.Sleep(100 * time.Microsecond)
 			store[key] = true
 			unlock()
+			time.Sleep(time.Millisecond)
 		}
 		done <- true
 	}()
@@ -341,8 +244,8 @@ func lockForContainerUse(c exclusion.Control, name string) error {
 	case <-done:
 		close(stop)
 		cnt := atomic.LoadInt32(&count)
-		if cnt < 2000 {
-			return fmt.Errorf("lack of shared lock: %d < 2000", cnt)
+		if cnt < 100 {
+			return fmt.Errorf("lack of shared lock: %d < 100", cnt)
 		}
 	case <-time.After(10 * time.Second):
 		close(stop)
@@ -405,7 +308,7 @@ func lockForContainerUseWithInit(c exclusion.Control, name string, exclusive boo
 			_ = store[key]
 		}
 
-		time.AfterFunc(30*time.Microsecond, unlock)
+		time.AfterFunc(time.Millisecond, unlock)
 	}
 	if exclusive && len(store[key]) != 9 {
 		return fmt.Errorf("unexpected number of acquisition of exclusive lock: %d", len(store[key]))
