@@ -21,7 +21,7 @@ Sometimes there are several unit tests that requires the same Docker container.
 `confort.Confort` and `confort` command enables us to share it and make testing 
 more efficient. And we can choose shared locking not only exclusive.
 
-### 3. Avoid conflict between tests, using unique identifier generator
+### 3. Avoid conflict between tests by using unique identifier generator
 To efficiently use containers simultaneously from parallelized tests, it is 
 effective to make the resource name created on the container unique for each test 
 (e.g., database name or realm name).
@@ -39,7 +39,8 @@ func TestExample(t *testing.T) {
     )
     
     // start container
-    cft.Run(t, ctx, "db", &confort.Container{
+    db := cft.Run(t, ctx, &confort.ContainerParams{
+        Name:  "db",
         Image: "postgres:14.4-alpine3.16",
         Env: map[string]string{
             "POSTGRES_USER":     dbUser,
@@ -62,7 +63,7 @@ func TestExample(t *testing.T) {
     
     // use container exclusively. the container will be released after the test finished
     // UseShared is also available
-    ports := cft.UseExclusive(t, ctx, "db")
+    ports := db.UseExclusive(t, ctx)
     addr := ports.HostPort("5432/tcp")
     // connect PostgreSQL using `addr`
 	
