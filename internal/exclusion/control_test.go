@@ -209,10 +209,12 @@ func lockForContainerUse(c exclusion.Control, name string) error {
 
 			unlock, err := c.LockForContainerUse(ctx, name, false, nil)
 			if err != nil {
-				if status.Code(err) != codes.Canceled {
+				switch status.Code(err) {
+				case codes.Canceled, codes.Unavailable:
+					return
+				default:
 					panic(err)
 				}
-				return
 			}
 
 			_ = store[key]
