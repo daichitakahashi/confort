@@ -219,25 +219,18 @@ func TestConfort_Run_SameNameButAnotherImage(t *testing.T) {
 		WithNamespace(namespace, true),
 	)
 
-	recovered := func() (v any) {
-		defer func() { v = recover() }()
-		cft1.Run(ctl, ctx, &ContainerParams{
-			Name:         containerName,
-			Image:        imageEcho,
-			ExposedPorts: []string{"80/tcp"},
-			Waiter:       Healthy(),
-		})
-		return
-	}()
-	if recovered != nil {
-		t.Fatalf("unexpected error: %v", recovered)
-	}
+	fullName := cft1.Run(t, ctx, &ContainerParams{
+		Name:         containerName,
+		Image:        imageEcho,
+		ExposedPorts: []string{"80/tcp"},
+		Waiter:       Healthy(),
+	}).Name()
 
 	cft2 := New(t, ctx,
 		WithNamespace(namespace, true),
 	)
 
-	recovered = func() (v any) {
+	recovered := func() (v any) {
 		defer func() { v = recover() }()
 		cft2.Run(ctl, ctx, &ContainerParams{ // same name, but different image
 			Name:  containerName,
@@ -249,7 +242,7 @@ func TestConfort_Run_SameNameButAnotherImage(t *testing.T) {
 		t.Fatal("error expected on run containers that has same name and different image")
 	}
 	expectedMsg := containerNameConflict(
-		fmt.Sprintf("%s-%s", namespace, containerName),
+		fullName,
 		imageCommunicator,
 		imageEcho,
 	)
@@ -438,7 +431,7 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		Name:  "C",
 		Image: imageCommunicator,
 		Env: map[string]string{
-			"CM_TARGET": "B", // CHECK THIS WORKS
+			"CM_TARGET": com3.Alias(), // "B" CHECK THIS WORKS
 		},
 		ExposedPorts: []string{"80/tcp"},
 		Waiter:       Healthy(),
@@ -896,12 +889,10 @@ func TestWithResourcePolicy(t *testing.T) {
 					WithNamespace(fmt.Sprintf("%s-%s", namespacePrefix, middleName), true),
 				)
 
-				precedingContainerID, err := precedes.namespace.CreateContainer(ctx, precedes.namespace.Namespace()+containerNameSuffix, &container.Config{
+				precedingContainerID := precedes.Run(t, ctx, &ContainerParams{
+					Name:  containerNameSuffix,
 					Image: imageEcho,
-				}, &container.HostConfig{}, &network.NetworkingConfig{}, true, nil, nil, io.Discard)
-				if err != nil {
-					t.Fatal(err)
-				}
+				}).ID()
 
 				// try to re-create
 				var cft *Confort
@@ -918,12 +909,10 @@ func TestWithResourcePolicy(t *testing.T) {
 						WithResourcePolicy(tc.policy),
 						WithTerminateFunc(&term),
 					)
-					containerID, err = cft.namespace.CreateContainer(ctx, fmt.Sprintf("%s%s-%s", cft.namespace.Namespace(), middleName, containerNameSuffix), &container.Config{
+					containerID = cft.Run(c, ctx, &ContainerParams{
+						Name:  fmt.Sprintf("%s-%s", middleName, containerNameSuffix),
 						Image: imageEcho,
-					}, &container.HostConfig{}, &network.NetworkingConfig{}, true, nil, nil, io.Discard)
-					if err != nil {
-						c.Fatal(err)
-					}
+					}).ID()
 					return nil
 				}()
 				t.Cleanup(func() {
@@ -959,21 +948,19 @@ func TestWithResourcePolicy_reusable(t *testing.T) {
 		WithTerminateFunc(&term),
 	)
 	networkID := cft.namespace.Network().ID
-	containerID, err := cft.namespace.CreateContainer(ctx, cft.Namespace()+"echo", &container.Config{
+	containerID := cft.Run(t, ctx, &ContainerParams{
+		Name:  "echo",
 		Image: imageEcho,
-	}, &container.HostConfig{}, &network.NetworkingConfig{}, true, nil, nil, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
+	}).ID()
 	term()
 	t.Cleanup(func() {
-		err := cli.NetworkRemove(ctx, networkID)
-		if err != nil {
-			t.Log(err)
-		}
 		err = cli.ContainerRemove(ctx, containerID, types.ContainerRemoveOptions{
 			Force: true,
 		})
+		if err != nil {
+			t.Log(err)
+		}
+		err := cli.NetworkRemove(ctx, networkID)
 		if err != nil {
 			t.Log(err)
 		}
