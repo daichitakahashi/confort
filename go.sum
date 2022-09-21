@@ -238,8 +238,8 @@ github.com/daichitakahashi/gocmd v1.0.0 h1:6bBdhGD6iFwyP/0aO7ltvTWCziEjw8PO4ohMx
 github.com/daichitakahashi/gocmd v1.0.0/go.mod h1:7itfHn2q4YyhBNzrVhn9WgavuxE9YC2v3IB5GgXLsGw=
 github.com/daichitakahashi/oncewait v1.0.0 h1:ANXeuO0JVVL4MPi8RlCB9sS1CffBV25Ux1ltc1MHrtA=
 github.com/daichitakahashi/oncewait v1.0.0/go.mod h1:KharQPUGj322xxiHjngOTcyKTLCTz8/FoUEQ918ZHCM=
-github.com/daichitakahashi/testingc v0.0.0-20220801231842-40b36baddcd3 h1:DRHYI+uOjhB5+/iR7SKVzolQdKhoCAS/9MGrfMyFL0U=
-github.com/daichitakahashi/testingc v0.0.0-20220801231842-40b36baddcd3/go.mod h1:Jzx4t/Fp4vCHpYT8tMNkZzPsOKb5MP+3oIayWhtRq5k=
+github.com/daichitakahashi/testingc v0.0.0-20220920002131-e469216f1899 h1:NcxbVXMXu4wOtzNyEG37yrBc3zFYcZ57zfSPGkcZJsU=
+github.com/daichitakahashi/testingc v0.0.0-20220920002131-e469216f1899/go.mod h1:Jzx4t/Fp4vCHpYT8tMNkZzPsOKb5MP+3oIayWhtRq5k=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

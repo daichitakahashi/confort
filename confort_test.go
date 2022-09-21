@@ -1,4 +1,4 @@
-package confort
+package confort_test
 
 import (
 	"bytes"
@@ -12,7 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/daichitakahashi/confort"
 	"github.com/daichitakahashi/confort/internal/beaconutil"
+	"github.com/daichitakahashi/confort/unique"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -31,7 +33,7 @@ const (
 
 var (
 	// generate unique namespace and name for container
-	uniqueName = UniqueString(16)
+	uniqueName = unique.String(16)
 )
 
 func TestMain(m *testing.M) {
@@ -40,9 +42,9 @@ func TestMain(m *testing.M) {
 	defer cleanup()
 
 	var term func()
-	cft := New(c, ctx,
-		WithNamespace("for-build", false),
-		WithTerminateFunc(&term),
+	cft := confort.New(c, ctx,
+		confort.WithNamespace("for-build", false),
+		confort.WithTerminateFunc(&term),
 	)
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
@@ -59,11 +61,11 @@ func TestMain(m *testing.M) {
 		})
 		defer term()
 		c.Logf("building image: %s", imageCommunicator)
-		cft.Build(c, ctx, &BuildParams{
+		cft.Build(c, ctx, &confort.BuildParams{
 			Image:      imageCommunicator,
 			Dockerfile: "testdata/communicator/Dockerfile",
 			ContextDir: "testdata/communicator",
-		}, WithBuildOutput(io.Discard), WithForceBuild())
+		}, confort.WithBuildOutput(io.Discard), confort.WithForceBuild())
 		c.Cleanup(func() {
 			c.Logf("remove image: %s", imageCommunicator)
 			_, err := cli.ImageRemove(ctx, imageCommunicator, types.ImageRemoveOptions{})
@@ -72,11 +74,11 @@ func TestMain(m *testing.M) {
 			}
 		})
 		c.Logf("building image: %s", imageEcho)
-		cft.Build(c, ctx, &BuildParams{
+		cft.Build(c, ctx, &confort.BuildParams{
 			Image:      imageEcho,
 			Dockerfile: "testdata/echo/Dockerfile",
 			ContextDir: "testdata/echo/",
-		}, WithBuildOutput(io.Discard), WithForceBuild())
+		}, confort.WithBuildOutput(io.Discard), confort.WithForceBuild())
 		c.Cleanup(func() {
 			c.Logf("remove image: %s", imageEcho)
 			_, err := cli.ImageRemove(ctx, imageEcho, types.ImageRemoveOptions{})
@@ -96,18 +98,18 @@ func TestConfort_Run_Communication(t *testing.T) {
 
 	ctx := context.Background()
 
-	cft := New(t, ctx,
-		WithNamespace(t.Name(), false),
+	cft := confort.New(t, ctx,
+		confort.WithNamespace(t.Name(), false),
 	)
 
-	comOne := cft.Run(t, ctx, &ContainerParams{
+	comOne := cft.Run(t, ctx, &confort.ContainerParams{
 		Name:  "one",
 		Image: imageCommunicator,
 		Env: map[string]string{
 			"CM_TARGET": "two",
 		},
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       LogContains("communicator is ready", 1),
+		Waiter:       confort.LogContains("communicator is ready", 1),
 	})
 	portsOne := comOne.UseExclusive(t, ctx)
 	hostOne := portsOne.HostPort("80/tcp")
@@ -116,14 +118,14 @@ func TestConfort_Run_Communication(t *testing.T) {
 		t.Fatal("one: bound port not found")
 	}
 
-	comTwo := cft.Run(t, ctx, &ContainerParams{
+	comTwo := cft.Run(t, ctx, &confort.ContainerParams{
 		Name:  "two",
 		Image: imageCommunicator,
 		Env: map[string]string{
 			"CM_TARGET": "one",
 		},
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       LogContains("communicator is ready", 1),
+		Waiter:       confort.LogContains("communicator is ready", 1),
 	})
 	portsTwo := comTwo.UseExclusive(t, ctx)
 	hostTwo := portsTwo.HostPort("80/tcp")
@@ -163,12 +165,12 @@ func TestConfort_Run_ContainerIdentification(t *testing.T) {
 		t.Helper()
 
 		ctx := context.Background()
-		cft := New(t, ctx, WithNamespace(namespace, true))
-		echo := cft.Run(t, ctx, &ContainerParams{
+		cft := confort.New(t, ctx, confort.WithNamespace(namespace, true))
+		echo := cft.Run(t, ctx, &confort.ContainerParams{
 			Name:         containerName,
 			Image:        imageEcho,
 			ExposedPorts: []string{port},
-			Waiter:       Healthy(),
+			Waiter:       confort.Healthy(),
 		})
 		ports := echo.UseShared(t, ctx)
 		endpoint := ports.HostPort(nat.Port(port))
@@ -215,24 +217,24 @@ func TestConfort_Run_SameNameButAnotherImage(t *testing.T) {
 	)
 	t.Cleanup(term)
 
-	cft1 := New(t, ctx,
-		WithNamespace(namespace, true),
+	cft1 := confort.New(t, ctx,
+		confort.WithNamespace(namespace, true),
 	)
 
-	fullName := cft1.Run(t, ctx, &ContainerParams{
+	fullName := cft1.Run(t, ctx, &confort.ContainerParams{
 		Name:         containerName,
 		Image:        imageEcho,
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       Healthy(),
+		Waiter:       confort.Healthy(),
 	}).Name()
 
-	cft2 := New(t, ctx,
-		WithNamespace(namespace, true),
+	cft2 := confort.New(t, ctx,
+		confort.WithNamespace(namespace, true),
 	)
 
 	recovered := func() (v any) {
 		defer func() { v = recover() }()
-		cft2.Run(ctl, ctx, &ContainerParams{ // same name, but different image
+		cft2.Run(ctl, ctx, &confort.ContainerParams{ // same name, but different image
 			Name:  containerName,
 			Image: imageCommunicator,
 		})
@@ -241,12 +243,7 @@ func TestConfort_Run_SameNameButAnotherImage(t *testing.T) {
 	if recovered == nil {
 		t.Fatal("error expected on run containers that has same name and different image")
 	}
-	expectedMsg := containerNameConflict(
-		fullName,
-		imageCommunicator,
-		imageEcho,
-	)
-	if !strings.Contains(fmt.Sprint(recovered), expectedMsg) {
+	if !strings.Contains(fmt.Sprint(recovered), fullName) {
 		t.Fatalf("unexpected error: %v", recovered)
 	}
 }
@@ -260,8 +257,8 @@ func TestConfort_LazyRun(t *testing.T) {
 		namespace = uniqueName.Must(t)
 	)
 
-	cft := New(t, ctx,
-		WithNamespace(namespace, true),
+	cft := confort.New(t, ctx,
+		confort.WithNamespace(namespace, true),
 	)
 
 	t.Run("Use after LazyRun", func(t *testing.T) {
@@ -269,11 +266,11 @@ func TestConfort_LazyRun(t *testing.T) {
 
 		containerName := uniqueName.Must(t)
 
-		echo := cft.LazyRun(t, ctx, &ContainerParams{
+		echo := cft.LazyRun(t, ctx, &confort.ContainerParams{
 			Name:         containerName,
 			Image:        imageEcho,
 			ExposedPorts: []string{"80/tcp"},
-			Waiter:       Healthy(),
+			Waiter:       confort.Healthy(),
 		})
 
 		e1 := echo.UseShared(t, ctx)
@@ -293,18 +290,18 @@ func TestConfort_LazyRun(t *testing.T) {
 
 		containerName := uniqueName.Must(t)
 
-		c := &ContainerParams{
+		c := &confort.ContainerParams{
 			Name:         containerName,
 			Image:        imageEcho,
 			ExposedPorts: []string{"80/tcp"},
-			Waiter:       Healthy(),
+			Waiter:       confort.Healthy(),
 		}
 
 		echo1 := cft.LazyRun(t, ctx, c)
 		e1 := echo1.UseShared(t, ctx)
 
-		cft2 := New(t, ctx,
-			WithNamespace(namespace, true),
+		cft2 := confort.New(t, ctx,
+			confort.WithNamespace(namespace, true),
 		)
 
 		echo2 := cft2.Run(t, ctx, c)
@@ -325,15 +322,15 @@ func TestConfort_LazyRun(t *testing.T) {
 	//
 	// 	containerName := uniqueName.Must(t)
 	//
-	// 	echo := cft.LazyRun(t, ctx, &ContainerParams{
+	// 	echo := cft.LazyRun(t, ctx, &confort.ContainerParams{
 	// 		Name:         containerName,
 	// 		Image:        imageEcho,
 	// 		ExposedPorts: []string{"80/tcp"},
-	// 		Waiter:       Healthy(),
+	// 		Waiter:       confort.Healthy(),
 	// 	})
 	//
-	// 	cft2 := New(t, ctx,
-	// 		WithNamespace(namespace, true),
+	// 	cft2 := confort.New(t, ctx,
+	// 		confort.WithNamespace(namespace, true),
 	// 	)
 	//
 	// 	ctl, _ := NewControl()
@@ -369,18 +366,18 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 	//          ┗ Container "namespace-foo-B" ┳　Network2
 	//            Container "namespace-foo-C" ┛
 
-	cft1 := New(t, ctx,
-		WithNamespace(namespaceA, true),
+	cft1 := confort.New(t, ctx,
+		confort.WithNamespace(namespaceA, true),
 	)
 
-	com1 := cft1.Run(t, ctx, &ContainerParams{
+	com1 := cft1.Run(t, ctx, &confort.ContainerParams{
 		Name:  "foo-A",
 		Image: imageCommunicator,
 		Env: map[string]string{
 			"CM_TARGET": "foo-B",
 		},
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       Healthy(),
+		Waiter:       confort.Healthy(),
 	})
 	e := com1.UseShared(t, ctx)
 	hostA := e.HostPort("80/tcp")
@@ -388,7 +385,7 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		t.Fatal("failed to get host/port")
 	}
 
-	com2 := cft1.Run(t, ctx, &ContainerParams{
+	com2 := cft1.Run(t, ctx, &confort.ContainerParams{
 		Name:  "foo-B",
 		Image: imageCommunicator,
 		Env: map[string]string{
@@ -397,7 +394,7 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		// Using ephemeral port makes test flaky, why?
 		// Without specifying host port, container loses the port binding occasionally.
 		ExposedPorts: []string{"8080:80/tcp"},
-		Waiter:       Healthy(),
+		Waiter:       confort.Healthy(),
 	})
 	e = com2.UseShared(t, ctx)
 	hostB := e.HostPort("80/tcp")
@@ -405,18 +402,18 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		t.Fatal("failed to get host/port")
 	}
 
-	cft2 := New(t, ctx,
-		WithNamespace(namespaceB, true),
+	cft2 := confort.New(t, ctx,
+		confort.WithNamespace(namespaceB, true),
 	)
 
-	com3 := cft2.Run(t, ctx, &ContainerParams{ // same name container
+	com3 := cft2.Run(t, ctx, &confort.ContainerParams{ // same name container
 		Name:  "B",
 		Image: imageCommunicator,
 		Env: map[string]string{
 			"CM_TARGET": "C",
 		},
 		ExposedPorts: []string{"8080:80/tcp"},
-		Waiter:       Healthy(),
+		Waiter:       confort.Healthy(),
 	})
 	e = com3.UseShared(t, ctx)
 	hostB2 := e.HostPort("80/tcp")
@@ -427,14 +424,14 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		t.Fatalf("expected same host: want %q, got %q", hostB, hostB2)
 	}
 
-	com4 := cft2.Run(t, ctx, &ContainerParams{
+	com4 := cft2.Run(t, ctx, &confort.ContainerParams{
 		Name:  "C",
 		Image: imageCommunicator,
 		Env: map[string]string{
 			"CM_TARGET": com3.Alias(), // "B" CHECK THIS WORKS
 		},
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       Healthy(),
+		Waiter:       confort.Healthy(),
 	})
 	e = com4.UseShared(t, ctx)
 	hostC := e.HostPort("80/tcp")
@@ -517,9 +514,9 @@ func TestWithClientOptions(t *testing.T) {
 		return resp, err
 	})
 
-	New(t, ctx,
-		WithClientOptions(client.FromEnv, client.WithHTTPClient(httpCli)),
-		WithNamespace(uuid.NewString(), true),
+	confort.New(t, ctx,
+		confort.WithClientOptions(client.FromEnv, client.WithHTTPClient(httpCli)),
+		confort.WithNamespace(uuid.NewString(), true),
 	)
 
 	if logOut.Len() == 0 {
@@ -573,7 +570,7 @@ func TestWithNamespace(t *testing.T) {
 			if tc.envNamespace != "" {
 				t.Setenv(beaconutil.NamespaceEnv, tc.envNamespace)
 			}
-			cft := New(t, ctx, WithNamespace(tc.optNamespace, tc.force))
+			cft := confort.New(t, ctx, confort.WithNamespace(tc.optNamespace, tc.force))
 
 			actual := cft.Namespace()
 			if tc.expectedNamespace != actual {
@@ -595,8 +592,8 @@ func TestWithNamespace_empty(t *testing.T) {
 			t.Fatal("expected to fail, but succeeded")
 		}
 	}()
-	New(c, context.Background(),
-		WithNamespace("", true),
+	confort.New(c, context.Background(),
+		confort.WithNamespace("", true),
 	)
 }
 
@@ -634,7 +631,7 @@ func TestWithDefaultTimeout(t *testing.T) {
 	}{
 		{
 			desc:    "default default timeout(1 min.)",
-			timeout: -1, // without WithDefaultTimeout
+			timeout: -1, // without confort.WithDefaultTimeout
 			test: func(t *testing.T, deadline time.Time, ok bool) {
 				if !ok {
 					t.Fatal("deadline expected")
@@ -646,7 +643,7 @@ func TestWithDefaultTimeout(t *testing.T) {
 			},
 		}, {
 			desc:    "no timeout",
-			timeout: 0, // WithDefaultTimeout(0)
+			timeout: 0, // confort.WithDefaultTimeout(0)
 			test: func(t *testing.T, deadline time.Time, ok bool) {
 				if ok {
 					t.Fatal("no deadline expected")
@@ -654,7 +651,7 @@ func TestWithDefaultTimeout(t *testing.T) {
 			},
 		}, {
 			desc:    "with default timeout(5 sec.)",
-			timeout: time.Second * 5, // WithDefaultTimeout(time.Second*5)
+			timeout: time.Second * 5, // confort.WithDefaultTimeout(time.Second*5)
 			test: func(t *testing.T, deadline time.Time, ok bool) {
 				if !ok {
 					t.Fatal("deadline expected")
@@ -665,8 +662,8 @@ func TestWithDefaultTimeout(t *testing.T) {
 				}
 			},
 		}, {
-			desc:    "with default timeout(5 sec.) and timeout for New(3 sec.)",
-			timeout: time.Second * 5, // WithDefaultTimeout(time.Second*5)
+			desc:    "with default timeout(5 sec.) and timeout for confort.New(3 sec.)",
+			timeout: time.Second * 5, // confort.WithDefaultTimeout(time.Second*5)
 			newCtx: func() (context.Context, context.CancelFunc) {
 				return context.WithTimeout(context.Background(), time.Second*3)
 			},
@@ -680,8 +677,8 @@ func TestWithDefaultTimeout(t *testing.T) {
 				}
 			},
 		}, {
-			desc:    "with default timeout(5 sec.) and timeout for New(7 sec.)",
-			timeout: time.Second * 5, // WithDefaultTimeout(time.Second*5)
+			desc:    "with default timeout(5 sec.) and timeout for confort.New(7 sec.)",
+			timeout: time.Second * 5, // confort.WithDefaultTimeout(time.Second*5)
 			newCtx: func() (context.Context, context.CancelFunc) {
 				return context.WithTimeout(context.Background(), time.Second*7)
 			},
@@ -702,12 +699,12 @@ func TestWithDefaultTimeout(t *testing.T) {
 			httpCli := httpClient(func(deadline time.Time, ok bool) {
 				tc.test(t, deadline, ok)
 			})
-			opts := []NewOption{
-				WithNamespace(uuid.NewString(), true),
-				WithClientOptions(client.FromEnv, client.WithHTTPClient(httpCli)),
+			opts := []confort.NewOption{
+				confort.WithNamespace(uuid.NewString(), true),
+				confort.WithClientOptions(client.FromEnv, client.WithHTTPClient(httpCli)),
 			}
 			if tc.timeout >= 0 {
-				opts = append(opts, WithDefaultTimeout(tc.timeout))
+				opts = append(opts, confort.WithDefaultTimeout(tc.timeout))
 			}
 
 			ctx := context.Background()
@@ -716,7 +713,7 @@ func TestWithDefaultTimeout(t *testing.T) {
 				ctx, cancel = tc.newCtx()
 				t.Cleanup(cancel)
 			}
-			New(t, ctx, opts...)
+			confort.New(t, ctx, opts...)
 		})
 	}
 }
@@ -753,17 +750,10 @@ func TestWithResourcePolicy(t *testing.T) {
 	assertNetwork := func(removed bool) func(t *testing.T, networkID string) {
 		return func(t *testing.T, networkID string) {
 			t.Helper()
-			list, err := cli.NetworkList(ctx, types.NetworkListOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			var found bool
-			for _, c := range list {
-				if c.ID == networkID {
-					found = true
-					break
-				}
-			}
+
+			_, err := cli.NetworkInspect(ctx, networkID, types.NetworkInspectOptions{})
+			found := err == nil
+
 			if found && removed {
 				t.Fatalf("expected to be removed but exists: %q", networkID)
 			} else if !found && !removed {
@@ -775,19 +765,10 @@ func TestWithResourcePolicy(t *testing.T) {
 	assertContainer := func(removed bool) func(t *testing.T, containerID string) {
 		return func(t *testing.T, containerID string) {
 			t.Helper()
-			list, err := cli.ContainerList(ctx, types.ContainerListOptions{
-				All: true,
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			var found bool
-			for _, c := range list {
-				if c.ID == containerID {
-					found = true
-					break
-				}
-			}
+
+			_, err := cli.ContainerInspect(ctx, containerID)
+			found := err == nil
+
 			if found && removed {
 				t.Fatalf("expected to be removed but exists: %q", containerID)
 			} else if !found && !removed {
@@ -797,35 +778,35 @@ func TestWithResourcePolicy(t *testing.T) {
 	}
 
 	testCases := []struct {
-		policy                   ResourcePolicy
+		policy                   confort.ResourcePolicy
 		afterNamespaceCreated    func(t *testing.T, foundNetworkID, gotNetworkID string, recovered any)
 		afterNamespaceTerminated func(t *testing.T, networkID string)
 		afterContainerCreated    func(t *testing.T, foundContainerID, gotContainerID string, recovered any)
 		afterContainerTerminated func(t *testing.T, containerID string)
 	}{
 		{
-			policy:                   ResourcePolicyReuse,
+			policy:                   confort.ResourcePolicyReuse,
 			afterNamespaceCreated:    assertReused,
 			afterNamespaceTerminated: assertNetwork(false),
 			afterContainerCreated:    assertReused,
 			afterContainerTerminated: assertContainer(false),
 		},
 		{
-			policy:                   ResourcePolicyReusable,
+			policy:                   confort.ResourcePolicyReusable,
 			afterNamespaceCreated:    assertReused,
 			afterNamespaceTerminated: assertNetwork(false),
 			afterContainerCreated:    assertReused,
 			afterContainerTerminated: assertContainer(false),
 		},
 		{
-			policy:                   ResourcePolicyTakeOver,
+			policy:                   confort.ResourcePolicyTakeOver,
 			afterNamespaceCreated:    assertReused,
 			afterNamespaceTerminated: assertNetwork(true),
 			afterContainerCreated:    assertReused,
 			afterContainerTerminated: assertContainer(true),
 		},
 		{
-			policy:                   ResourcePolicyError,
+			policy:                   confort.ResourcePolicyError,
 			afterNamespaceCreated:    assertFailed,
 			afterNamespaceTerminated: assertNetwork(false),
 			afterContainerCreated:    assertFailed,
@@ -843,10 +824,10 @@ func TestWithResourcePolicy(t *testing.T) {
 
 				// create preceding network
 				networkName := uniqueName.Must(t)
-				precedes := New(t, ctx, WithNamespace(networkName, true))
+				precedes := confort.New(t, ctx, confort.WithNamespace(networkName, true))
 
 				// try to re-create
-				var cft *Confort
+				var cft *confort.Confort
 				var term func()
 				var terminated bool
 				var networkID string
@@ -855,13 +836,13 @@ func TestWithResourcePolicy(t *testing.T) {
 						r = recover()
 					}()
 					c, _ := NewControl()
-					cft = New(c, ctx,
-						WithNamespace(networkName, true),
-						WithResourcePolicy(tc.policy),
-						WithTerminateFunc(&term),
+					cft = confort.New(c, ctx,
+						confort.WithNamespace(networkName, true),
+						confort.WithResourcePolicy(tc.policy),
+						confort.WithTerminateFunc(&term),
 					)
-					if cft != nil && cft.namespace != nil {
-						networkID = cft.namespace.Network().ID
+					if cft != nil && cft.Network() != nil {
+						networkID = cft.Network().ID
 					}
 					return nil
 				}()
@@ -870,12 +851,12 @@ func TestWithResourcePolicy(t *testing.T) {
 						term()
 					}
 				})
-				tc.afterNamespaceCreated(t, precedes.namespace.Network().ID, networkID, recovered)
+				tc.afterNamespaceCreated(t, precedes.Network().ID, networkID, recovered)
 				if term != nil {
 					term()
 					terminated = true
 				}
-				tc.afterNamespaceTerminated(t, precedes.namespace.Network().ID)
+				tc.afterNamespaceTerminated(t, precedes.Network().ID)
 			})
 
 			t.Run("duplicated container name", func(t *testing.T) {
@@ -885,17 +866,17 @@ func TestWithResourcePolicy(t *testing.T) {
 				namespacePrefix := uniqueName.Must(t)
 				middleName := uniqueName.Must(t)
 				containerNameSuffix := uniqueName.Must(t)
-				precedes := New(t, ctx,
-					WithNamespace(fmt.Sprintf("%s-%s", namespacePrefix, middleName), true),
+				precedes := confort.New(t, ctx,
+					confort.WithNamespace(fmt.Sprintf("%s-%s", namespacePrefix, middleName), true),
 				)
 
-				precedingContainerID := precedes.Run(t, ctx, &ContainerParams{
+				precedingContainerID := precedes.Run(t, ctx, &confort.ContainerParams{
 					Name:  containerNameSuffix,
 					Image: imageEcho,
 				}).ID()
 
 				// try to re-create
-				var cft *Confort
+				var cft *confort.Confort
 				var term func()
 				var terminated bool
 				var containerID string
@@ -904,12 +885,12 @@ func TestWithResourcePolicy(t *testing.T) {
 						r = recover()
 					}()
 					c, _ := NewControl()
-					cft = New(c, ctx,
-						WithNamespace(namespacePrefix, true),
-						WithResourcePolicy(tc.policy),
-						WithTerminateFunc(&term),
+					cft = confort.New(c, ctx,
+						confort.WithNamespace(namespacePrefix, true),
+						confort.WithResourcePolicy(tc.policy),
+						confort.WithTerminateFunc(&term),
 					)
-					containerID = cft.Run(c, ctx, &ContainerParams{
+					containerID = cft.Run(c, ctx, &confort.ContainerParams{
 						Name:  fmt.Sprintf("%s-%s", middleName, containerNameSuffix),
 						Image: imageEcho,
 					}).ID()
@@ -942,13 +923,13 @@ func TestWithResourcePolicy_reusable(t *testing.T) {
 	}
 
 	var term func()
-	cft := New(t, ctx,
-		WithNamespace(t.Name(), true),
-		WithResourcePolicy(ResourcePolicyReusable),
-		WithTerminateFunc(&term),
+	cft := confort.New(t, ctx,
+		confort.WithNamespace(t.Name(), true),
+		confort.WithResourcePolicy(confort.ResourcePolicyReusable),
+		confort.WithTerminateFunc(&term),
 	)
-	networkID := cft.namespace.Network().ID
-	containerID := cft.Run(t, ctx, &ContainerParams{
+	networkID := cft.Network().ID
+	containerID := cft.Run(t, ctx, &confort.ContainerParams{
 		Name:  "echo",
 		Image: imageEcho,
 	}).ID()
@@ -967,36 +948,14 @@ func TestWithResourcePolicy_reusable(t *testing.T) {
 	})
 
 	// check created resources are alive
-	networks, err := cli.NetworkList(ctx, types.NetworkListOptions{})
+	_, err = cli.NetworkInspect(ctx, networkID, types.NetworkInspectOptions{})
 	if err != nil {
-		t.Fatal(err)
-	}
-	var networkFound bool
-	for _, nw := range networks {
-		if nw.ID == networkID {
-			networkFound = true
-			break
-		}
-	}
-	if !networkFound {
-		t.Errorf("network %s not found", networkID)
+		t.Errorf("network %s not found: %s", networkID, err)
 	}
 
-	containers, err := cli.ContainerList(ctx, types.ContainerListOptions{
-		All: true,
-	})
+	_, err = cli.ContainerInspect(ctx, containerID)
 	if err != nil {
-		t.Fatal(err)
-	}
-	var containerFound bool
-	for _, c := range containers {
-		if c.ID == containerID {
-			containerFound = true
-		}
-		break
-	}
-	if !containerFound {
-		t.Errorf("container %s not found", containerID)
+		t.Errorf("container %s not found: %s", containerID, err)
 	}
 }
 
@@ -1014,8 +973,8 @@ func TestWithResourcePolicy_invalid(t *testing.T) {
 				t.Fatal("expected to fail, but succeeded")
 			}
 		}()
-		New(c, context.Background(),
-			WithNamespace(uuid.NewString(), true),
+		confort.New(c, context.Background(),
+			confort.WithNamespace(uuid.NewString(), true),
 		)
 	})
 
@@ -1029,9 +988,9 @@ func TestWithResourcePolicy_invalid(t *testing.T) {
 				t.Fatal("expected to fail, but succeeded")
 			}
 		}()
-		New(c, context.Background(),
-			WithNamespace(uuid.NewString(), true),
-			WithResourcePolicy("invalid"),
+		confort.New(c, context.Background(),
+			confort.WithNamespace(uuid.NewString(), true),
+			confort.WithResourcePolicy("invalid"),
 		)
 	})
 }
@@ -1051,9 +1010,9 @@ func TestWithTerminateFunc(t *testing.T) {
 	func() {
 		c, cleanup := NewControl()
 		defer cleanup()
-		cft := New(c, ctx,
-			WithNamespace(t.Name(), true),
-			WithTerminateFunc(&term),
+		cft := confort.New(c, ctx,
+			confort.WithNamespace(t.Name(), true),
+			confort.WithTerminateFunc(&term),
 		)
 		nw = cft.Network()
 	}()
@@ -1078,8 +1037,8 @@ func TestWithImageBuildOptions(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	cft := New(t, ctx,
-		WithNamespace(t.Name(), true),
+	cft := confort.New(t, ctx,
+		confort.WithNamespace(t.Name(), true),
 	)
 
 	cli, err := client.NewClientWithOpts(client.FromEnv)
@@ -1088,7 +1047,7 @@ func TestWithImageBuildOptions(t *testing.T) {
 	}
 
 	tag := "label"
-	build := &BuildParams{
+	build := &confort.BuildParams{
 		Image:      imageLs + tag,
 		Dockerfile: "testdata/ls/Dockerfile",
 		ContextDir: "testdata/ls",
@@ -1104,8 +1063,8 @@ func TestWithImageBuildOptions(t *testing.T) {
 
 	// build labeled image
 	cft.Build(t, ctx, build,
-		WithBuildOutput(io.Discard),
-		WithImageBuildOptions(func(option *types.ImageBuildOptions) {
+		confort.WithBuildOutput(io.Discard),
+		confort.WithImageBuildOptions(func(option *types.ImageBuildOptions) {
 			if option.Labels == nil {
 				option.Labels = map[string]string{}
 			}
@@ -1135,8 +1094,8 @@ func TestWithForceBuild_WithBuildOutput(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	cft := New(t, ctx,
-		WithNamespace(t.Name(), true),
+	cft := confort.New(t, ctx,
+		confort.WithNamespace(t.Name(), true),
 	)
 
 	cli, err := client.NewClientWithOpts(client.FromEnv)
@@ -1145,7 +1104,7 @@ func TestWithForceBuild_WithBuildOutput(t *testing.T) {
 	}
 
 	tag := "force"
-	build := &BuildParams{
+	build := &confort.BuildParams{
 		Image:      imageLs + tag,
 		Dockerfile: "testdata/ls/Dockerfile",
 		ContextDir: "testdata/ls",
@@ -1156,8 +1115,8 @@ func TestWithForceBuild_WithBuildOutput(t *testing.T) {
 
 	// build once
 	cft.Build(t, ctx, build,
-		WithForceBuild(),
-		WithBuildOutput(io.Discard),
+		confort.WithForceBuild(),
+		confort.WithBuildOutput(io.Discard),
 	)
 	t.Cleanup(func() {
 		removeImageIfExists(t, cli, build.Image)
@@ -1167,8 +1126,8 @@ func TestWithForceBuild_WithBuildOutput(t *testing.T) {
 
 	// force build
 	cft.Build(t, ctx, build,
-		WithForceBuild(),
-		WithBuildOutput(buf),
+		confort.WithForceBuild(),
+		confort.WithBuildOutput(buf),
 	)
 	if buf.Len() == 0 {
 		t.Fatal("expected build log to be written to buf, but got no output")
@@ -1177,7 +1136,7 @@ func TestWithForceBuild_WithBuildOutput(t *testing.T) {
 
 	// build if the image not exists
 	cft.Build(t, ctx, build,
-		WithBuildOutput(buf),
+		confort.WithBuildOutput(buf),
 	)
 	if buf.Len() > 0 {
 		t.Error("expected build to be skipped, but build log is written")
@@ -1194,8 +1153,8 @@ func TestWithContainerConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cft := New(t, ctx,
-		WithNamespace(t.Name(), true),
+	cft := confort.New(t, ctx,
+		confort.WithNamespace(t.Name(), true),
 	)
 
 	var (
@@ -1203,10 +1162,10 @@ func TestWithContainerConfig(t *testing.T) {
 		labelValue = t.Name()
 	)
 
-	cft.Run(t, ctx, &ContainerParams{
+	cft.Run(t, ctx, &confort.ContainerParams{
 		Name:  "echo",
 		Image: imageEcho,
-	}, WithContainerConfig(func(config *container.Config) {
+	}, confort.WithContainerConfig(func(config *container.Config) {
 		if config.Labels == nil {
 			config.Labels = map[string]string{}
 		}
@@ -1232,19 +1191,19 @@ func TestWithHostConfig(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	cft := New(t, ctx,
-		WithNamespace(t.Name(), true),
+	cft := confort.New(t, ctx,
+		confort.WithNamespace(t.Name(), true),
 	)
 
-	communicator := cft.Run(t, ctx, &ContainerParams{
+	communicator := cft.Run(t, ctx, &confort.ContainerParams{
 		Name:  "communicator",
 		Image: imageCommunicator,
 		Env: map[string]string{
 			"CM_TARGET": "reflect",
 		},
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       Healthy(),
-	}, WithHostConfig(func(config *container.HostConfig) {
+		Waiter:       confort.Healthy(),
+	}, confort.WithHostConfig(func(config *container.HostConfig) {
 		// configure container to communicate with itself using extra_hosts
 		config.ExtraHosts = append(config.ExtraHosts, "reflect:127.0.0.1")
 	}))
@@ -1277,16 +1236,16 @@ func TestWithNetworkingConfig(t *testing.T) {
 	)
 
 	// create a communicator with two aliases
-	cft1 := New(t, ctx, WithNamespace(t.Name(), true))
-	communicator := cft1.Run(t, ctx, &ContainerParams{
+	cft1 := confort.New(t, ctx, confort.WithNamespace(t.Name(), true))
+	communicator := cft1.Run(t, ctx, &confort.ContainerParams{
 		Name:  name,
 		Image: imageCommunicator,
 		Env: map[string]string{
 			"CM_TARGET": alias,
 		},
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       Healthy(),
-	}, WithNetworkingConfig(func(config *network.NetworkingConfig) {
+		Waiter:       confort.Healthy(),
+	}, confort.WithNetworkingConfig(func(config *network.NetworkingConfig) {
 		for _, cfg := range config.EndpointsConfig {
 			// add alias
 			cfg.Aliases = append(cfg.Aliases, alias)
@@ -1314,13 +1273,13 @@ func TestWithConfigConsistency(t *testing.T) {
 	ctx := context.Background()
 
 	namespace := t.Name()
-	cft := New(t, ctx, WithNamespace(namespace, true))
+	cft := confort.New(t, ctx, confort.WithNamespace(namespace, true))
 
-	cft.Run(t, ctx, &ContainerParams{
+	cft.Run(t, ctx, &confort.ContainerParams{
 		Name:         "echo",
 		Image:        imageEcho,
 		ExposedPorts: []string{"80/tcp", "8080/tcp"},
-		Waiter:       Healthy(),
+		Waiter:       confort.Healthy(),
 	})
 
 	testCases := []struct {
@@ -1354,11 +1313,11 @@ func TestWithConfigConsistency(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
-			cft := New(t, ctx, WithNamespace(namespace, true))
+			cft := confort.New(t, ctx, confort.WithNamespace(namespace, true))
 
-			var opts []RunOption
+			var opts []confort.RunOption
 			if !tc.configConsistencyEnabled {
-				opts = append(opts, WithConfigConsistency(false))
+				opts = append(opts, confort.WithConfigConsistency(false))
 			}
 
 			recovered := func() (r any) {
@@ -1368,11 +1327,11 @@ func TestWithConfigConsistency(t *testing.T) {
 				c, term := NewControl()
 				defer term()
 
-				cft.Run(c, ctx, &ContainerParams{
+				cft.Run(c, ctx, &confort.ContainerParams{
 					Name:         "echo",
 					Image:        imageEcho,
 					ExposedPorts: tc.ports,
-					Waiter:       Healthy(),
+					Waiter:       confort.Healthy(),
 				}, opts...)
 				return nil
 			}()
@@ -1395,9 +1354,9 @@ func TestWithPullOptions(t *testing.T) {
 	containerName := uniqueName.Must(t)
 
 	var term func()
-	cft := New(t, ctx,
-		WithNamespace(namespace, true),
-		WithTerminateFunc(&term),
+	cft := confort.New(t, ctx,
+		confort.WithNamespace(namespace, true),
+		confort.WithTerminateFunc(&term),
 	)
 	t.Cleanup(func() {
 		if t.Failed() {
@@ -1415,12 +1374,12 @@ func TestWithPullOptions(t *testing.T) {
 
 	// pull and run
 	out := &bytes.Buffer{}
-	c := cft.Run(t, ctx, &ContainerParams{
+	c := cft.Run(t, ctx, &confort.ContainerParams{
 		Name:         containerName,
 		Image:        pullImage,
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       Healthy(),
-	}, WithPullOptions(&types.ImagePullOptions{}, out))
+		Waiter:       confort.Healthy(),
+	}, confort.WithPullOptions(&types.ImagePullOptions{}, out))
 
 	t.Log(out.String())
 	if out.Len() == 0 {
@@ -1449,13 +1408,13 @@ func TestWithReleaseFunc(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	cft := New(t, ctx, WithNamespace(t.Name(), true))
+	cft := confort.New(t, ctx, confort.WithNamespace(t.Name(), true))
 
-	echo := cft.Run(t, ctx, &ContainerParams{
+	echo := cft.Run(t, ctx, &confort.ContainerParams{
 		Name:         "echo",
 		Image:        imageEcho,
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       Healthy(),
+		Waiter:       confort.Healthy(),
 	})
 
 	// test that the container is not released until the release is called.
@@ -1463,7 +1422,7 @@ func TestWithReleaseFunc(t *testing.T) {
 	func() {
 		c, cleanup := NewControl()
 		defer cleanup()
-		echo.UseExclusive(c, ctx, WithReleaseFunc(&release))
+		echo.UseExclusive(c, ctx, confort.WithReleaseFunc(&release))
 	}()
 
 	use := func() (r any) {
@@ -1492,13 +1451,13 @@ func TestWithInitFunc(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	cft := New(t, ctx, WithNamespace(t.Name(), true))
+	cft := confort.New(t, ctx, confort.WithNamespace(t.Name(), true))
 
-	echo := cft.Run(t, ctx, &ContainerParams{
+	echo := cft.Run(t, ctx, &confort.ContainerParams{
 		Name:         "echo",
 		Image:        imageEcho,
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       Healthy(),
+		Waiter:       confort.Healthy(),
 	})
 
 	var try, done int
@@ -1508,7 +1467,7 @@ func TestWithInitFunc(t *testing.T) {
 		}()
 		c, cleanup := NewControl()
 		defer cleanup()
-		echo.UseShared(c, ctx, WithInitFunc(func(ctx context.Context, ports Ports) error {
+		echo.UseShared(c, ctx, confort.WithInitFunc(func(ctx context.Context, ports confort.Ports) error {
 			if try++; try < 3 {
 				return errors.New("dummy error")
 			}
@@ -1596,8 +1555,8 @@ func TestConfort_Run_UnsupportedStatus(t *testing.T) {
 	namespace := uniqueName.Must(t)
 	containerName := namespace + "-" + "foo"
 
-	cft := New(t, ctx,
-		WithNamespace(namespace, true),
+	cft := confort.New(t, ctx,
+		confort.WithNamespace(namespace, true),
 	)
 
 	// start container
@@ -1627,7 +1586,7 @@ func TestConfort_Run_UnsupportedStatus(t *testing.T) {
 			r = recover()
 		}()
 		c, _ := NewControl()
-		cft.Run(c, ctx, &ContainerParams{
+		cft.Run(c, ctx, &confort.ContainerParams{
 			Name:  "foo",
 			Image: imageEcho,
 		})

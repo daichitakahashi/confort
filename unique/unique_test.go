@@ -1,8 +1,10 @@
-package confort
+package unique
 
 import (
 	"errors"
 	"testing"
+
+	"github.com/daichitakahashi/testingc"
 )
 
 func TestUnique_New(t *testing.T) {
@@ -10,7 +12,7 @@ func TestUnique_New(t *testing.T) {
 
 	var n int
 	var err error
-	unique := NewUnique(func() (int, error) {
+	unique := New(func() (int, error) {
 		return n, err
 	})
 
@@ -52,10 +54,10 @@ func TestUnique_New(t *testing.T) {
 func TestUniqueString(t *testing.T) {
 	t.Parallel()
 
-	unique := UniqueString(1, WithRetry(999))
+	unique := String(1, WithRetry(999))
 
 	m := map[string]bool{}
-	for i := 0; i < 62; i++ {
+	for i := 0; i < len(letters); i++ {
 		v := unique.Must(t)
 		if m[v] {
 			t.Fatalf("value %q already exists", v)
@@ -63,16 +65,11 @@ func TestUniqueString(t *testing.T) {
 		m[v] = true
 	}
 
-	recovered := func() (r any) {
-		defer func() {
-			r = recover()
-		}()
-		c, _ := NewControl()
-		unique.Must(c)
-		return nil
-	}()
-	if recovered == nil {
-		t.Fatalf("unexpected success: %#v", recovered)
+	result := testingc.Test(func(t *testingc.T) {
+		unique.Must(t)
+	})
+	if !result.Failed() {
+		t.Fatalf("unexpected success")
 	}
 }
 

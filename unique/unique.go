@@ -1,4 +1,4 @@
-package confort
+package unique
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/daichitakahashi/confort"
 	"github.com/daichitakahashi/confort/proto/beacon"
 	"github.com/lestrrat-go/option"
 )
@@ -24,22 +25,23 @@ type uniqueValueGenerator[T comparable] interface {
 }
 
 type (
-	UniqueOption interface {
+	Option interface {
 		option.Interface
-		unique() UniqueOption
+		unique() Option
 	}
-	identOptionRetry            struct{}
-	identOptionGlobalUniqueness struct{}
-	globalUniquenessOptions     struct {
+	identOptionRetry  struct{}
+	identOptionBeacon struct{}
+	beaconOptions     struct {
 		store string
-		c     *Connection
+		c     *confort.Connection
 	}
 	uniqueOption struct{ option.Interface }
 )
 
-func (o uniqueOption) unique() UniqueOption { return o }
+func (o uniqueOption) unique() Option { return o }
 
-func WithRetry(n uint) UniqueOption {
+// WithRetry configures the maximum number of retries for unique value generation.
+func WithRetry(n uint) Option {
 	if n == 0 {
 		n--
 	}
@@ -48,38 +50,48 @@ func WithRetry(n uint) UniqueOption {
 	}.unique()
 }
 
-func WithGlobalUniqueness(conn *Connection, beaconStore string) UniqueOption {
+// WithBeacon configures Unique to integrate with a starting beacon server.
+// It enables us to generate unique values through all tests that reference
+// the same beacon server and storeName.
+func WithBeacon(conn *confort.Connection, storeName string) Option {
 	return uniqueOption{
-		Interface: option.New(identOptionGlobalUniqueness{}, globalUniquenessOptions{
-			store: beaconStore,
+		Interface: option.New(identOptionBeacon{}, beaconOptions{
+			store: storeName,
 			c:     conn,
 		}),
 	}.unique()
 }
 
-func NewUnique[T comparable](f func() (T, error), opts ...UniqueOption) *Unique[T] {
+// ErrRetryable indicates that the generation of a unique value has temporarily
+// failed, but may succeed by retrying.
+var ErrRetryable = errors.New("cannot create unique value but retryable")
+
+// New creates unique value generator. Argument fn is an arbitrary generator function.
+// When the generated value by fn is not unique or fn returns ErrRetryable, Unique retries.
+// By default, Unique retries 10 times.
+func New[T comparable](fn func() (T, error), opts ...Option) *Unique[T] {
 	u := &Unique[T]{
 		g: &generator[T]{
-			f: f,
+			f: fn,
 			m: make(map[T]struct{}),
 		},
 		retry: 10,
 	}
-	var options globalUniquenessOptions
+	var options beaconOptions
 
 	for _, opt := range opts {
 		switch opt.Ident() {
 		case identOptionRetry{}:
 			u.retry = opt.Value().(uint)
-		case identOptionGlobalUniqueness{}:
-			options = opt.Value().(globalUniquenessOptions)
+		case identOptionBeacon{}:
+			options = opt.Value().(beaconOptions)
 		}
 	}
 
 	if options.store != "" && options.c.Enabled() {
 		u.g = &globalGenerator[T]{
-			f:     f,
-			cli:   beacon.NewUniqueValueServiceClient(options.c.conn),
+			f:     fn,
+			cli:   beacon.NewUniqueValueServiceClient(options.c.Conn),
 			store: options.store,
 		}
 	}
@@ -87,12 +99,14 @@ func NewUnique[T comparable](f func() (T, error), opts ...UniqueOption) *Unique[
 	return u
 }
 
-var ErrRetryable = errors.New("cannot create unique value but retryable")
-
+// New returns unique value.
 func (u *Unique[T]) New() (T, error) {
 	return u.g.generate(u.retry)
 }
 
+// Must returns unique value.
+// If a unique value cannot be generated within the maximum number of retries,
+// the test fails.
 func (u *Unique[T]) Must(tb testing.TB) T {
 	tb.Helper()
 
@@ -101,11 +115,6 @@ func (u *Unique[T]) Must(tb testing.TB) T {
 		tb.Fatal(err)
 	}
 	return v
-}
-
-func (u *Unique[T]) Global() bool {
-	_, ok := u.g.(*globalGenerator[T])
-	return ok
 }
 
 var errFailedToGenerate = errors.New("cannot create new unique value")
@@ -122,7 +131,7 @@ func (g *generator[T]) generate(retry uint) (zero T, _ error) {
 
 	for i := uint(0); i < retry; i++ {
 		v, err := g.f()
-		if err == ErrRetryable {
+		if errors.Is(err, ErrRetryable) {
 			continue
 		} else if err != nil {
 			return zero, err
@@ -149,7 +158,7 @@ func (g *globalGenerator[T]) generate(retry uint) (zero T, _ error) {
 
 	for i := uint(0); i < retry; i++ {
 		v, err := g.f()
-		if err == ErrRetryable {
+		if errors.Is(err, ErrRetryable) {
 			continue
 		} else if err != nil {
 			return zero, err
@@ -177,7 +186,9 @@ const (
 	letterIdxMax  = 63 / letterIdxBits
 )
 
-func UniqueStringFunc(n int) func() (string, error) {
+// StringFunc is an n-digit random string generator.
+// It uses upper/lower case alphanumeric characters.
+func StringFunc(n int) func() (string, error) {
 	randSrc := rand.NewSource(time.Now().UnixNano())
 	return func() (string, error) {
 		b := make([]byte, n)
@@ -198,6 +209,7 @@ func UniqueStringFunc(n int) func() (string, error) {
 	}
 }
 
-func UniqueString(n int, opts ...UniqueOption) *Unique[string] {
-	return NewUnique(UniqueStringFunc(n), opts...)
+// String is a shorthand of New(StringFunc(n)).
+func String(n int, opts ...Option) *Unique[string] {
+	return New(StringFunc(n), opts...)
 }

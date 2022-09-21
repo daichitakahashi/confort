@@ -13,12 +13,12 @@ import (
 )
 
 type Connection struct {
-	conn *grpc.ClientConn
+	Conn *grpc.ClientConn
 	addr string
 }
 
 func (c *Connection) Enabled() bool {
-	return c.conn != nil
+	return c.Conn != nil
 }
 
 // ConnectBeacon tries to connect beacon server and returns its result.
@@ -83,7 +83,7 @@ func ConnectBeacon(tb testing.TB, ctx context.Context) *Connection {
 	}
 
 	return &Connection{
-		conn: conn,
+		Conn: conn,
 		addr: addr,
 	}
 }

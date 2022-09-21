@@ -1,4 +1,4 @@
-package confort
+package confort_test
 
 import (
 	"fmt"
