@@ -494,8 +494,17 @@ type Container struct {
 	id    string
 	name  string
 	alias string
-	ports Ports
 }
+
+// ID returns its container id.
+func (c *Container) ID() string { return c.id }
+
+// Name returns an actual name of the container.
+func (c *Container) Name() string { return c.name }
+
+// Alias returns a host name of the container. The alias is valid only in
+// a docker network created in New or attached by Confort.Run.
+func (c *Container) Alias() string { return c.alias }
 
 // LazyRun creates container but doesn't start.
 // When container is required by UseShared or UseExclusive, the container starts.
@@ -556,7 +565,7 @@ func (cft *Confort) Run(tb testing.TB, ctx context.Context, c *ContainerParams, 
 		tb.Fatalf("confort: %s", err)
 	}
 
-	ports, err := cft.namespace.StartContainer(ctx, name)
+	_, err = cft.namespace.StartContainer(ctx, name)
 	if err != nil {
 		tb.Fatalf("confort: %s", err)
 	}
@@ -565,7 +574,6 @@ func (cft *Confort) Run(tb testing.TB, ctx context.Context, c *ContainerParams, 
 		id:    containerID,
 		name:  name,
 		alias: alias,
-		ports: ports,
 	}
 }
 
@@ -623,23 +631,21 @@ func (c *Container) Use(tb testing.TB, ctx context.Context, exclusive bool, opts
 		}
 	}
 
-	if c.ports == nil {
-		unlock, err := c.cft.ex.LockForContainerSetup(ctx, c.name)
-		if err != nil {
-			tb.Fatal(err)
-		}
-		defer unlock()
+	unlock, err := c.cft.ex.LockForContainerSetup(ctx, c.name)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	defer unlock()
 
-		c.ports, err = c.cft.namespace.StartContainer(ctx, c.name)
-		if err != nil {
-			tb.Fatalf("confort: %s", err)
-		}
+	ports, err := c.cft.namespace.StartContainer(ctx, c.name)
+	if err != nil {
+		tb.Fatalf("confort: %s", err)
 	}
 
 	var init func() error
 	if initFunc != nil {
 		init = func() error {
-			return initFunc(ctx, c.ports)
+			return initFunc(ctx, ports)
 		}
 	}
 	// If initFunc is not nil, it will be called after acquisition of exclusive lock.
@@ -655,7 +661,7 @@ func (c *Container) Use(tb testing.TB, ctx context.Context, exclusive bool, opts
 	} else {
 		tb.Cleanup(release)
 	}
-	return c.ports
+	return ports
 }
 
 func (c *Container) UseExclusive(tb testing.TB, ctx context.Context, opts ...UseOption) Ports {
