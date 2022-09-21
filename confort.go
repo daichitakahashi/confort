@@ -146,7 +146,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) *Confort {
 			c := opt.Value().(*Connection)
 			if c.Enabled() {
 				ex = exclusion.NewBeaconControl(
-					beacon.NewBeaconServiceClient(c.conn),
+					beacon.NewBeaconServiceClient(c.Conn),
 				)
 				skipDeletion = true
 				beaconAddr = c.addr

@@ -10,6 +10,7 @@ import (
 	"github.com/daichitakahashi/confort"
 	"github.com/daichitakahashi/confort/beaconserver"
 	"github.com/daichitakahashi/confort/internal/beaconutil"
+	"github.com/daichitakahashi/confort/unique"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
@@ -124,19 +125,15 @@ func TestConnectBeacon(t *testing.T) {
 	t.Run("unique", func(t *testing.T) {
 		t.Parallel()
 
-		unique := confort.NewUnique(func() (bool, error) {
+		uniq := unique.New(func() (bool, error) {
 			return true, nil
-		}, confort.WithGlobalUniqueness(beacon, t.Name()))
+		}, unique.WithBeacon(beacon, t.Name()))
 
-		if !unique.Global() {
-			t.Fatal("integration with beacon is nor enabled properly")
-		}
-
-		_, err := unique.New()
+		_, err := uniq.New()
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = unique.New()
+		_, err = uniq.New()
 		if err == nil {
 			t.Fatal("unexpected success")
 		}
