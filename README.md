@@ -25,7 +25,7 @@ more efficient. And we can choose shared locking not only exclusive.
 To efficiently use containers simultaneously from parallelized tests, it is 
 effective to make the resource name created on the container unique for each test 
 (e.g., database name or realm name).
-`confort.Unique` helps generating unique names.
+`unique.Unique` helps generating unique names.
 
 ## Unit Test Example
 ### Single package test
@@ -67,8 +67,8 @@ func TestExample(t *testing.T) {
     addr := ports.HostPort("5432/tcp")
     // connect PostgreSQL using `addr`
 	
-    unique := confort.UniqueString(12)
-    schema := unique.Must(t)
+    uniq := unique.String(12)
+    schema := uniq.Must(t)
     // create a schema using `schema` as its name
 }
 ```
@@ -92,11 +92,11 @@ func TestExample(t *testing.T) {
 
     // ...
 
-    unique := confort.UniqueString(12,
+    unique := unique.String(12,
         // Following line enables an integration with `confort` command. 
         // This stores the values created across the entire test
         // and helps create unique one.
-        confort.WithGlobalUniqueness(beacon, "schema"), 
+        unique.WithBeacon(beacon, "schema"), 
     )
     // ...
 }
