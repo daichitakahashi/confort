@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/daichitakahashi/confort/internal/beaconutil"
+	"github.com/daichitakahashi/confort/wait"
 	"github.com/docker/cli/cli/command/image/build"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -36,7 +37,7 @@ type (
 
 		CreateContainer(ctx context.Context, name string, container *container.Config, host *container.HostConfig,
 			network *network.NetworkingConfig, configConsistency bool,
-			wait *Waiter, pullOptions *types.ImagePullOptions, pullOut io.Writer) (string, error)
+			wait *wait.Waiter, pullOptions *types.ImagePullOptions, pullOut io.Writer) (string, error)
 		StartContainer(ctx context.Context, name string) (Ports, error)
 		Release(ctx context.Context) error
 	}
@@ -231,7 +232,7 @@ type containerInfo struct {
 	host        *container.HostConfig
 	network     *network.NetworkingConfig
 	ports       Ports
-	wait        *Waiter
+	wait        *wait.Waiter
 	running     bool
 }
 
@@ -246,7 +247,7 @@ func (d *dockerNamespace) Network() *types.NetworkResource {
 func (d *dockerNamespace) CreateContainer(
 	ctx context.Context, name string, container *container.Config,
 	host *container.HostConfig, networking *network.NetworkingConfig, configConsistency bool,
-	wait *Waiter, pullOptions *types.ImagePullOptions, pullOut io.Writer,
+	wait *wait.Waiter, pullOptions *types.ImagePullOptions, pullOut io.Writer,
 ) (string, error) {
 	var err error
 
@@ -456,12 +457,11 @@ func (d *dockerNamespace) StartContainer(ctx context.Context, name string) (Port
 		return nil, err
 	}
 
-	p := Ports(portMap)
 	if c.wait != nil {
 		err = c.wait.Wait(ctx, &fetcher{
 			cli:         d.cli,
 			containerID: c.containerID,
-			ports:       p,
+			ports:       portMap,
 		})
 		if err != nil {
 			return nil, err
@@ -469,8 +469,8 @@ func (d *dockerNamespace) StartContainer(ctx context.Context, name string) (Port
 	}
 
 	c.running = true
-	c.ports = p
-	return p, nil
+	c.ports = Ports(portMap)
+	return c.ports, nil
 }
 
 func containerNotFound(name string) string {
@@ -517,3 +517,32 @@ func handleJSONMessageStream(dst io.Writer, src io.Reader) error {
 	}
 	return nil
 }
+
+// wait.Fetcher implementation
+type fetcher struct {
+	cli         *client.Client
+	containerID string
+	ports       nat.PortMap
+}
+
+func (f *fetcher) ContainerID() string {
+	return f.containerID
+}
+
+func (f *fetcher) Status(ctx context.Context) (*types.ContainerState, error) {
+	i, err := f.cli.ContainerInspect(ctx, f.containerID)
+	return i.State, err
+}
+
+func (f *fetcher) Ports() nat.PortMap {
+	return f.ports
+}
+
+func (f *fetcher) Log(ctx context.Context) (io.ReadCloser, error) {
+	return f.cli.ContainerLogs(ctx, f.containerID, types.ContainerLogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+	})
+}
+
+var _ wait.Fetcher = (*fetcher)(nil)

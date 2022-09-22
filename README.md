@@ -47,7 +47,7 @@ func TestExample(t *testing.T) {
             "POSTGRES_PASSWORD": dbPassword,
         },
         ExposedPorts: []string{"5432/tcp"},
-        Waiter:       confort.Healthy(),
+        Waiter:       wait.Healthy(),
     },
         // pull image if not exists
         confort.WithPullOptions(&types.ImagePullOptions{}, os.Stderr),

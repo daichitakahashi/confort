@@ -5,49 +5,59 @@ package mock
 
 import (
 	"context"
-	"github.com/daichitakahashi/confort"
+	"github.com/daichitakahashi/confort/wait"
 	"github.com/docker/docker/api/types"
+	"github.com/docker/go-connections/nat"
 	"io"
 	"sync"
 )
 
-// Ensure, that Fetcher does implement confort.Fetcher.
+// Ensure, that Fetcher does implement wait.Fetcher.
 // If this is not the case, regenerate this file with moq.
-var _ confort.Fetcher = &Fetcher{}
+var _ wait.Fetcher = &Fetcher{}
 
-// Fetcher is a mock implementation of confort.Fetcher.
+// Fetcher is a mock implementation of wait.Fetcher.
 //
-// 	func TestSomethingThatUsesFetcher(t *testing.T) {
+//	func TestSomethingThatUsesFetcher(t *testing.T) {
 //
-// 		// make and configure a mocked confort.Fetcher
-// 		mockedFetcher := &Fetcher{
-// 			LogFunc: func(ctx context.Context) (io.ReadCloser, error) {
-// 				panic("mock out the Log method")
-// 			},
-// 			PortsFunc: func() confort.Ports {
-// 				panic("mock out the Ports method")
-// 			},
-// 			StatusFunc: func(ctx context.Context) (*types.ContainerState, error) {
-// 				panic("mock out the Status method")
-// 			},
-// 		}
+//		// make and configure a mocked wait.Fetcher
+//		mockedFetcher := &Fetcher{
+//			ContainerIDFunc: func() string {
+//				panic("mock out the ContainerID method")
+//			},
+//			LogFunc: func(ctx context.Context) (io.ReadCloser, error) {
+//				panic("mock out the Log method")
+//			},
+//			PortsFunc: func() nat.PortMap {
+//				panic("mock out the Ports method")
+//			},
+//			StatusFunc: func(ctx context.Context) (*types.ContainerState, error) {
+//				panic("mock out the Status method")
+//			},
+//		}
 //
-// 		// use mockedFetcher in code that requires confort.Fetcher
-// 		// and then make assertions.
+//		// use mockedFetcher in code that requires wait.Fetcher
+//		// and then make assertions.
 //
-// 	}
+//	}
 type Fetcher struct {
+	// ContainerIDFunc mocks the ContainerID method.
+	ContainerIDFunc func() string
+
 	// LogFunc mocks the Log method.
 	LogFunc func(ctx context.Context) (io.ReadCloser, error)
 
 	// PortsFunc mocks the Ports method.
-	PortsFunc func() confort.Ports
+	PortsFunc func() nat.PortMap
 
 	// StatusFunc mocks the Status method.
 	StatusFunc func(ctx context.Context) (*types.ContainerState, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// ContainerID holds details about calls to the ContainerID method.
+		ContainerID []struct {
+		}
 		// Log holds details about calls to the Log method.
 		Log []struct {
 			// Ctx is the ctx argument value.
@@ -62,9 +72,37 @@ type Fetcher struct {
 			Ctx context.Context
 		}
 	}
-	lockLog    sync.RWMutex
-	lockPorts  sync.RWMutex
-	lockStatus sync.RWMutex
+	lockContainerID sync.RWMutex
+	lockLog         sync.RWMutex
+	lockPorts       sync.RWMutex
+	lockStatus      sync.RWMutex
+}
+
+// ContainerID calls ContainerIDFunc.
+func (mock *Fetcher) ContainerID() string {
+	if mock.ContainerIDFunc == nil {
+		panic("Fetcher.ContainerIDFunc: method is nil but Fetcher.ContainerID was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockContainerID.Lock()
+	mock.calls.ContainerID = append(mock.calls.ContainerID, callInfo)
+	mock.lockContainerID.Unlock()
+	return mock.ContainerIDFunc()
+}
+
+// ContainerIDCalls gets all the calls that were made to ContainerID.
+// Check the length with:
+//
+//	len(mockedFetcher.ContainerIDCalls())
+func (mock *Fetcher) ContainerIDCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockContainerID.RLock()
+	calls = mock.calls.ContainerID
+	mock.lockContainerID.RUnlock()
+	return calls
 }
 
 // Log calls LogFunc.
@@ -85,7 +123,8 @@ func (mock *Fetcher) Log(ctx context.Context) (io.ReadCloser, error) {
 
 // LogCalls gets all the calls that were made to Log.
 // Check the length with:
-//     len(mockedFetcher.LogCalls())
+//
+//	len(mockedFetcher.LogCalls())
 func (mock *Fetcher) LogCalls() []struct {
 	Ctx context.Context
 } {
@@ -99,7 +138,7 @@ func (mock *Fetcher) LogCalls() []struct {
 }
 
 // Ports calls PortsFunc.
-func (mock *Fetcher) Ports() confort.Ports {
+func (mock *Fetcher) Ports() nat.PortMap {
 	if mock.PortsFunc == nil {
 		panic("Fetcher.PortsFunc: method is nil but Fetcher.Ports was just called")
 	}
@@ -113,7 +152,8 @@ func (mock *Fetcher) Ports() confort.Ports {
 
 // PortsCalls gets all the calls that were made to Ports.
 // Check the length with:
-//     len(mockedFetcher.PortsCalls())
+//
+//	len(mockedFetcher.PortsCalls())
 func (mock *Fetcher) PortsCalls() []struct {
 } {
 	var calls []struct {
@@ -142,7 +182,8 @@ func (mock *Fetcher) Status(ctx context.Context) (*types.ContainerState, error) 
 
 // StatusCalls gets all the calls that were made to Status.
 // Check the length with:
-//     len(mockedFetcher.StatusCalls())
+//
+//	len(mockedFetcher.StatusCalls())
 func (mock *Fetcher) StatusCalls() []struct {
 	Ctx context.Context
 } {

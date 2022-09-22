@@ -1,4 +1,4 @@
-package confort_test
+package wait_test
 
 import (
 	"context"
@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daichitakahashi/confort"
 	"github.com/daichitakahashi/confort/internal/mock"
+	"github.com/daichitakahashi/confort/wait"
 	"github.com/docker/docker/api/types"
 )
 
@@ -35,7 +35,7 @@ func TestCheckLogOccurrence(t *testing.T) {
 		},
 	}
 
-	checker := confort.CheckLogOccurrence("completed", 2)
+	checker := wait.CheckLogOccurrence("completed", 2)
 
 	time.Sleep(time.Second)
 	ok, err := checker(ctx, f)
@@ -79,7 +79,7 @@ func TestCheckHealthy(t *testing.T) {
 	}
 
 	time.Sleep(300 * time.Millisecond)
-	ok, err := confort.CheckHealthy(ctx, f)
+	ok, err := wait.CheckHealthy(ctx, f)
 	if err != nil {
 		t.Fatal(err)
 	} else if ok {
@@ -87,7 +87,7 @@ func TestCheckHealthy(t *testing.T) {
 	}
 
 	time.Sleep(300 * time.Millisecond)
-	ok, err = confort.CheckHealthy(ctx, f)
+	ok, err = wait.CheckHealthy(ctx, f)
 	if err != nil {
 		t.Fatal(err)
 	} else if !ok {
@@ -100,13 +100,13 @@ func TestWaiter_Wait(t *testing.T) {
 
 	ctx := context.Background()
 
-	w := confort.NewWaiter(func(ctx context.Context, f confort.Fetcher) (bool, error) {
+	w := wait.New(func(ctx context.Context, f wait.Fetcher) (bool, error) {
 		status, err := f.Status(ctx)
 		if err != nil {
 			return false, err
 		}
 		return status.Status == "running", nil
-	}, confort.WithInterval(100*time.Millisecond), confort.WithTimeout(700*time.Millisecond))
+	}, wait.WithInterval(100*time.Millisecond), wait.WithTimeout(700*time.Millisecond))
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
