@@ -10,6 +10,7 @@ import (
 	"github.com/daichitakahashi/confort/internal/beaconutil"
 	"github.com/daichitakahashi/confort/internal/exclusion"
 	"github.com/daichitakahashi/confort/proto/beacon"
+	"github.com/daichitakahashi/confort/wait"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
@@ -346,7 +347,7 @@ type ContainerParams struct {
 	Cmd          []string
 	Entrypoint   []string
 	ExposedPorts []string
-	Waiter       *Waiter
+	Waiter       *wait.Waiter
 }
 
 func (cft *Confort) createContainer(ctx context.Context, name, alias string, c *ContainerParams, opts ...RunOption) (string, error) {

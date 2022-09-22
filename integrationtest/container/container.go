@@ -10,6 +10,7 @@ import (
 
 	"github.com/daichitakahashi/confort"
 	"github.com/daichitakahashi/confort/integrationtest/database"
+	"github.com/daichitakahashi/confort/wait"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/jackc/pgconn"
@@ -40,7 +41,7 @@ func InitDatabase(tb testing.TB, ctx context.Context, beacon *confort.Connection
 			"POSTGRES_PASSWORD": dbPassword,
 		},
 		ExposedPorts: []string{"5432/tcp"},
-		Waiter:       confort.Healthy(),
+		Waiter:       wait.Healthy(),
 	},
 		confort.WithPullOptions(&types.ImagePullOptions{}, os.Stderr),
 		confort.WithContainerConfig(func(config *container.Config) {

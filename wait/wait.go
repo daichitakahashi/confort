@@ -1,4 +1,4 @@
-package confort
+package wait
 
 import (
 	"bytes"
@@ -7,65 +7,45 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/client"
+	"github.com/docker/go-connections/nat"
 	"github.com/lestrrat-go/option"
 )
 
 type Waiter struct {
 	interval time.Duration
 	timeout  time.Duration
-	checker  func(ctx context.Context, fetcher Fetcher) (bool, error)
+	check    CheckFunc
 }
 
+// Fetcher provides several ways to access the state of the container.
 type Fetcher interface {
+	ContainerID() string
 	Status(ctx context.Context) (*types.ContainerState, error)
-	Ports() Ports
+	Ports() nat.PortMap
 	Log(ctx context.Context) (io.ReadCloser, error)
 }
 
-type fetcher struct {
-	cli         *client.Client
-	containerID string
-	ports       Ports
-}
-
-func (f *fetcher) Status(ctx context.Context) (*types.ContainerState, error) {
-	i, err := f.cli.ContainerInspect(ctx, f.containerID)
-	return i.State, err
-}
-
-func (f *fetcher) Ports() Ports {
-	return f.ports
-}
-
-func (f *fetcher) Log(ctx context.Context) (io.ReadCloser, error) {
-	return f.cli.ContainerLogs(ctx, f.containerID, types.ContainerLogsOptions{
-		ShowStdout: true,
-		ShowStderr: true,
-	})
-}
-
-var _ Fetcher = (*fetcher)(nil)
-
 type (
-	WaitOption interface {
+	Option interface {
 		option.Interface
-		wait() WaitOption
+		wait() Option
 	}
 	identOptionInterval struct{}
 	identOptionTimeout  struct{}
 	waitOption          struct{ option.Interface }
 )
 
-func (o waitOption) wait() WaitOption { return o }
+func (o waitOption) wait() Option { return o }
 
-func WithInterval(d time.Duration) WaitOption {
+// WithInterval sets the interval between container readiness checks.
+func WithInterval(d time.Duration) Option {
 	return waitOption{
 		Interface: option.New(identOptionInterval{}, d),
 	}.wait()
 }
 
-func WithTimeout(d time.Duration) WaitOption {
+// WithTimeout sets the timeout for waiting for the container to be ready.
+func WithTimeout(d time.Duration) Option {
 	return waitOption{
 		Interface: option.New(identOptionTimeout{}, d),
 	}.wait()
@@ -76,11 +56,20 @@ const (
 	defaultTimeout  = 30 * time.Second
 )
 
-func NewWaiter(f func(ctx context.Context, f Fetcher) (bool, error), opts ...WaitOption) *Waiter {
+type CheckFunc func(ctx context.Context, f Fetcher) (bool, error)
+
+// New creates a Waiter that waits for the container to be ready.
+// CheckFunc is the criteria for evaluating readiness. Use Fetcher to obtain
+// the container status.
+//
+// Waiter repeatedly checks the readiness until first success. We can set
+// interval and timeout by WithInterval and WithTimeout. The default value for
+// the interval is 500ms and for the timeout is 30sec.
+func New(check CheckFunc, opts ...Option) *Waiter {
 	w := &Waiter{
 		interval: defaultInterval,
 		timeout:  defaultTimeout,
-		checker:  f,
+		check:    check,
 	}
 
 	for _, opt := range opts {
@@ -95,11 +84,14 @@ func NewWaiter(f func(ctx context.Context, f Fetcher) (bool, error), opts ...Wai
 	return w
 }
 
-func LogContains(message string, occurrence int, opts ...WaitOption) *Waiter {
-	return NewWaiter(CheckLogOccurrence(message, occurrence), opts...)
+// LogContains waits for the given number of occurrences of the given message
+// in the container log.
+func LogContains(message string, occurrence int, opts ...Option) *Waiter {
+	return New(CheckLogOccurrence(message, occurrence), opts...)
 }
 
-func CheckLogOccurrence(message string, occurrence int) func(ctx context.Context, f Fetcher) (bool, error) {
+// CheckLogOccurrence creates CheckFunc. See LogContains.
+func CheckLogOccurrence(message string, occurrence int) CheckFunc {
 	msg := []byte(message)
 	return func(ctx context.Context, f Fetcher) (bool, error) {
 		rc, err := f.Log(ctx)
@@ -119,10 +111,12 @@ func CheckLogOccurrence(message string, occurrence int) func(ctx context.Context
 	}
 }
 
-func Healthy(opts ...WaitOption) *Waiter {
-	return NewWaiter(CheckHealthy, opts...)
+// Healthy waits for the container's health status to be healthy.
+func Healthy(opts ...Option) *Waiter {
+	return New(CheckHealthy, opts...)
 }
 
+// CheckHealthy is a CheckFunc. See Healthy.
 func CheckHealthy(ctx context.Context, f Fetcher) (bool, error) {
 	status, err := f.Status(ctx)
 	if err != nil {
@@ -131,12 +125,13 @@ func CheckHealthy(ctx context.Context, f Fetcher) (bool, error) {
 	return status.Health != nil && status.Health.Status == "healthy", nil
 }
 
+// Wait calls CheckFunc with given Fetcher repeatedly until the first success.
 func (w *Waiter) Wait(ctx context.Context, f Fetcher) error {
 	ctx, cancel := context.WithTimeout(ctx, w.timeout)
 	defer cancel()
 
 	for {
-		ok, err := w.checker(ctx, f)
+		ok, err := w.check(ctx, f)
 		if err != nil {
 			return err
 		} else if ok {

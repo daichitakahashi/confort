@@ -15,6 +15,7 @@ import (
 	"github.com/daichitakahashi/confort"
 	"github.com/daichitakahashi/confort/internal/beaconutil"
 	"github.com/daichitakahashi/confort/unique"
+	"github.com/daichitakahashi/confort/wait"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -109,7 +110,7 @@ func TestConfort_Run_Communication(t *testing.T) {
 			"CM_TARGET": "two",
 		},
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       confort.LogContains("communicator is ready", 1),
+		Waiter:       wait.LogContains("communicator is ready", 1),
 	})
 	portsOne := comOne.UseExclusive(t, ctx)
 	hostOne := portsOne.HostPort("80/tcp")
@@ -125,7 +126,7 @@ func TestConfort_Run_Communication(t *testing.T) {
 			"CM_TARGET": "one",
 		},
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       confort.LogContains("communicator is ready", 1),
+		Waiter:       wait.LogContains("communicator is ready", 1),
 	})
 	portsTwo := comTwo.UseExclusive(t, ctx)
 	hostTwo := portsTwo.HostPort("80/tcp")
@@ -170,7 +171,7 @@ func TestConfort_Run_ContainerIdentification(t *testing.T) {
 			Name:         containerName,
 			Image:        imageEcho,
 			ExposedPorts: []string{port},
-			Waiter:       confort.Healthy(),
+			Waiter:       wait.Healthy(),
 		})
 		ports := echo.UseShared(t, ctx)
 		endpoint := ports.HostPort(nat.Port(port))
@@ -225,7 +226,7 @@ func TestConfort_Run_SameNameButAnotherImage(t *testing.T) {
 		Name:         containerName,
 		Image:        imageEcho,
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       confort.Healthy(),
+		Waiter:       wait.Healthy(),
 	}).Name()
 
 	cft2 := confort.New(t, ctx,
@@ -270,7 +271,7 @@ func TestConfort_LazyRun(t *testing.T) {
 			Name:         containerName,
 			Image:        imageEcho,
 			ExposedPorts: []string{"80/tcp"},
-			Waiter:       confort.Healthy(),
+			Waiter:       wait.Healthy(),
 		})
 
 		e1 := echo.UseShared(t, ctx)
@@ -294,7 +295,7 @@ func TestConfort_LazyRun(t *testing.T) {
 			Name:         containerName,
 			Image:        imageEcho,
 			ExposedPorts: []string{"80/tcp"},
-			Waiter:       confort.Healthy(),
+			Waiter:       wait.Healthy(),
 		}
 
 		echo1 := cft.LazyRun(t, ctx, c)
@@ -326,7 +327,7 @@ func TestConfort_LazyRun(t *testing.T) {
 	// 		Name:         containerName,
 	// 		Image:        imageEcho,
 	// 		ExposedPorts: []string{"80/tcp"},
-	// 		Waiter:       confort.Healthy(),
+	// 		Waiter:       wait.Healthy(),
 	// 	})
 	//
 	// 	cft2 := confort.New(t, ctx,
@@ -377,7 +378,7 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 			"CM_TARGET": "foo-B",
 		},
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       confort.Healthy(),
+		Waiter:       wait.Healthy(),
 	})
 	e := com1.UseShared(t, ctx)
 	hostA := e.HostPort("80/tcp")
@@ -394,7 +395,7 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		// Using ephemeral port makes test flaky, why?
 		// Without specifying host port, container loses the port binding occasionally.
 		ExposedPorts: []string{"8080:80/tcp"},
-		Waiter:       confort.Healthy(),
+		Waiter:       wait.Healthy(),
 	})
 	e = com2.UseShared(t, ctx)
 	hostB := e.HostPort("80/tcp")
@@ -413,7 +414,7 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 			"CM_TARGET": "C",
 		},
 		ExposedPorts: []string{"8080:80/tcp"},
-		Waiter:       confort.Healthy(),
+		Waiter:       wait.Healthy(),
 	})
 	e = com3.UseShared(t, ctx)
 	hostB2 := e.HostPort("80/tcp")
@@ -431,7 +432,7 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 			"CM_TARGET": com3.Alias(), // "B" CHECK THIS WORKS
 		},
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       confort.Healthy(),
+		Waiter:       wait.Healthy(),
 	})
 	e = com4.UseShared(t, ctx)
 	hostC := e.HostPort("80/tcp")
@@ -1202,7 +1203,7 @@ func TestWithHostConfig(t *testing.T) {
 			"CM_TARGET": "reflect",
 		},
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       confort.Healthy(),
+		Waiter:       wait.Healthy(),
 	}, confort.WithHostConfig(func(config *container.HostConfig) {
 		// configure container to communicate with itself using extra_hosts
 		config.ExtraHosts = append(config.ExtraHosts, "reflect:127.0.0.1")
@@ -1244,7 +1245,7 @@ func TestWithNetworkingConfig(t *testing.T) {
 			"CM_TARGET": alias,
 		},
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       confort.Healthy(),
+		Waiter:       wait.Healthy(),
 	}, confort.WithNetworkingConfig(func(config *network.NetworkingConfig) {
 		for _, cfg := range config.EndpointsConfig {
 			// add alias
@@ -1279,7 +1280,7 @@ func TestWithConfigConsistency(t *testing.T) {
 		Name:         "echo",
 		Image:        imageEcho,
 		ExposedPorts: []string{"80/tcp", "8080/tcp"},
-		Waiter:       confort.Healthy(),
+		Waiter:       wait.Healthy(),
 	})
 
 	testCases := []struct {
@@ -1331,7 +1332,7 @@ func TestWithConfigConsistency(t *testing.T) {
 					Name:         "echo",
 					Image:        imageEcho,
 					ExposedPorts: tc.ports,
-					Waiter:       confort.Healthy(),
+					Waiter:       wait.Healthy(),
 				}, opts...)
 				return nil
 			}()
@@ -1378,7 +1379,7 @@ func TestWithPullOptions(t *testing.T) {
 		Name:         containerName,
 		Image:        pullImage,
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       confort.Healthy(),
+		Waiter:       wait.Healthy(),
 	}, confort.WithPullOptions(&types.ImagePullOptions{}, out))
 
 	t.Log(out.String())
@@ -1414,7 +1415,7 @@ func TestWithReleaseFunc(t *testing.T) {
 		Name:         "echo",
 		Image:        imageEcho,
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       confort.Healthy(),
+		Waiter:       wait.Healthy(),
 	})
 
 	// test that the container is not released until the release is called.
@@ -1457,7 +1458,7 @@ func TestWithInitFunc(t *testing.T) {
 		Name:         "echo",
 		Image:        imageEcho,
 		ExposedPorts: []string{"80/tcp"},
-		Waiter:       confort.Healthy(),
+		Waiter:       wait.Healthy(),
 	})
 
 	var try, done int
