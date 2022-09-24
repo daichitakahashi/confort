@@ -123,20 +123,69 @@ configurable with option "-policy").
 Short example of *.gitlab-ci.yml*:
 ```yaml
 variables:
+  CONFORT: github.com/daichitakahashi/confort/cmd/confort
   CFT_NAMESPACE: $CI_JOB_ID # use job id to avoid conflict with other tests
 test:
-  before_script:
-    - confort start & # launch beacon server
   script:
+    - go run $CONFORT start & # launch beacon server
     - go test ./... # run test using beacon server
   after_script:
-    - confort stop # cleanup created Docker resources and stop beacon server safely
+    - go run $CONFORT stop # cleanup created Docker resources and stop beacon server safely
 ```
 
 Off course, you can also use `confort test` command.
 
-### Further detail
-Please see the [package doc](https://pkg.go.dev/github.com/daichitakahashi/confort) and the help of `confort` command:
-```shell
-$ confort help [test/start/stop]
-```
+### Detail of `confort` command
+The functionality of this package consists of Go package `confort` and command `confort`.
+These are communicating with each other in gRPC protocol, and each version should be matched.
+
+To avoid version mismatches, "go run" is recommended instead of "go install".
+
+#### confort test
+Start the beacon server and execute tests.  
+After the tests are finished, the beacon server will be stopped automatically.  
+If you want to use options of "go test", put them after "--".
+
+There are following options.
+
+`-go=<go version>`  
+Specify go version that runs tests.
+"-go=mod" enables to use go version written in your `go.mod`.
+
+`-go-mode=<mode>`  
+Specify detection mode of -go option. Default value is "fallback".
+* "exact" finds go command that has the exact same version as given in "-go"
+* "latest" finds the latest go command that has the same major version as given in "-go"
+* "fallback" behaves like "latest", but if no command was found, fallbacks to "go" command
+
+`-namespace=<namespace>`  
+Specify the namespace(prefix) of docker resources created by `confort.Confort`.
+The value is set as `CFT_NAMESPACE`.
+
+`-policy=<policy>`  
+Specify resource handling policy. The value is set as `CFT_RESOURCE_POLICY`. Default value is "reuse".
+* With "error", the existing same resource(network and container) makes test failed
+* With "reuse", tests reuse resources if already exist
+* "reusable" is similar to "reuse", but created resources will not be removed after the tests finished
+* "takeover" is also similar to "reuse", but reused resources will be removed after the tests
+
+#### confort start
+Start the beacon server and output its endpoint to the lock file(".confort.lock"). If the lock file already exists, this command fails.  
+See the document of `confort.ConnectBeacon`.
+
+There is a following option.
+
+`-lock-file=<filename>`  
+Specify the user-defined filename of the lock file. Default value is ".confort.lock".  
+With this option, to tell the endpoint to the test code, you have to set file name as environment variable `CFT_LOCKFILE`.
+If `CFT_LOCKFILE` is already set, the command uses the value as default.
+
+#### confort stop
+Stop the beacon server started by `confort start` command.  
+The target server address will be read from lock file(".confort.lock"), and the lock file will be removed.
+If "confort start" has accompanied by "-lock-file" option, this command requires the same.
+
+There is a following option.
+
+`-lock-file=<filename>`  
+Specify the user-defined filename of the lock file. It is the same as the `-lock-file` option of `confort start`.
