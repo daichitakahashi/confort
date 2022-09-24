@@ -50,7 +50,7 @@ func (s *StartCommand) Synopsis() string {
 func (s *StartCommand) Usage() string {
 	return `$ confort start (-lock-file <filename>)
 
-Start beacon server and output its endpoint to lock file.
+Start the beacon server and output its endpoint to lock file.
 Use "confort stop" command to stop beacon server.
 
 By using "-lock-file" option, you can use a user-defined file name as a lock file.
@@ -212,7 +212,7 @@ func (t *TestCommand) SetFlags(f *flag.FlagSet) {
 	t.policy = beaconutil.ResourcePolicyReuse
 	f.Var(&t.policy, "policy", `resource policy
   * With "error", the existing same resource(network and container) makes test failed
-  * With "reuse", tests reuse resources if already exist. It is default.
+  * With "reuse", tests reuse resources if already exist
   * "reusable" is similar to "reuse", but created resources with this policy will not be removed after the tests finished
   * "takeover" is also similar to "reuse", but reused resources with this policy will be removed after the tests`)
 	f.StringVar(&t.goVer, "go", "", `specify go version. "-go=mod" enables to use go version written in your go.mod`)
