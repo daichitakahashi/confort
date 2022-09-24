@@ -110,6 +110,13 @@ func WithTerminateFunc(f *func()) NewOption {
 	}
 }
 
+// New creates Confort instance which is an interface of controlling containers.
+// Confort creates docker resources like a network and containers. Also, it
+// provides an exclusion control of container usage.
+//
+// If you want to control the same containers across parallelized tests, enable
+// integration with the beacon server by using `confort` command and WithBeacon
+// option.
 func New(tb testing.TB, ctx context.Context, opts ...NewOption) *Confort {
 	tb.Helper()
 
@@ -665,11 +672,13 @@ func (c *Container) Use(tb testing.TB, ctx context.Context, exclusive bool, opts
 	return ports
 }
 
+// UseExclusive acquires an exclusive lock for using the container explicitly and returns its endpoint.
 func (c *Container) UseExclusive(tb testing.TB, ctx context.Context, opts ...UseOption) Ports {
 	tb.Helper()
 	return c.Use(tb, ctx, true, opts...)
 }
 
+// UseShared acquires a shared lock for using the container explicitly and returns its endpoint.
 func (c *Container) UseShared(tb testing.TB, ctx context.Context, opts ...UseOption) Ports {
 	tb.Helper()
 	return c.Use(tb, ctx, false, opts...)
