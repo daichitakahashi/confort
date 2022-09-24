@@ -65,8 +65,11 @@ If lock file already exists, this command fails.
 }
 
 func (s *StartCommand) SetFlags(f *flag.FlagSet) {
-	s.lockFile = os.Getenv(beaconutil.LockFileEnv) // it regards CFT_LOCKFILE as default value
-	f.StringVar(&s.lockFile, "lock-file", beaconutil.LockFile, "user defined lock file name)")
+	defaultLockfile := os.Getenv(beaconutil.LockFileEnv) // it regards CFT_LOCKFILE as default value
+	if defaultLockfile == "" {
+		defaultLockfile = beaconutil.LockFile
+	}
+	f.StringVar(&s.lockFile, "lock-file", defaultLockfile, "user-defined filename of the lock file")
 }
 
 func (s *StartCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
@@ -134,7 +137,11 @@ If "confort start" has accompanied by "-lock-file" option, this command requires
 }
 
 func (s *StopCommand) SetFlags(f *flag.FlagSet) {
-	f.StringVar(&s.lockFile, "lock-file", beaconutil.LockFile, "user defined lock file name")
+	defaultLockfile := os.Getenv(beaconutil.LockFileEnv) // it regards CFT_LOCKFILE as default value
+	if defaultLockfile == "" {
+		defaultLockfile = beaconutil.LockFile
+	}
+	f.StringVar(&s.lockFile, "lock-file", defaultLockfile, "user-defined filename of the lock file")
 }
 
 func (s *StopCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
