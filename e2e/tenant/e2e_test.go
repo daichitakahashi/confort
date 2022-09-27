@@ -1,4 +1,4 @@
-package integration
+package tenant
 
 import (
 	"bytes"
@@ -62,7 +62,7 @@ func TestStartAndStop(t *testing.T) {
 				<-time.After(200 * time.Millisecond)
 				eg.Go(func() error {
 					buf := bytes.NewBuffer(nil)
-					testCmd := exec.Command(goCmd, "test", "-shuffle=on", "-count=20", "-v", "../tests")
+					testCmd := exec.Command(goCmd, "test", "-shuffle=on", "-count=20", "-v", "./tests")
 					testCmd.Env = env
 					testCmd.Stdout = buf
 					err := testCmd.Run()
@@ -102,7 +102,7 @@ func TestTest(t *testing.T) {
 	op := cmd.NewOperation()
 	f := flag.NewFlagSet("confort", flag.ContinueOnError)
 	test := cmd.NewCommands(f, op)
-	err := f.Parse([]string{"test", "-go=mod", "-go-mode=latest", "-namespace", uuid.NewString(), "--", "-shuffle=on", "-count=20", "-v", "../tests"})
+	err := f.Parse([]string{"test", "-go=mod", "-go-mode=latest", "-namespace", uuid.NewString(), "--", "-shuffle=on", "-count=20", "-v", "./tests"})
 	if err != nil {
 		t.Fatal(err)
 	}

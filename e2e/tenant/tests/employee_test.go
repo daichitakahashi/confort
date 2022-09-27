@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/daichitakahashi/confort/integrationtest/database"
+	database2 "github.com/daichitakahashi/confort/e2e/tenant/database"
 	"github.com/google/go-cmp/cmp"
 	"github.com/jackc/pgx/v4"
 )
@@ -21,16 +21,16 @@ func TestEmployees(t *testing.T) {
 	}
 
 	// create test tenant
-	q := database.New(conn)
+	q := database2.New(conn)
 	tenant, err := q.CreateTenant(ctx, uniqueTenantName.Must(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var employees []database.Employee
+	var employees []database2.Employee
 	for i := 0; i < 50; i++ {
 		userName := uniqueEmployeeUserName.Must(t)
-		employee, err := q.CreateEmployee(ctx, database.CreateEmployeeParams{
+		employee, err := q.CreateEmployee(ctx, database2.CreateEmployeeParams{
 			Username: userName,
 			Name:     userName,
 			TenantID: tenant.ID,
@@ -48,9 +48,9 @@ func TestEmployees(t *testing.T) {
 		t.Run("[20]", func(t *testing.T) {
 			t.Parallel()
 
-			q := database.New(pool)
+			q := database2.New(pool)
 
-			_, err := q.GetEmployees(ctx, database.GetEmployeesParams{
+			_, err := q.GetEmployees(ctx, database2.GetEmployeesParams{
 				TenantID: tenant.ID,
 				ID:       employees[20].ID,
 			})
@@ -62,9 +62,9 @@ func TestEmployees(t *testing.T) {
 		t.Run("notfound", func(t *testing.T) {
 			t.Parallel()
 
-			q := database.New(pool)
+			q := database2.New(pool)
 
-			_, err := q.GetEmployees(ctx, database.GetEmployeesParams{
+			_, err := q.GetEmployees(ctx, database2.GetEmployeesParams{
 				TenantID: tenant.ID,
 				ID:       employees[49].ID + 1,
 			})
@@ -81,7 +81,7 @@ func TestEmployees(t *testing.T) {
 	t.Run("ListEmployees", func(t *testing.T) {
 		t.Parallel()
 
-		q := database.New(pool)
+		q := database2.New(pool)
 
 		actualEmployees, err := q.ListEmployees(ctx, tenant.ID)
 		if err != nil {
