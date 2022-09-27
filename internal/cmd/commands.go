@@ -9,6 +9,8 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
+	"syscall"
 
 	"github.com/daichitakahashi/confort/internal/beaconutil"
 	"github.com/daichitakahashi/gocmd"
@@ -260,6 +262,12 @@ func (t *TestCommand) Execute(ctx context.Context, f *flag.FlagSet, _ ...interfa
 	}
 	env = append(env, fmt.Sprintf("%s=%s", beaconutil.ResourcePolicyEnv, t.policy))
 	env = append(env, fmt.Sprintf("%s=%s", beaconutil.IdentifierEnv, identifier))
+
+	// trap signal for graceful shutdown
+	signal.Notify(
+		make(chan os.Signal, 1),
+		syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM,
+	)
 
 	// execute test
 	var status subcommands.ExitStatus
