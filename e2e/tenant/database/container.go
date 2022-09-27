@@ -1,4 +1,4 @@
-package container
+package database
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/daichitakahashi/confort"
-	"github.com/daichitakahashi/confort/integrationtest/database"
 	"github.com/daichitakahashi/confort/wait"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -61,19 +60,19 @@ func InitDatabase(tb testing.TB, ctx context.Context, beacon *confort.Connection
 			if err != nil {
 				return err
 			}
-			pool, err := database.Connect(ctx, cfg)
+			pool, err := Connect(ctx, cfg)
 			if err != nil {
 				return err
 			}
 			defer pool.Close()
-			return database.CreateTableIfNotExists(ctx, pool)
+			return CreateTableIfNotExists(ctx, pool)
 		}))
 
 		cfg, err := configFromPorts(ports)
 		if err != nil {
 			tb.Fatal(err)
 		}
-		pool, err := database.Connect(ctx, cfg)
+		pool, err := Connect(ctx, cfg)
 		if err != nil {
 			tb.Fatal("ConnectFunc:", err)
 		}

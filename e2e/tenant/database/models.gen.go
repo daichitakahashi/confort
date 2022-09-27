@@ -4,8 +4,6 @@
 
 package database
 
-import ()
-
 type Employee struct {
 	ID       int32  `db:"id"`
 	Username string `db:"username"`

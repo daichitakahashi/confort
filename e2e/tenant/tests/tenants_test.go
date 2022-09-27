@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/daichitakahashi/confort/integrationtest/database"
+	database2 "github.com/daichitakahashi/confort/e2e/tenant/database"
 	"github.com/google/go-cmp/cmp"
 	"github.com/jackc/pgx/v4"
 )
@@ -21,7 +21,7 @@ func TestTenants(t *testing.T) {
 	}
 
 	// remove all data
-	q := database.New(conn)
+	q := database2.New(conn)
 	err = q.ClearEmployees(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -31,7 +31,7 @@ func TestTenants(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tenants := make([]database.Tenant, 0, 5)
+	tenants := make([]database2.Tenant, 0, 5)
 	for i := 0; i < 5; i++ {
 		created, err := q.CreateTenant(ctx, uniqueTenantName.Must(t))
 		if err != nil {
@@ -47,7 +47,7 @@ func TestTenants(t *testing.T) {
 		t.Run("[1]", func(t *testing.T) {
 			t.Parallel()
 
-			q := database.New(pool)
+			q := database2.New(pool)
 
 			_, err := q.GetTenant(ctx, tenants[1].ID)
 			if err != nil {
@@ -58,7 +58,7 @@ func TestTenants(t *testing.T) {
 		t.Run("notfound", func(t *testing.T) {
 			t.Parallel()
 
-			q := database.New(pool)
+			q := database2.New(pool)
 
 			_, err := q.GetTenant(ctx, tenants[4].ID+1)
 			if err == pgx.ErrNoRows {
@@ -74,7 +74,7 @@ func TestTenants(t *testing.T) {
 	t.Run("ListTenants", func(t *testing.T) {
 		t.Parallel()
 
-		q := database.New(pool)
+		q := database2.New(pool)
 
 		actualTenants, err := q.ListTenants(ctx)
 		if err != nil {
