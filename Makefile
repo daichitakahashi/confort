@@ -2,7 +2,7 @@ proto:
 	protoc -I./proto/beacon --go_out=. --go-grpc_out=. ./proto/beacon/*.proto
 
 sqlc:
-	go generate ./integrationtest/database
+	go generate ./e2e/tenant/database
 
 test:
 	go test -coverprofile=coverage.out.tmp -p 1 -coverpkg=./... ./...
@@ -29,4 +29,4 @@ test-cov-ci: test
 	\"color\": \"blue\"\
 	}" > ./.cov/coverage.json
 
-.PHONY: proto test test-cov test-cov-visual test-cov-ci
+.PHONY: proto sqlc test test-cov test-cov-visual test-cov-ci
