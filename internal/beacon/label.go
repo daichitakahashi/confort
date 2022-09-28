@@ -1,4 +1,4 @@
-package util
+package beacon
 
 import (
 	"crypto/sha256"

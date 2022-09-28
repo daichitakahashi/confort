@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/daichitakahashi/confort"
-	"github.com/daichitakahashi/confort/internal/beacon/util"
+	"github.com/daichitakahashi/confort/internal/beacon"
 	"github.com/daichitakahashi/confort/unique"
 	"github.com/daichitakahashi/confort/wait"
 	"github.com/docker/docker/api/types"
@@ -569,7 +569,7 @@ func TestWithNamespace(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
 			if tc.envNamespace != "" {
-				t.Setenv(util.NamespaceEnv, tc.envNamespace)
+				t.Setenv(beacon.NamespaceEnv, tc.envNamespace)
 			}
 			cft := confort.New(t, ctx, confort.WithNamespace(tc.optNamespace, tc.force))
 
@@ -963,7 +963,7 @@ func TestWithResourcePolicy_reusable(t *testing.T) {
 func TestWithResourcePolicy_invalid(t *testing.T) {
 
 	t.Run("invalid policy from env", func(t *testing.T) {
-		t.Setenv(util.ResourcePolicyEnv, "invalid")
+		t.Setenv(beacon.ResourcePolicyEnv, "invalid")
 
 		c, cleanup := NewControl()
 		t.Cleanup(cleanup)

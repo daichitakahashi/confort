@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/daichitakahashi/confort/internal/beacon"
 	"github.com/daichitakahashi/confort/internal/beacon/proto"
-	"github.com/daichitakahashi/confort/internal/beacon/util"
 	"github.com/daichitakahashi/confort/internal/exclusion"
 	"github.com/daichitakahashi/confort/wait"
 	"github.com/docker/docker/api/types"
@@ -128,12 +128,12 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) *Confort {
 		clientOps = []client.Opt{
 			client.FromEnv,
 		}
-		namespace     = os.Getenv(util.NamespaceEnv)
+		namespace     = os.Getenv(beacon.NamespaceEnv)
 		timeout       = time.Minute
 		policy        = ResourcePolicyReuse
 		terminateFunc *func()
 	)
-	if s := os.Getenv(util.ResourcePolicyEnv); s != "" {
+	if s := os.Getenv(beacon.ResourcePolicyEnv); s != "" {
 		policy = ResourcePolicy(s)
 	}
 
@@ -166,7 +166,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) *Confort {
 	if namespace == "" {
 		tb.Fatal("confort: empty namespace")
 	}
-	if !util.ValidResourcePolicy(string(policy)) {
+	if !beacon.ValidResourcePolicy(string(policy)) {
 		tb.Fatalf("confort: invalid resource policy %q", policy)
 	}
 
@@ -182,7 +182,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) *Confort {
 		cli:    cli,
 		policy: policy,
 		labels: map[string]string{
-			util.LabelIdentifier: util.Identifier(beaconAddr),
+			beacon.LabelIdentifier: beacon.Identifier(beaconAddr),
 		},
 	}
 

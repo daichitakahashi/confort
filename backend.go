@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/daichitakahashi/confort/internal/beacon/util"
+	"github.com/daichitakahashi/confort/internal/beacon"
 	"github.com/daichitakahashi/confort/wait"
 	"github.com/docker/cli/cli/command/image/build"
 	"github.com/docker/docker/api/types"
@@ -82,10 +82,10 @@ func (p Ports) URL(port nat.Port, scheme string) string {
 type ResourcePolicy string
 
 const (
-	ResourcePolicyError    ResourcePolicy = util.ResourcePolicyError
-	ResourcePolicyReuse    ResourcePolicy = util.ResourcePolicyReuse
-	ResourcePolicyReusable ResourcePolicy = util.ResourcePolicyReusable
-	ResourcePolicyTakeOver ResourcePolicy = util.ResourcePolicyTakeOver
+	ResourcePolicyError    ResourcePolicy = beacon.ResourcePolicyError
+	ResourcePolicyReuse    ResourcePolicy = beacon.ResourcePolicyReuse
+	ResourcePolicyReusable ResourcePolicy = beacon.ResourcePolicyReusable
+	ResourcePolicyTakeOver ResourcePolicy = beacon.ResourcePolicyTakeOver
 )
 
 type dockerBackend struct {

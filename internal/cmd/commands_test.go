@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/daichitakahashi/confort/internal/beacon/util"
+	"github.com/daichitakahashi/confort/internal/beacon"
 	"github.com/daichitakahashi/gocmd"
 )
 
@@ -133,9 +133,9 @@ func TestResourcePolicy(t *testing.T) {
 	t.Parallel()
 
 	policies := []string{
-		util.ResourcePolicyError,
-		util.ResourcePolicyReuse,
-		util.ResourcePolicyTakeOver,
+		beacon.ResourcePolicyError,
+		beacon.ResourcePolicyReuse,
+		beacon.ResourcePolicyTakeOver,
 	}
 
 	for _, p := range policies {

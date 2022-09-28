@@ -1,4 +1,4 @@
-package util
+package beacon
 
 const (
 	ResourcePolicyError    = "error"

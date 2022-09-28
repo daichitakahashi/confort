@@ -1,4 +1,4 @@
-package util
+package beacon
 
 const (
 	AddressEnv        = "CFT_BEACON_ADDR"
