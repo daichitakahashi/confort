@@ -12,7 +12,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/daichitakahashi/confort/internal/beacon/util"
+	"github.com/daichitakahashi/confort/internal/beacon"
 	"github.com/daichitakahashi/gocmd"
 	"github.com/google/subcommands"
 )
@@ -67,9 +67,9 @@ If lock file already exists, this command fails.
 }
 
 func (s *StartCommand) SetFlags(f *flag.FlagSet) {
-	defaultLockfile := os.Getenv(util.LockFileEnv) // it regards CFT_LOCKFILE as default value
+	defaultLockfile := os.Getenv(beacon.LockFileEnv) // it regards CFT_LOCKFILE as default value
 	if defaultLockfile == "" {
-		defaultLockfile = util.LockFile
+		defaultLockfile = beacon.LockFile
 	}
 	f.StringVar(&s.lockFile, "lock-file", defaultLockfile, "user-defined filename of the lock file")
 }
@@ -95,7 +95,7 @@ func (s *StartCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interf
 	}
 
 	// write address into lock file
-	err = util.StoreAddressToLockFile(s.lockFile, addr)
+	err = beacon.StoreAddressToLockFile(s.lockFile, addr)
 	if err != nil {
 		log.Printf("failed to create lock file: %q", s.lockFile)
 		log.Println(err)
@@ -139,16 +139,16 @@ If "confort start" has accompanied by "-lock-file" option, this command requires
 }
 
 func (s *StopCommand) SetFlags(f *flag.FlagSet) {
-	defaultLockfile := os.Getenv(util.LockFileEnv) // it regards CFT_LOCKFILE as default value
+	defaultLockfile := os.Getenv(beacon.LockFileEnv) // it regards CFT_LOCKFILE as default value
 	if defaultLockfile == "" {
-		defaultLockfile = util.LockFile
+		defaultLockfile = beacon.LockFile
 	}
 	f.StringVar(&s.lockFile, "lock-file", defaultLockfile, "user-defined filename of the lock file")
 }
 
 func (s *StopCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
 	// read address from env or lock file
-	addr, err := util.Address(ctx, s.lockFile)
+	addr, err := beacon.Address(ctx, s.lockFile)
 	if err != nil {
 		log.Printf("failed to read lock file %q", s.lockFile)
 		log.Println(err)
@@ -162,14 +162,14 @@ func (s *StopCommand) Execute(ctx context.Context, _ *flag.FlagSet, _ ...interfa
 	}
 
 	// delete all docker resources created in test
-	err = s.Operation.CleanupResources(ctx, util.LabelIdentifier, util.Identifier(addr))
+	err = s.Operation.CleanupResources(ctx, beacon.LabelIdentifier, beacon.Identifier(addr))
 	if err != nil {
 		log.Println(err)
 		return subcommands.ExitFailure
 	}
 
 	// delete lock file if it exists
-	err = util.DeleteLockFile(s.lockFile)
+	err = beacon.DeleteLockFile(s.lockFile)
 	if err != nil {
 		log.Printf("failed to delete lock file %q", s.lockFile)
 		log.Println(err)
@@ -210,8 +210,8 @@ If you want to use options of "go test", put them after "--".
 }
 
 func (t *TestCommand) SetFlags(f *flag.FlagSet) {
-	f.StringVar(&t.namespace, "namespace", os.Getenv(util.NamespaceEnv), "namespace")
-	t.policy = util.ResourcePolicyReuse
+	f.StringVar(&t.namespace, "namespace", os.Getenv(beacon.NamespaceEnv), "namespace")
+	t.policy = beacon.ResourcePolicyReuse
 	f.Var(&t.policy, "policy", `resource policy
   * With "error", the existing same resource(network and container) makes test failed
   * With "reuse", tests reuse resources if already exist
@@ -252,16 +252,16 @@ func (t *TestCommand) Execute(ctx context.Context, f *flag.FlagSet, _ ...interfa
 	}
 	fmt.Println("use go version:", ver)
 
-	identifier := util.Identifier(workingDir + ":" + t.namespace)
+	identifier := beacon.Identifier(workingDir + ":" + t.namespace)
 
 	// prepare environment variables
 	env := os.Environ()
-	env = append(env, fmt.Sprintf("%s=%s", util.AddressEnv, addr))
+	env = append(env, fmt.Sprintf("%s=%s", beacon.AddressEnv, addr))
 	if t.namespace != "" {
-		env = append(env, fmt.Sprintf("%s=%s", util.NamespaceEnv, t.namespace))
+		env = append(env, fmt.Sprintf("%s=%s", beacon.NamespaceEnv, t.namespace))
 	}
-	env = append(env, fmt.Sprintf("%s=%s", util.ResourcePolicyEnv, t.policy))
-	env = append(env, fmt.Sprintf("%s=%s", util.IdentifierEnv, identifier))
+	env = append(env, fmt.Sprintf("%s=%s", beacon.ResourcePolicyEnv, t.policy))
+	env = append(env, fmt.Sprintf("%s=%s", beacon.IdentifierEnv, identifier))
 
 	// trap signal for graceful shutdown
 	signal.Notify(
@@ -282,9 +282,9 @@ func (t *TestCommand) Execute(ctx context.Context, f *flag.FlagSet, _ ...interfa
 		status = subcommands.ExitSuccess
 	}
 
-	if t.policy != util.ResourcePolicyReusable {
+	if t.policy != beacon.ResourcePolicyReusable {
 		// delete all docker resources created in TestCommand
-		err = t.Operation.CleanupResources(ctx, util.LabelIdentifier, identifier)
+		err = t.Operation.CleanupResources(ctx, beacon.LabelIdentifier, identifier)
 		if err != nil {
 			log.Println(err)
 			return subcommands.ExitFailure
@@ -319,7 +319,7 @@ func (r *resourcePolicy) String() string {
 }
 
 func (r *resourcePolicy) Set(v string) error {
-	if !util.ValidResourcePolicy(v) {
+	if !beacon.ValidResourcePolicy(v) {
 		return fmt.Errorf("invalid resource policy: %s", v)
 	}
 	*r = resourcePolicy(v)

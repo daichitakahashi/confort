@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daichitakahashi/confort/internal/beacon/util"
+	"github.com/daichitakahashi/confort/internal/beacon"
 	"github.com/lestrrat-go/backoff/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -37,7 +37,7 @@ func (c *Connection) Enabled() bool {
 func ConnectBeacon(tb testing.TB, ctx context.Context) *Connection {
 	tb.Helper()
 
-	addr, err := util.Address(ctx, util.LockFilePath())
+	addr, err := beacon.Address(ctx, beacon.LockFilePath())
 	if err != nil {
 		tb.Logf("confort: %s", err)
 	}

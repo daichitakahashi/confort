@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daichitakahashi/confort/internal/beacon/util"
+	"github.com/daichitakahashi/confort/internal/beacon"
 	"github.com/daichitakahashi/confort/internal/cmd"
 	"github.com/google/subcommands"
 	"github.com/google/uuid"
@@ -21,7 +21,7 @@ import (
 
 func TestStartAndStop(t *testing.T) {
 	ctx := context.Background()
-	t.Setenv(util.AddressEnv, "")
+	t.Setenv(beacon.AddressEnv, "")
 
 	for i := 0; i < 2; i++ {
 		ns := uuid.NewString()
@@ -47,8 +47,8 @@ func TestStartAndStop(t *testing.T) {
 			var eg errgroup.Group
 			env := append(
 				os.Environ(),
-				fmt.Sprintf("%s=%s", util.LockFileEnv, lockFile),
-				fmt.Sprintf("%s=%s", util.NamespaceEnv, ns),
+				fmt.Sprintf("%s=%s", beacon.LockFileEnv, lockFile),
+				fmt.Sprintf("%s=%s", beacon.NamespaceEnv, ns),
 			)
 			// use "go" command which executes this test
 			goCmd := goCommand()
