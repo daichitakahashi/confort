@@ -1,10 +1,10 @@
-package beaconserver
+package server
 
 import (
 	"context"
 	"testing"
 
-	"github.com/daichitakahashi/confort/proto/beacon"
+	"github.com/daichitakahashi/confort/internal/beacon/proto"
 )
 
 func TestUniqueValueServer_StoreUniqueValue(t *testing.T) {
@@ -12,7 +12,7 @@ func TestUniqueValueServer_StoreUniqueValue(t *testing.T) {
 
 	ctx := context.Background()
 	connect := startServer(t, nil)
-	cli := beacon.NewUniqueValueServiceClient(connect(t))
+	cli := proto.NewUniqueValueServiceClient(connect(t))
 
 	testCases := []struct {
 		store   string
@@ -30,7 +30,7 @@ func TestUniqueValueServer_StoreUniqueValue(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		resp, err := cli.StoreUniqueValue(ctx, &beacon.StoreUniqueValueRequest{
+		resp, err := cli.StoreUniqueValue(ctx, &proto.StoreUniqueValueRequest{
 			Store: tc.store,
 			Value: tc.value,
 		})

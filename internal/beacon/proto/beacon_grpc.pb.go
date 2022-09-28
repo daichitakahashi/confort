@@ -4,7 +4,7 @@
 // - protoc             v3.20.2
 // source: beacon.proto
 
-package beacon
+package proto
 
 import (
 	context "context"
@@ -39,7 +39,7 @@ func NewBeaconServiceClient(cc grpc.ClientConnInterface) BeaconServiceClient {
 }
 
 func (c *beaconServiceClient) LockForNamespace(ctx context.Context, opts ...grpc.CallOption) (BeaconService_LockForNamespaceClient, error) {
-	stream, err := c.cc.NewStream(ctx, &BeaconService_ServiceDesc.Streams[0], "/beacon.BeaconService/LockForNamespace", opts...)
+	stream, err := c.cc.NewStream(ctx, &BeaconService_ServiceDesc.Streams[0], "/proto.BeaconService/LockForNamespace", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +70,7 @@ func (x *beaconServiceLockForNamespaceClient) Recv() (*LockResponse, error) {
 }
 
 func (c *beaconServiceClient) LockForBuild(ctx context.Context, opts ...grpc.CallOption) (BeaconService_LockForBuildClient, error) {
-	stream, err := c.cc.NewStream(ctx, &BeaconService_ServiceDesc.Streams[1], "/beacon.BeaconService/LockForBuild", opts...)
+	stream, err := c.cc.NewStream(ctx, &BeaconService_ServiceDesc.Streams[1], "/proto.BeaconService/LockForBuild", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +101,7 @@ func (x *beaconServiceLockForBuildClient) Recv() (*LockResponse, error) {
 }
 
 func (c *beaconServiceClient) LockForContainerSetup(ctx context.Context, opts ...grpc.CallOption) (BeaconService_LockForContainerSetupClient, error) {
-	stream, err := c.cc.NewStream(ctx, &BeaconService_ServiceDesc.Streams[2], "/beacon.BeaconService/LockForContainerSetup", opts...)
+	stream, err := c.cc.NewStream(ctx, &BeaconService_ServiceDesc.Streams[2], "/proto.BeaconService/LockForContainerSetup", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +132,7 @@ func (x *beaconServiceLockForContainerSetupClient) Recv() (*LockResponse, error)
 }
 
 func (c *beaconServiceClient) AcquireContainerLock(ctx context.Context, opts ...grpc.CallOption) (BeaconService_AcquireContainerLockClient, error) {
-	stream, err := c.cc.NewStream(ctx, &BeaconService_ServiceDesc.Streams[3], "/beacon.BeaconService/AcquireContainerLock", opts...)
+	stream, err := c.cc.NewStream(ctx, &BeaconService_ServiceDesc.Streams[3], "/proto.BeaconService/AcquireContainerLock", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +164,7 @@ func (x *beaconServiceAcquireContainerLockClient) Recv() (*AcquireLockResponse, 
 
 func (c *beaconServiceClient) Interrupt(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/beacon.BeaconService/Interrupt", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/proto.BeaconService/Interrupt", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -329,7 +329,7 @@ func _BeaconService_Interrupt_Handler(srv interface{}, ctx context.Context, dec 
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/beacon.BeaconService/Interrupt",
+		FullMethod: "/proto.BeaconService/Interrupt",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(BeaconServiceServer).Interrupt(ctx, req.(*emptypb.Empty))
@@ -341,7 +341,7 @@ func _BeaconService_Interrupt_Handler(srv interface{}, ctx context.Context, dec 
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var BeaconService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "beacon.BeaconService",
+	ServiceName: "proto.BeaconService",
 	HandlerType: (*BeaconServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

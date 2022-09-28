@@ -1,4 +1,4 @@
-package beaconserver
+package server
 
 import (
 	"context"
@@ -14,8 +14,6 @@ func TestHealthServer_Check(t *testing.T) {
 	ctx := context.Background()
 	connect := startServer(t, nil)
 	cli := health.NewHealthClient(connect(t))
-
-	// TODO: table driven testでunhealthyパターンも追加する
 
 	for i := 0; i < 10; i++ {
 		resp, err := cli.Check(ctx, &health.HealthCheckRequest{

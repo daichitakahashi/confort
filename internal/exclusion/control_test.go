@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daichitakahashi/confort/beaconserver"
+	"github.com/daichitakahashi/confort/internal/beacon/proto"
+	"github.com/daichitakahashi/confort/internal/beacon/server"
 	"github.com/daichitakahashi/confort/internal/exclusion"
-	"github.com/daichitakahashi/confort/proto/beacon"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -25,7 +25,7 @@ func newBeaconControl(t *testing.T) exclusion.Control {
 	t.Helper()
 
 	srv := grpc.NewServer()
-	beaconserver.Register(srv, func() error {
+	server.Register(srv, func() error {
 		return nil
 	})
 
@@ -51,7 +51,7 @@ func newBeaconControl(t *testing.T) exclusion.Control {
 		_ = conn.Close()
 	})
 
-	return exclusion.NewBeaconControl(beacon.NewBeaconServiceClient(conn))
+	return exclusion.NewBeaconControl(proto.NewBeaconServiceClient(conn))
 }
 
 type control struct {

@@ -1,10 +1,10 @@
 syntax = "proto3";
 
-option go_package = "proto/beacon";
+option go_package = "internal/beacon/proto";
 
 import "google/protobuf/empty.proto";
 
-package beacon;
+package proto;
 
 service BeaconService {
   rpc LockForNamespace(stream LockRequest)

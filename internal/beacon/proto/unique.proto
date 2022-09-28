@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-option go_package = "proto/beacon";
+option go_package = "internal/beacon/proto";
 
-package beacon;
+package proto;
 
 service UniqueValueService {
   rpc StoreUniqueValue(StoreUniqueValueRequest)

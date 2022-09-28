@@ -1,10 +1,10 @@
-package beaconserver
+package server
 
 import (
 	"context"
 	"testing"
 
-	"github.com/daichitakahashi/confort/proto/beacon"
+	"github.com/daichitakahashi/confort/internal/beacon/proto"
 	"github.com/daichitakahashi/confort/unique"
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
@@ -14,10 +14,10 @@ var uniq = unique.New(func() (string, error) {
 	return uuid.New().String(), nil
 })
 
-func lock(t *testing.T, stream beacon.BeaconService_LockForNamespaceClient, op beacon.LockOp) (*beacon.LockResponse, error) {
+func lock(t *testing.T, stream proto.BeaconService_LockForNamespaceClient, op proto.LockOp) (*proto.LockResponse, error) {
 	t.Helper()
 
-	err := stream.Send(&beacon.LockRequest{
+	err := stream.Send(&proto.LockRequest{
 		Operation: op,
 	})
 	if err != nil {
@@ -34,7 +34,7 @@ func TestBeaconServer_LockForNamespace_Error(t *testing.T) {
 		t.Parallel()
 
 		connect := startServer(t, nil)
-		cli := beacon.NewBeaconServiceClient(connect(t))
+		cli := proto.NewBeaconServiceClient(connect(t))
 
 		stream, err := cli.LockForNamespace(ctx)
 		if err != nil {
@@ -44,15 +44,15 @@ func TestBeaconServer_LockForNamespace_Error(t *testing.T) {
 			_ = stream.CloseSend()
 		})
 
-		resp, err := lock(t, stream, beacon.LockOp_LOCK_OP_LOCK)
+		resp, err := lock(t, stream, proto.LockOp_LOCK_OP_LOCK)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if resp.GetState() != beacon.LockState_LOCK_STATE_LOCKED {
+		if resp.GetState() != proto.LockState_LOCK_STATE_LOCKED {
 			t.Fatalf("not locked: %s", resp.GetState())
 		}
 
-		resp, err = lock(t, stream, beacon.LockOp_LOCK_OP_LOCK)
+		resp, err = lock(t, stream, proto.LockOp_LOCK_OP_LOCK)
 		if err == nil {
 			t.Fatal("error expected but succeeded:", resp)
 		}
@@ -61,7 +61,7 @@ func TestBeaconServer_LockForNamespace_Error(t *testing.T) {
 		t.Parallel()
 
 		connect := startServer(t, nil)
-		cli := beacon.NewBeaconServiceClient(connect(t))
+		cli := proto.NewBeaconServiceClient(connect(t))
 
 		stream, err := cli.LockForNamespace(ctx)
 		if err != nil {
@@ -71,7 +71,7 @@ func TestBeaconServer_LockForNamespace_Error(t *testing.T) {
 			_ = stream.CloseSend()
 		})
 
-		resp, err := lock(t, stream, beacon.LockOp_LOCK_OP_UNLOCK)
+		resp, err := lock(t, stream, proto.LockOp_LOCK_OP_UNLOCK)
 		if err == nil {
 			t.Fatal("error expected but succeeded:", resp)
 		}
@@ -79,17 +79,17 @@ func TestBeaconServer_LockForNamespace_Error(t *testing.T) {
 }
 
 type keyedLockStream interface {
-	Send(*beacon.KeyedLockRequest) error
-	Recv() (*beacon.LockResponse, error)
+	Send(*proto.KeyedLockRequest) error
+	Recv() (*proto.LockResponse, error)
 	grpc.ClientStream
 }
 
-func keyedLock(t *testing.T, stream keyedLockStream, key string, op beacon.LockOp) (*beacon.LockResponse, error) {
+func keyedLock(t *testing.T, stream keyedLockStream, key string, op proto.LockOp) (*proto.LockResponse, error) {
 	if t != nil {
 		t.Helper()
 	}
 
-	err := stream.Send(&beacon.KeyedLockRequest{
+	err := stream.Send(&proto.KeyedLockRequest{
 		Key:       key,
 		Operation: op,
 	})
@@ -107,7 +107,7 @@ func TestBeaconServer_LockForBuild_Error(t *testing.T) {
 	ctx := context.Background()
 
 	connect := startServer(t, nil)
-	cli := beacon.NewBeaconServiceClient(connect(t))
+	cli := proto.NewBeaconServiceClient(connect(t))
 
 	t.Run("empty key", func(t *testing.T) {
 		t.Parallel()
@@ -120,7 +120,7 @@ func TestBeaconServer_LockForBuild_Error(t *testing.T) {
 			_ = stream.CloseSend()
 		})
 
-		resp, err := keyedLock(t, stream, "", beacon.LockOp_LOCK_OP_LOCK)
+		resp, err := keyedLock(t, stream, "", proto.LockOp_LOCK_OP_LOCK)
 		if err == nil {
 			t.Fatal("error expected but succeeded:", resp)
 		}
@@ -137,15 +137,15 @@ func TestBeaconServer_LockForBuild_Error(t *testing.T) {
 		})
 
 		image := uniq.Must(t)
-		resp, err := keyedLock(t, stream, image, beacon.LockOp_LOCK_OP_LOCK)
+		resp, err := keyedLock(t, stream, image, proto.LockOp_LOCK_OP_LOCK)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if resp.GetState() != beacon.LockState_LOCK_STATE_LOCKED {
+		if resp.GetState() != proto.LockState_LOCK_STATE_LOCKED {
 			t.Fatalf("not locked: %s", resp.GetState())
 		}
 
-		resp, err = keyedLock(t, stream, image, beacon.LockOp_LOCK_OP_LOCK)
+		resp, err = keyedLock(t, stream, image, proto.LockOp_LOCK_OP_LOCK)
 		if err == nil {
 			t.Fatal("error expected but succeeded:", resp)
 		}
@@ -162,7 +162,7 @@ func TestBeaconServer_LockForBuild_Error(t *testing.T) {
 		})
 
 		image := uniq.Must(t)
-		resp, err := keyedLock(t, stream, image, beacon.LockOp_LOCK_OP_UNLOCK)
+		resp, err := keyedLock(t, stream, image, proto.LockOp_LOCK_OP_UNLOCK)
 		if err == nil {
 			t.Fatal("error expected but succeeded:", resp)
 		}
@@ -174,7 +174,7 @@ func TestBeaconServer_LockForContainerSetup_Error(t *testing.T) {
 	ctx := context.Background()
 
 	connect := startServer(t, nil)
-	cli := beacon.NewBeaconServiceClient(connect(t))
+	cli := proto.NewBeaconServiceClient(connect(t))
 
 	t.Run("empty key", func(t *testing.T) {
 		t.Parallel()
@@ -187,7 +187,7 @@ func TestBeaconServer_LockForContainerSetup_Error(t *testing.T) {
 			_ = stream.CloseSend()
 		})
 
-		resp, err := keyedLock(t, stream, "", beacon.LockOp_LOCK_OP_LOCK)
+		resp, err := keyedLock(t, stream, "", proto.LockOp_LOCK_OP_LOCK)
 		if err == nil {
 			t.Fatal("error expected but succeeded:", resp)
 		}
@@ -204,15 +204,15 @@ func TestBeaconServer_LockForContainerSetup_Error(t *testing.T) {
 		})
 
 		name := uniq.Must(t)
-		resp, err := keyedLock(t, stream, name, beacon.LockOp_LOCK_OP_LOCK)
+		resp, err := keyedLock(t, stream, name, proto.LockOp_LOCK_OP_LOCK)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if resp.GetState() != beacon.LockState_LOCK_STATE_LOCKED {
+		if resp.GetState() != proto.LockState_LOCK_STATE_LOCKED {
 			t.Fatalf("not locked: %s", resp.GetState())
 		}
 
-		resp, err = keyedLock(t, stream, name, beacon.LockOp_LOCK_OP_LOCK)
+		resp, err = keyedLock(t, stream, name, proto.LockOp_LOCK_OP_LOCK)
 		if err == nil {
 			t.Fatal("error expected but succeeded:", resp)
 		}
@@ -229,7 +229,7 @@ func TestBeaconServer_LockForContainerSetup_Error(t *testing.T) {
 		})
 
 		name := uniq.Must(t)
-		resp, err := keyedLock(t, stream, name, beacon.LockOp_LOCK_OP_UNLOCK)
+		resp, err := keyedLock(t, stream, name, proto.LockOp_LOCK_OP_UNLOCK)
 		if err == nil {
 			t.Fatal("error expected but succeeded:", resp)
 		}
@@ -241,9 +241,9 @@ func TestBeaconServer_AcquireContainerLock(t *testing.T) {
 	ctx := context.Background()
 
 	connect := startServer(t, nil)
-	cli := beacon.NewBeaconServiceClient(connect(t))
+	cli := proto.NewBeaconServiceClient(connect(t))
 
-	newStream := func(t *testing.T) beacon.BeaconService_AcquireContainerLockClient {
+	newStream := func(t *testing.T) proto.BeaconService_AcquireContainerLockClient {
 		t.Helper()
 
 		stream, err := cli.AcquireContainerLock(ctx)
@@ -256,9 +256,9 @@ func TestBeaconServer_AcquireContainerLock(t *testing.T) {
 		return stream
 	}
 
-	lock := func(t *testing.T, stream beacon.BeaconService_AcquireContainerLockClient, name string, op beacon.AcquireOp) (*beacon.AcquireLockResponse, error) {
+	lock := func(t *testing.T, stream proto.BeaconService_AcquireContainerLockClient, name string, op proto.AcquireOp) (*proto.AcquireLockResponse, error) {
 		t.Helper()
-		err := stream.Send(&beacon.AcquireLockRequest{
+		err := stream.Send(&proto.AcquireLockRequest{
 			Key:       name,
 			Operation: op,
 		})
@@ -268,7 +268,7 @@ func TestBeaconServer_AcquireContainerLock(t *testing.T) {
 		return stream.Recv()
 	}
 
-	assertError := func(t *testing.T, resp *beacon.AcquireLockResponse, err error) {
+	assertError := func(t *testing.T, resp *proto.AcquireLockResponse, err error) {
 		t.Helper()
 		if err == nil {
 			t.Fatalf("error expected but succeeded: %#v", resp)
@@ -278,18 +278,18 @@ func TestBeaconServer_AcquireContainerLock(t *testing.T) {
 	t.Run("empty key", func(t *testing.T) {
 		t.Parallel()
 
-		resp, err := lock(t, newStream(t), "", beacon.AcquireOp_ACQUIRE_OP_LOCK)
+		resp, err := lock(t, newStream(t), "", proto.AcquireOp_ACQUIRE_OP_LOCK)
 		assertError(t, resp, err)
 	})
 
 	t.Run("trying second lock", func(t *testing.T) {
 		t.Parallel()
 
-		operations := []beacon.AcquireOp{
-			beacon.AcquireOp_ACQUIRE_OP_LOCK,
-			beacon.AcquireOp_ACQUIRE_OP_SHARED_LOCK,
-			beacon.AcquireOp_ACQUIRE_OP_INIT_LOCK,
-			beacon.AcquireOp_ACQUIRE_OP_INIT_SHARED_LOCK,
+		operations := []proto.AcquireOp{
+			proto.AcquireOp_ACQUIRE_OP_LOCK,
+			proto.AcquireOp_ACQUIRE_OP_SHARED_LOCK,
+			proto.AcquireOp_ACQUIRE_OP_INIT_LOCK,
+			proto.AcquireOp_ACQUIRE_OP_INIT_SHARED_LOCK,
 		}
 		for _, op := range operations {
 			op := op
@@ -313,18 +313,18 @@ func TestBeaconServer_AcquireContainerLock(t *testing.T) {
 
 		t.Run("unlocked", func(t *testing.T) {
 			t.Parallel()
-			resp, err := lock(t, newStream(t), uniq.Must(t), beacon.AcquireOp_ACQUIRE_OP_UNLOCK)
+			resp, err := lock(t, newStream(t), uniq.Must(t), proto.AcquireOp_ACQUIRE_OP_UNLOCK)
 			assertError(t, resp, err)
 		})
 
 		t.Run("different key", func(t *testing.T) {
 			t.Parallel()
 			stream := newStream(t)
-			_, err := lock(t, stream, uniq.Must(t), beacon.AcquireOp_ACQUIRE_OP_LOCK)
+			_, err := lock(t, stream, uniq.Must(t), proto.AcquireOp_ACQUIRE_OP_LOCK)
 			if err != nil {
 				t.Fatal(err)
 			}
-			resp, err := lock(t, stream, uniq.Must(t), beacon.AcquireOp_ACQUIRE_OP_UNLOCK)
+			resp, err := lock(t, stream, uniq.Must(t), proto.AcquireOp_ACQUIRE_OP_UNLOCK)
 			assertError(t, resp, err)
 		})
 	})
@@ -332,9 +332,9 @@ func TestBeaconServer_AcquireContainerLock(t *testing.T) {
 	t.Run("set init result on unlocked key", func(t *testing.T) {
 		t.Parallel()
 
-		operations := []beacon.AcquireOp{
-			beacon.AcquireOp_ACQUIRE_OP_SET_INIT_DONE,
-			beacon.AcquireOp_ACQUIRE_OP_SET_INIT_FAILED,
+		operations := []proto.AcquireOp{
+			proto.AcquireOp_ACQUIRE_OP_SET_INIT_DONE,
+			proto.AcquireOp_ACQUIRE_OP_SET_INIT_FAILED,
 		}
 
 		for _, op := range operations {
@@ -351,7 +351,7 @@ func TestBeaconServer_AcquireContainerLock(t *testing.T) {
 				t.Run("different key", func(t *testing.T) {
 					t.Parallel()
 					stream := newStream(t)
-					_, err := lock(t, stream, uniq.Must(t), beacon.AcquireOp_ACQUIRE_OP_INIT_LOCK)
+					_, err := lock(t, stream, uniq.Must(t), proto.AcquireOp_ACQUIRE_OP_INIT_LOCK)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -365,9 +365,9 @@ func TestBeaconServer_AcquireContainerLock(t *testing.T) {
 	t.Run("set init result on lock without init", func(t *testing.T) {
 		t.Parallel()
 
-		operations := []beacon.AcquireOp{
-			beacon.AcquireOp_ACQUIRE_OP_SET_INIT_DONE,
-			beacon.AcquireOp_ACQUIRE_OP_SET_INIT_FAILED,
+		operations := []proto.AcquireOp{
+			proto.AcquireOp_ACQUIRE_OP_SET_INIT_DONE,
+			proto.AcquireOp_ACQUIRE_OP_SET_INIT_FAILED,
 		}
 
 		for _, op := range operations {
@@ -376,7 +376,7 @@ func TestBeaconServer_AcquireContainerLock(t *testing.T) {
 				t.Parallel()
 				stream := newStream(t)
 				name := uniq.Must(t)
-				_, err := lock(t, stream, name, beacon.AcquireOp_ACQUIRE_OP_LOCK)
+				_, err := lock(t, stream, name, proto.AcquireOp_ACQUIRE_OP_LOCK)
 				if err != nil {
 					t.Fatal(err)
 				}

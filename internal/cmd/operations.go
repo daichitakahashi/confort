@@ -9,8 +9,8 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/daichitakahashi/confort/beaconserver"
-	"github.com/daichitakahashi/confort/proto/beacon"
+	"github.com/daichitakahashi/confort/internal/beacon/proto"
+	"github.com/daichitakahashi/confort/internal/beacon/server"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
@@ -42,7 +42,7 @@ func NewOperation() Operation {
 	op := &operation{
 		srv: srv,
 	}
-	beaconserver.Register(srv, func() error {
+	server.Register(srv, func() error {
 		go func() {
 			<-time.After(time.Millisecond * 500)
 			op.srv.Stop()
@@ -116,7 +116,7 @@ func (o *operation) StopBeaconServer(ctx context.Context, addr string) error {
 		_ = conn.Close()
 	}()
 
-	cli := beacon.NewBeaconServiceClient(conn)
+	cli := proto.NewBeaconServiceClient(conn)
 	_, err = cli.Interrupt(ctx, &emptypb.Empty{})
 	return err
 }
