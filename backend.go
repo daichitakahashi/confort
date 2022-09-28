@@ -531,7 +531,10 @@ func (f *fetcher) ContainerID() string {
 
 func (f *fetcher) Status(ctx context.Context) (*types.ContainerState, error) {
 	i, err := f.cli.ContainerInspect(ctx, f.containerID)
-	return i.State, err
+	if err != nil {
+		return nil, err
+	}
+	return i.State, nil
 }
 
 func (f *fetcher) Ports() nat.PortMap {
