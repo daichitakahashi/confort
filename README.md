@@ -80,12 +80,12 @@ func TestExample(t *testing.T) {
 
     // Connect beacon server using an address from `.confort.lock` or CFT_BEACON_ADDR.
     // The function does not fail even if the beacon server is not enabled. But beacon.Enabled == false.
-    beacon := confort.ConnectBeacon(t, ctx)
 
     // CFT_NAMESPACE=your_ci_id
     cft := confort.New(t, ctx,
         confort.WithNamespace("fallback-namespace", false),
-        // Following line enables an integration with `confort` command.
+        // Following line enables an integration with `confort` command if it's available.
+        // Connect will be established using an address of the beacon server from `.confort.lock` or CFT_BEACON_ADDR.
         // Exclusion control is performed through the beacon server.
         confort.WithBeacon(beacon),
     )
@@ -93,10 +93,10 @@ func TestExample(t *testing.T) {
     // ...
 
     unique := unique.String(12,
-        // Following line enables an integration with `confort` command. 
+        // Following line enables an integration with `confort` command too. 
         // This stores the values created across the entire test
         // and helps create unique one.
-        unique.WithBeacon(beacon, "schema"), 
+        unique.WithBeacon(t, ctx, "database-name"), 
     )
     // ...
 }
@@ -171,7 +171,7 @@ Specify resource handling policy. The value is set as `CFT_RESOURCE_POLICY`. Def
 
 ### confort start
 Start the beacon server and output its endpoint to the lock file(".confort.lock"). If the lock file already exists, this command fails.  
-See the document of `confort.ConnectBeacon`.
+See the document of `confort.WithBeacon`.
 
 There is a following option.
 

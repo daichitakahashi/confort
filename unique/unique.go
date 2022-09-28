@@ -10,7 +10,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/daichitakahashi/confort"
+	"github.com/daichitakahashi/confort/internal/beacon"
 	"github.com/daichitakahashi/confort/internal/beacon/proto"
 	"github.com/lestrrat-go/option"
 )
@@ -33,7 +33,7 @@ type (
 	identOptionBeacon struct{}
 	beaconOptions     struct {
 		store string
-		c     *confort.Connection
+		c     *beacon.Connection
 	}
 	uniqueOption struct{ option.Interface }
 )
@@ -53,11 +53,14 @@ func WithRetry(n uint) Option {
 // WithBeacon configures Unique to integrate with a starting beacon server.
 // It enables us to generate unique values through all tests that reference
 // the same beacon server and storeName.
-func WithBeacon(conn *confort.Connection, storeName string) Option {
+//
+// See confort.WithBeacon.
+func WithBeacon(tb testing.TB, ctx context.Context, storeName string) Option {
+	tb.Helper()
 	return uniqueOption{
 		Interface: option.New(identOptionBeacon{}, beaconOptions{
 			store: storeName,
-			c:     conn,
+			c:     beacon.Connect(tb, ctx),
 		}),
 	}.unique()
 }

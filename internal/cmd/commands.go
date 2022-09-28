@@ -59,7 +59,7 @@ By using "-lock-file" option, you can use a user-defined file name as a lock fil
 Default file name is ".confort.lock".
 To tell the endpoint to test code, you have to set file name as environment variable CFT_LOCKFILE.
 If the variable is already set, this command regards CFT_LOCKFILE as the default file name.
-See the document of confort.ConnectBeacon.
+See the document of confort.WithBeacon.
 
 If lock file already exists, this command fails.
 
