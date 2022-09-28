@@ -24,11 +24,11 @@ const (
 	Database   = dbUser
 )
 
-func InitDatabase(tb testing.TB, ctx context.Context, beacon *confort.Connection) ConnectFunc {
+func InitDatabase(tb testing.TB, ctx context.Context) ConnectFunc {
 	tb.Helper()
 
 	cft := confort.New(tb, ctx,
-		confort.WithBeacon(beacon),
+		confort.WithBeacon(),
 		confort.WithNamespace("integrationtest", false),
 	)
 

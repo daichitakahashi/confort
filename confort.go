@@ -93,12 +93,21 @@ func WithResourcePolicy(s ResourcePolicy) NewOption {
 
 // WithBeacon configures Confort to integrate with a starting beacon server.
 // The beacon server is started by the "confort" command.
-// Use Connection object given from ConnectBeacon as the argument conn.
+// The address of server will be read from CFT_BEACON_ADDR or lock file specified as CFT_LOCKFILE.
 //
-// For detail, see ConnectBeacon and "confort help".
-func WithBeacon(conn *Connection) NewOption {
+// # With `confort test` command
+//
+// This command starts beacon server and sets the address as CFT_BEACON_ADDR automatically.
+//
+// # With `confort start` command
+//
+// This command starts beacon server and creates a lock file that contains the address.
+// The default filename is ".confort.lock" and you don't need to set the file name as CFT_LOCKFILE.
+// If you set a custom filename with "-lock-file" option, also you have to set the file name as CFT_LOCKFILE,
+// or you can set address that read from lock file as CFT_BEACON_ADDR.
+func WithBeacon() NewOption {
 	return newOption{
-		Interface: option.New(identOptionBeacon{}, conn),
+		Interface: option.New(identOptionBeacon{}, true),
 	}.new()
 }
 
@@ -151,13 +160,13 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) *Confort {
 		case identOptionResourcePolicy{}:
 			policy = opt.Value().(ResourcePolicy)
 		case identOptionBeacon{}:
-			c := opt.Value().(*Connection)
-			if c.Enabled() {
+			conn := beacon.Connect(tb, ctx)
+			if conn.Enabled() {
 				ex = exclusion.NewBeaconControl(
-					proto.NewBeaconServiceClient(c.Conn),
+					proto.NewBeaconServiceClient(conn.Conn),
 				)
 				skipDeletion = true
-				beaconAddr = c.addr
+				beaconAddr = conn.Addr
 			}
 		case identOptionTerminateFunc{}:
 			terminateFunc = opt.Value().(*func())

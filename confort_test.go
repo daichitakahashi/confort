@@ -6,14 +6,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httputil"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/daichitakahashi/confort"
 	"github.com/daichitakahashi/confort/internal/beacon"
+	"github.com/daichitakahashi/confort/internal/beacon/server"
 	"github.com/daichitakahashi/confort/unique"
 	"github.com/daichitakahashi/confort/wait"
 	"github.com/docker/docker/api/types"
@@ -24,6 +27,7 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/uuid"
+	"google.golang.org/grpc"
 )
 
 const (
@@ -993,6 +997,129 @@ func TestWithResourcePolicy_invalid(t *testing.T) {
 			confort.WithNamespace(uuid.NewString(), true),
 			confort.WithResourcePolicy("invalid"),
 		)
+	})
+}
+
+func TestWithBeacon(t *testing.T) {
+	ctx := context.Background()
+
+	// start beacon server
+	srv := grpc.NewServer()
+	server.Register(srv, func() error {
+		return nil
+	})
+	ln, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		_ = srv.Serve(ln)
+		_ = ln.Close()
+	}()
+	t.Cleanup(func() {
+		srv.Stop()
+	})
+
+	// write lock file
+	lockFile := filepath.Join(t.TempDir(), "lock")
+	err = beacon.StoreAddressToLockFile(lockFile, ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(beacon.LockFileEnv, lockFile)
+
+	conn := beacon.Connect(t, ctx)
+	if !conn.Enabled() {
+		t.Fatal("failed to connect beacon server")
+	}
+
+	t.Run("confort", func(t *testing.T) {
+		t.Parallel()
+
+		var term func()
+		namespace := strings.ReplaceAll(t.Name(), "/", "_")
+		cft := confort.New(t, ctx,
+			confort.WithBeacon(),
+			confort.WithNamespace(namespace, true),
+			confort.WithTerminateFunc(&term),
+		)
+		var done bool
+		t.Cleanup(func() {
+			if !done {
+				term()
+				return
+			}
+		})
+		cft.Run(t, ctx, &confort.ContainerParams{
+			Name:  "tester",
+			Image: "github.com/daichitakahashi/confort/testdata/echo:test",
+		})
+		term()
+		done = true
+
+		// when beacon server is enabled, network and container is not deleted after termination
+		cli, err := client.NewClientWithOpts(client.FromEnv)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		containerName := namespace + "-tester"
+		containers, err := cli.ContainerList(ctx, types.ContainerListOptions{
+			All: true,
+			Filters: filters.NewArgs(
+				filters.Arg("name", containerName),
+			),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(containers) == 0 {
+			t.Fatalf("container %q not found", containerName)
+		}
+		for _, c := range containers {
+			err = cli.ContainerRemove(ctx, c.ID, types.ContainerRemoveOptions{
+				RemoveVolumes: true,
+				Force:         true,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		networks, err := cli.NetworkList(ctx, types.NetworkListOptions{
+			Filters: filters.NewArgs(
+				filters.Arg("name", namespace),
+			),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(networks) == 0 {
+			t.Fatalf("network %q not found", namespace)
+		}
+		for _, n := range networks {
+			err = cli.NetworkRemove(ctx, n.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+
+	t.Run("unique", func(t *testing.T) {
+		t.Parallel()
+
+		uniq := unique.New(func() (bool, error) {
+			return true, nil
+		}, unique.WithBeacon(t, ctx, t.Name()))
+
+		_, err := uniq.New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = uniq.New()
+		if err == nil {
+			t.Fatal("unexpected success")
+		}
 	})
 }
 

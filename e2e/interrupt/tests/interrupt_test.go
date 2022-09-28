@@ -17,12 +17,11 @@ func TestInterrupt(t *testing.T) {
 	ctx := context.Background()
 
 	t.Log("connecting beacon server")
-	beacon := confort.ConnectBeacon(t, ctx)
 
 	// create container
 	cft := confort.New(t, ctx,
 		confort.WithNamespace(uuid.NewString(), false),
-		confort.WithBeacon(beacon),
+		confort.WithBeacon(),
 	)
 	cft.Run(t, ctx, &confort.ContainerParams{
 		Name:  "container",
