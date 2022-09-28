@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/daichitakahashi/confort"
-	"github.com/daichitakahashi/confort/beaconserver"
-	"github.com/daichitakahashi/confort/internal/beaconutil"
+	"github.com/daichitakahashi/confort/internal/beacon/server"
+	"github.com/daichitakahashi/confort/internal/beacon/util"
 	"github.com/daichitakahashi/confort/unique"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
@@ -22,7 +22,7 @@ func TestConnectBeacon(t *testing.T) {
 
 	// start beacon server
 	srv := grpc.NewServer()
-	beaconserver.Register(srv, func() error {
+	server.Register(srv, func() error {
 		return nil
 	})
 	ln, err := net.Listen("tcp", ":0")
@@ -39,11 +39,11 @@ func TestConnectBeacon(t *testing.T) {
 
 	// write lock file
 	lockFile := filepath.Join(t.TempDir(), "lock")
-	err = beaconutil.StoreAddressToLockFile(lockFile, ln.Addr().String())
+	err = util.StoreAddressToLockFile(lockFile, ln.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv(beaconutil.LockFileEnv, lockFile)
+	t.Setenv(util.LockFileEnv, lockFile)
 
 	beacon := confort.ConnectBeacon(t, ctx)
 	if !beacon.Enabled() {

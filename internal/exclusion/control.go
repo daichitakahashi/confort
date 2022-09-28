@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/daichitakahashi/confort/proto/beacon"
+	"github.com/daichitakahashi/confort/internal/beacon/proto"
 	"go.uber.org/multierr"
 )
 
@@ -67,10 +67,10 @@ func initSafe(init func() error) (err error) {
 var _ Control = (*control)(nil)
 
 type beaconControl struct {
-	cli beacon.BeaconServiceClient
+	cli proto.BeaconServiceClient
 }
 
-func NewBeaconControl(cli beacon.BeaconServiceClient) Control {
+func NewBeaconControl(cli proto.BeaconServiceClient) Control {
 	return &beaconControl{
 		cli: cli,
 	}
@@ -82,8 +82,8 @@ func (b *beaconControl) LockForNamespace(ctx context.Context) (func(), error) {
 		return nil, err
 	}
 
-	err = stream.Send(&beacon.LockRequest{
-		Operation: beacon.LockOp_LOCK_OP_LOCK,
+	err = stream.Send(&proto.LockRequest{
+		Operation: proto.LockOp_LOCK_OP_LOCK,
 	})
 	if err != nil {
 		return nil, err
@@ -93,8 +93,8 @@ func (b *beaconControl) LockForNamespace(ctx context.Context) (func(), error) {
 		return nil, err
 	}
 	return func() {
-		err := stream.Send(&beacon.LockRequest{
-			Operation: beacon.LockOp_LOCK_OP_UNLOCK,
+		err := stream.Send(&proto.LockRequest{
+			Operation: proto.LockOp_LOCK_OP_UNLOCK,
 		})
 		_ = err // TODO: error handling
 		_ = stream.CloseSend()
@@ -107,9 +107,9 @@ func (b *beaconControl) LockForBuild(ctx context.Context, image string) (func(),
 		return nil, err
 	}
 
-	err = stream.Send(&beacon.KeyedLockRequest{
+	err = stream.Send(&proto.KeyedLockRequest{
 		Key:       image,
-		Operation: beacon.LockOp_LOCK_OP_LOCK,
+		Operation: proto.LockOp_LOCK_OP_LOCK,
 	})
 	if err != nil {
 		return nil, err
@@ -120,9 +120,9 @@ func (b *beaconControl) LockForBuild(ctx context.Context, image string) (func(),
 		return nil, err
 	}
 	return func() {
-		err := stream.Send(&beacon.KeyedLockRequest{
+		err := stream.Send(&proto.KeyedLockRequest{
 			Key:       image,
-			Operation: beacon.LockOp_LOCK_OP_UNLOCK,
+			Operation: proto.LockOp_LOCK_OP_UNLOCK,
 		})
 		_ = err // TODO: error handling
 		_ = stream.CloseSend()
@@ -135,9 +135,9 @@ func (b *beaconControl) LockForContainerSetup(ctx context.Context, name string) 
 		return nil, err
 	}
 
-	err = stream.Send(&beacon.KeyedLockRequest{
+	err = stream.Send(&proto.KeyedLockRequest{
 		Key:       name,
-		Operation: beacon.LockOp_LOCK_OP_LOCK,
+		Operation: proto.LockOp_LOCK_OP_LOCK,
 	})
 	if err != nil {
 		return nil, err
@@ -148,9 +148,9 @@ func (b *beaconControl) LockForContainerSetup(ctx context.Context, name string) 
 		return nil, err
 	}
 	return func() {
-		err := stream.Send(&beacon.KeyedLockRequest{
+		err := stream.Send(&proto.KeyedLockRequest{
 			Key:       name,
-			Operation: beacon.LockOp_LOCK_OP_UNLOCK,
+			Operation: proto.LockOp_LOCK_OP_UNLOCK,
 		})
 		_ = err // TODO: error handling
 		_ = stream.CloseSend()
@@ -158,18 +158,18 @@ func (b *beaconControl) LockForContainerSetup(ctx context.Context, name string) 
 }
 
 func (b *beaconControl) LockForContainerUse(ctx context.Context, name string, exclusive bool, init func() error) (func(), error) {
-	var op beacon.AcquireOp
+	var op proto.AcquireOp
 	if exclusive {
 		if init == nil {
-			op = beacon.AcquireOp_ACQUIRE_OP_LOCK
+			op = proto.AcquireOp_ACQUIRE_OP_LOCK
 		} else {
-			op = beacon.AcquireOp_ACQUIRE_OP_INIT_LOCK
+			op = proto.AcquireOp_ACQUIRE_OP_INIT_LOCK
 		}
 	} else {
 		if init == nil {
-			op = beacon.AcquireOp_ACQUIRE_OP_SHARED_LOCK
+			op = proto.AcquireOp_ACQUIRE_OP_SHARED_LOCK
 		} else {
-			op = beacon.AcquireOp_ACQUIRE_OP_INIT_SHARED_LOCK
+			op = proto.AcquireOp_ACQUIRE_OP_INIT_SHARED_LOCK
 		}
 	}
 
@@ -177,7 +177,7 @@ func (b *beaconControl) LockForContainerUse(ctx context.Context, name string, ex
 	if err != nil {
 		return nil, err
 	}
-	err = stream.Send(&beacon.AcquireLockRequest{
+	err = stream.Send(&proto.AcquireLockRequest{
 		Key:       name,
 		Operation: op,
 	})
@@ -190,11 +190,11 @@ func (b *beaconControl) LockForContainerUse(ctx context.Context, name string, ex
 	}
 	if resp.GetAcquireInit() {
 		initErr := initSafe(init)
-		op := beacon.AcquireOp_ACQUIRE_OP_SET_INIT_DONE
+		op := proto.AcquireOp_ACQUIRE_OP_SET_INIT_DONE
 		if initErr != nil {
-			op = beacon.AcquireOp_ACQUIRE_OP_SET_INIT_FAILED
+			op = proto.AcquireOp_ACQUIRE_OP_SET_INIT_FAILED
 		}
-		err = stream.Send(&beacon.AcquireLockRequest{
+		err = stream.Send(&proto.AcquireLockRequest{
 			Key:       name,
 			Operation: op,
 		})
@@ -210,9 +210,9 @@ func (b *beaconControl) LockForContainerUse(ctx context.Context, name string, ex
 		}
 	}
 	return func() {
-		err := stream.Send(&beacon.AcquireLockRequest{
+		err := stream.Send(&proto.AcquireLockRequest{
 			Key:       name,
-			Operation: beacon.AcquireOp_ACQUIRE_OP_UNLOCK,
+			Operation: proto.AcquireOp_ACQUIRE_OP_UNLOCK,
 		})
 		_ = err // TODO: error handling
 		_ = stream.CloseSend()

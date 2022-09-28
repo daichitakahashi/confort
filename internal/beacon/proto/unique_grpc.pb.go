@@ -4,7 +4,7 @@
 // - protoc             v3.20.2
 // source: unique.proto
 
-package beacon
+package proto
 
 import (
 	context "context"
@@ -35,7 +35,7 @@ func NewUniqueValueServiceClient(cc grpc.ClientConnInterface) UniqueValueService
 
 func (c *uniqueValueServiceClient) StoreUniqueValue(ctx context.Context, in *StoreUniqueValueRequest, opts ...grpc.CallOption) (*StoreUniqueValueResponse, error) {
 	out := new(StoreUniqueValueResponse)
-	err := c.cc.Invoke(ctx, "/beacon.UniqueValueService/StoreUniqueValue", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/proto.UniqueValueService/StoreUniqueValue", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +80,7 @@ func _UniqueValueService_StoreUniqueValue_Handler(srv interface{}, ctx context.C
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/beacon.UniqueValueService/StoreUniqueValue",
+		FullMethod: "/proto.UniqueValueService/StoreUniqueValue",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(UniqueValueServiceServer).StoreUniqueValue(ctx, req.(*StoreUniqueValueRequest))
@@ -92,7 +92,7 @@ func _UniqueValueService_StoreUniqueValue_Handler(srv interface{}, ctx context.C
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var UniqueValueService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "beacon.UniqueValueService",
+	ServiceName: "proto.UniqueValueService",
 	HandlerType: (*UniqueValueServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

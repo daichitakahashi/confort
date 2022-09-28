@@ -1,5 +1,5 @@
 proto:
-	protoc -I./proto/beacon --go_out=. --go-grpc_out=. ./proto/beacon/*.proto
+	protoc -I./internal/beacon/proto --go_out=. --go-grpc_out=. ./internal/beacon/proto/*.proto
 
 sqlc:
 	go generate ./e2e/tenant/database

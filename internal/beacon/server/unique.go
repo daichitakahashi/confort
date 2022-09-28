@@ -1,14 +1,14 @@
-package beaconserver
+package server
 
 import (
 	"context"
 	"sync"
 
-	"github.com/daichitakahashi/confort/proto/beacon"
+	"github.com/daichitakahashi/confort/internal/beacon/proto"
 )
 
 type uniqueValueServer struct {
-	beacon.UnimplementedUniqueValueServiceServer
+	proto.UnimplementedUniqueValueServiceServer
 	stores sync.Map
 }
 
@@ -35,12 +35,12 @@ func (s *valueStore) tryStore(v string) bool {
 	return true
 }
 
-func (u *uniqueValueServer) StoreUniqueValue(_ context.Context, req *beacon.StoreUniqueValueRequest) (*beacon.StoreUniqueValueResponse, error) {
+func (u *uniqueValueServer) StoreUniqueValue(_ context.Context, req *proto.StoreUniqueValueRequest) (*proto.StoreUniqueValueResponse, error) {
 	v, _ := u.stores.LoadOrStore(req.GetStore(), &valueStore{})
 	store := v.(*valueStore)
-	return &beacon.StoreUniqueValueResponse{
+	return &proto.StoreUniqueValueResponse{
 		Succeeded: store.tryStore(req.GetValue()),
 	}, nil
 }
 
-var _ beacon.UniqueValueServiceServer = (*uniqueValueServer)(nil)
+var _ proto.UniqueValueServiceServer = (*uniqueValueServer)(nil)

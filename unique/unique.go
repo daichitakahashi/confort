@@ -11,7 +11,7 @@ import (
 	"unsafe"
 
 	"github.com/daichitakahashi/confort"
-	"github.com/daichitakahashi/confort/proto/beacon"
+	"github.com/daichitakahashi/confort/internal/beacon/proto"
 	"github.com/lestrrat-go/option"
 )
 
@@ -91,7 +91,7 @@ func New[T comparable](fn func() (T, error), opts ...Option) *Unique[T] {
 	if options.store != "" && options.c.Enabled() {
 		u.g = &globalGenerator[T]{
 			f:     fn,
-			cli:   beacon.NewUniqueValueServiceClient(options.c.Conn),
+			cli:   proto.NewUniqueValueServiceClient(options.c.Conn),
 			store: options.store,
 		}
 	}
@@ -149,7 +149,7 @@ var _ uniqueValueGenerator[int] = (*generator[int])(nil)
 
 type globalGenerator[T comparable] struct {
 	f     func() (T, error)
-	cli   beacon.UniqueValueServiceClient
+	cli   proto.UniqueValueServiceClient
 	store string
 }
 
@@ -163,7 +163,7 @@ func (g *globalGenerator[T]) generate(retry uint) (zero T, _ error) {
 		} else if err != nil {
 			return zero, err
 		}
-		resp, err := g.cli.StoreUniqueValue(ctx, &beacon.StoreUniqueValueRequest{
+		resp, err := g.cli.StoreUniqueValue(ctx, &proto.StoreUniqueValueRequest{
 			Store: g.store,
 			Value: fmt.Sprint(v),
 		})

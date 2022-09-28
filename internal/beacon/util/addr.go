@@ -1,4 +1,4 @@
-package beaconutil
+package util
 
 import (
 	"context"
