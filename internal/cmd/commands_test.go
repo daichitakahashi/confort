@@ -57,6 +57,23 @@ func TestNewCommands_Help(t *testing.T) {
 	}
 }
 
+func TestStopCommand_IntegrationDisabled(t *testing.T) {
+	ctx := context.Background()
+
+	f := flag.NewFlagSet("confort", flag.ContinueOnError)
+	cmd := NewCommands(f, NewOperation())
+	err := f.Parse([]string{"stop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv(beacon.AddressEnv, "disabled")
+	code := cmd.Execute(ctx, nil)
+	if code != 1 {
+		t.Fatalf("unexpected exit code: %d", code)
+	}
+}
+
 func TestTestCommand_determineGoCommand(t *testing.T) {
 	t.Parallel()
 

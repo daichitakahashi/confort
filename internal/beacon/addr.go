@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -22,12 +23,19 @@ func LockFilePath() string {
 	return LockFile
 }
 
+var ErrIntegrationDisabled = errors.New("the integration with beacon server is disabled")
+
 // Address returns address of beacon server.
 // It returns value of CFT_BEACON_ADDR if exists.
-// If not exists, read from lockFile.
+// If the value of CFT_BEACON_ADDR equals "disabled", this returns ErrIntegrationDisabled.
+//
+// If the variable not exists, Address try to read from lockFile.
 func Address(ctx context.Context, lockFile string) (string, error) {
 	addr := os.Getenv(AddressEnv)
 	if addr != "" {
+		if strings.EqualFold(addr, "disabled") {
+			return "", ErrIntegrationDisabled
+		}
 		return addr, nil
 	}
 
