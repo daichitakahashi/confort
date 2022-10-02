@@ -131,10 +131,10 @@ func checkEndpointSettingsConsistency(expected, target map[string]*network.Endpo
 				// EndpointID
 				stringSubset("Gateway", expectedSettings.Gateway, settings.Gateway),
 				stringSubset("IPAddress", expectedSettings.IPAddress, settings.IPAddress),
-				equals("IPPrefixLen", expectedSettings.IPPrefixLen, settings.IPPrefixLen),
+				// equals("IPPrefixLen", expectedSettings.IPPrefixLen, settings.IPPrefixLen),
 				stringSubset("IPv6Gateway", expectedSettings.IPv6Gateway, settings.IPv6Gateway),
 				stringSubset("GlobalIPv6Address", expectedSettings.GlobalIPv6Address, settings.GlobalIPv6Address),
-				equals("GlobalIPv6PrefixLen", expectedSettings.GlobalIPv6PrefixLen, settings.GlobalIPv6PrefixLen),
+				// equals("GlobalIPv6PrefixLen", expectedSettings.GlobalIPv6PrefixLen, settings.GlobalIPv6PrefixLen),
 				stringSubset("MacAddress", expectedSettings.MacAddress, settings.MacAddress),
 				mapSubset("DriverOpts", expectedSettings.DriverOpts, settings.DriverOpts),
 			)
