@@ -530,7 +530,7 @@ func WithNetworkingConfig(f func(config *network.NetworkingConfig)) RunOption {
 }
 
 // WithConfigConsistency enables/disables the test checking consistency of configurations.
-// By default, this test is enabled.
+// By default, this test is disabled.
 // NOTICE: This is quite experimental feature.
 func WithConfigConsistency(check bool) RunOption {
 	return runOption{
