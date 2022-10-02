@@ -417,7 +417,7 @@ func (cft *Confort) createContainer(ctx context.Context, name, alias string, c *
 	var modifyContainer func(config *container.Config)
 	var modifyHost func(config *container.HostConfig)
 	var modifyNetworking func(config *network.NetworkingConfig)
-	checkConsistency := true
+	var checkConsistency bool
 	var pullOpts *types.ImagePullOptions
 	pullOut := io.Discard
 
