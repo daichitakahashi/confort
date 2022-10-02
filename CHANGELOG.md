@@ -1,5 +1,13 @@
 # Changelog
 
+## [v1.0.0](https://github.com/daichitakahashi/confort/compare/v0.4.1...v1.0.0) - 2022-10-02
+- Update internal/cmd: `confort test` should handle SIGTERM and SIGINT to release created resources by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/34
+- Unexport beacon by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/40
+- `beacon.Connection` should be singleton by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/41
+- Update internal/beacon: add an option to disable the integration with beacon server explicitly by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/42
+- Add internal/logging: optional logging by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/44
+- Disable config consistency by default by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/45
+
 ## [v0.4.1](https://github.com/daichitakahashi/confort/compare/v0.4.0...v0.4.1) - 2022-09-24
 - More documents on README by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/33
 
