@@ -1380,39 +1380,51 @@ func TestWithConfigConsistency(t *testing.T) {
 	namespace := t.Name()
 	cft := confort.New(t, ctx, confort.WithNamespace(namespace, true))
 
+	ports := []string{"80/tcp", "8080/tcp"}
+	env := map[string]string{
+		"ENV1": "VALUE",
+		"ENV2": "VALUE",
+	}
 	cft.Run(t, ctx, &confort.ContainerParams{
 		Name:         "echo",
 		Image:        imageEcho,
-		ExposedPorts: []string{"80/tcp", "8080/tcp"},
+		ExposedPorts: ports,
+		Env:          env,
 		Waiter:       wait.Healthy(),
 	})
 
 	testCases := []struct {
-		desc                     string
-		ports                    []string
-		configConsistencyEnabled bool
-		failed                   bool
+		desc   string
+		ports  []string
+		env    map[string]string
+		failed bool
 	}{
 		{
-			desc:                     "less ports with consistency check",
-			ports:                    []string{"80/tcp"},
-			configConsistencyEnabled: true,
-			failed:                   false,
+			desc:   "less ports",
+			ports:  []string{"80/tcp"},
+			env:    env,
+			failed: false,
 		}, {
-			desc:                     "extra ports with consistency check",
-			ports:                    []string{"80/tcp", "8443/tcp"},
-			configConsistencyEnabled: true,
-			failed:                   true,
+			desc:   "extra ports",
+			ports:  []string{"80/tcp", "8443/tcp"},
+			env:    env,
+			failed: true,
 		}, {
-			desc:                     "less ports without consistency check",
-			ports:                    []string{"80/tcp"},
-			configConsistencyEnabled: false,
-			failed:                   false,
+			desc:  "less env",
+			ports: ports,
+			env: map[string]string{
+				"ENV1": "VALUE",
+			},
+			failed: false,
 		}, {
-			desc:                     "extra ports without consistency check",
-			ports:                    []string{"80/tcp", "8443/tcp"},
-			configConsistencyEnabled: false,
-			failed:                   false,
+			desc:  "extra env",
+			ports: ports,
+			env: map[string]string{
+				"ENV1":     "VALUE",
+				"ENV2":     "VALUE",
+				"MORE_ENV": "VALUE",
+			},
+			failed: true,
 		},
 	}
 
@@ -1420,23 +1432,19 @@ func TestWithConfigConsistency(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			cft := confort.New(t, ctx, confort.WithNamespace(namespace, true))
 
-			var opts []confort.RunOption
-			if !tc.configConsistencyEnabled {
-				opts = append(opts, confort.WithConfigConsistency(false))
-			}
-
 			result := testingc.Test(func(t *testingc.T) {
 				cft.Run(t, ctx, &confort.ContainerParams{
 					Name:         "echo",
 					Image:        imageEcho,
 					ExposedPorts: tc.ports,
+					Env:          tc.env,
 					Waiter:       wait.Healthy(),
-				}, opts...)
+				}, confort.WithConfigConsistency(true))
 			})
 			if tc.failed && !result.Failed() {
 				t.Fatal("expected fail because of inconsistency, but not failed")
 			} else if !tc.failed && result.Failed() {
-				t.Fatal("expected not to fail, but failed")
+				t.Fatalf("expected not to fail, but failed: %s", result.Logs())
 			}
 		})
 	}

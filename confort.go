@@ -467,11 +467,11 @@ func (cft *Confort) createContainer(ctx context.Context, name, alias string, c *
 	if modifyHost != nil {
 		modifyHost(hc)
 	}
-	networkID := cft.namespace.Network().ID
+	nw := cft.namespace.Network()
 	nc := &network.NetworkingConfig{
 		EndpointsConfig: map[string]*network.EndpointSettings{
-			networkID: {
-				NetworkID: networkID,
+			nw.Name: {
+				NetworkID: nw.ID,
 				Aliases:   []string{alias},
 			},
 		},
