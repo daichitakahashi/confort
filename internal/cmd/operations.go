@@ -126,6 +126,7 @@ func (o *operation) CleanupResources(ctx context.Context, label, value string) e
 	if err != nil {
 		return err
 	}
+	cli.NegotiateAPIVersion(ctx)
 
 	f := filters.NewArgs(
 		filters.Arg("label", label+"="+value),
