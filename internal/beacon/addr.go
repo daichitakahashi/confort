@@ -3,7 +3,6 @@ package beacon
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"strings"
@@ -54,7 +53,7 @@ func Address(ctx context.Context, lockFile string) (string, error) {
 			return "", ctx.Err()
 		}
 	}
-	return "", fmt.Errorf("failed to read lock file: %s", lockFile)
+	return "", nil
 }
 
 func StoreAddressToLockFile(lockFile, addr string) error {

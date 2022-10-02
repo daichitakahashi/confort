@@ -2,10 +2,12 @@ package beacon
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/daichitakahashi/confort/internal/logging"
 	"github.com/lestrrat-go/backoff/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -43,23 +45,28 @@ func connect(tb testing.TB, ctx context.Context) *Connection {
 
 	addr, err := Address(ctx, LockFilePath())
 	if err != nil {
-		tb.Logf("beacon: %s", err)
+		if errors.Is(err, ErrIntegrationDisabled) {
+			logging.Info(tb, err)
+			return nil
+		}
+		logging.Fatal(tb, err)
 	}
 	if addr == "" {
-		tb.Log("beacon: cannot get beacon address")
-		return &Connection{}
+		logging.Info(tb, "cannot get the address of beacon server")
+		return nil
 	}
+	logging.Debugf(tb, "the address of beacon server: %s", addr)
 
 	conn, err := grpc.DialContext(ctx, addr, grpc.WithTransportCredentials(
 		insecure.NewCredentials(),
 	))
 	if err != nil {
-		tb.Fatalf("beacon: %s", err)
+		logging.Fatal(tb, err)
 	}
 	tb.Cleanup(func() {
 		err := conn.Close()
 		if err != nil {
-			tb.Logf("beacon: %s", err)
+			logging.Error(tb, err)
 		}
 	})
 
@@ -76,14 +83,15 @@ func connect(tb testing.TB, ctx context.Context) *Connection {
 			Service: "beacon",
 		})
 		status = resp.GetStatus()
+		logging.Debugf(tb, "got health check status of beacon server: %s", status)
 		if status == health.HealthCheckResponse_SERVING {
 			break
 		}
 	}
 	if err != nil {
-		tb.Fatal(err)
+		logging.Fatal(tb, err)
 	} else if status != health.HealthCheckResponse_SERVING {
-		tb.Fatalf("beacon: unexpected service status %s", status)
+		logging.Fatalf(tb, "unexpected service status %s", status)
 	}
 
 	return &Connection{

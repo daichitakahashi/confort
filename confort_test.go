@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -45,6 +46,9 @@ func TestMain(m *testing.M) {
 	ctx := context.Background()
 	c, cleanup := NewControl()
 	defer cleanup()
+
+	// enable debug log TODO: use testingc package
+	os.Setenv(beacon.LogLevelEnv, "0")
 
 	var term func()
 	cft := confort.New(c, ctx,
