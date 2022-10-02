@@ -3,13 +3,17 @@ package confort
 import (
 	"context"
 	"io"
+	"log"
 	"os"
+	"strconv"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/daichitakahashi/confort/internal/beacon"
 	"github.com/daichitakahashi/confort/internal/beacon/proto"
 	"github.com/daichitakahashi/confort/internal/exclusion"
+	"github.com/daichitakahashi/confort/internal/logging"
 	"github.com/daichitakahashi/confort/wait"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -18,6 +22,23 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/lestrrat-go/option"
 )
+
+var initOnce sync.Once
+
+func lazyInit() {
+	initOnce.Do(func() {
+		v, ok := os.LookupEnv(beacon.LogLevelEnv)
+		if !ok {
+			return
+		}
+		i, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			log.Printf("confort: failed to parse the value of %s, default value is 2", beacon.LogLevelEnv)
+			return
+		}
+		logging.SetLogLevel(logging.LogLevel(i))
+	})
+}
 
 type Confort struct {
 	backend        Backend
@@ -128,6 +149,7 @@ func WithTerminateFunc(f *func()) NewOption {
 // option.
 func New(tb testing.TB, ctx context.Context, opts ...NewOption) *Confort {
 	tb.Helper()
+	lazyInit()
 
 	var (
 		skipDeletion bool
@@ -139,7 +161,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) *Confort {
 		}
 		namespace     = os.Getenv(beacon.NamespaceEnv)
 		timeout       = time.Minute
-		policy        = ResourcePolicyReuse
+		policy        ResourcePolicy
 		terminateFunc *func()
 	)
 	if s := os.Getenv(beacon.ResourcePolicyEnv); s != "" {
@@ -153,12 +175,19 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) *Confort {
 		case identOptionNamespace{}:
 			o := opt.Value().(namespaceOption)
 			if namespace == "" || o.force {
+				if namespace != "" {
+					logging.Infof(tb, "namespace is overwritten by WithNamespace: %q -> %q", namespace, o.namespace)
+				}
 				namespace = o.namespace
 			}
 		case identOptionDefaultTimeout{}:
 			timeout = opt.Value().(time.Duration)
 		case identOptionResourcePolicy{}:
-			policy = opt.Value().(ResourcePolicy)
+			newPolicy := opt.Value().(ResourcePolicy)
+			if policy != "" && policy != newPolicy {
+				logging.Infof(tb, "resource policy is overwritten by WithResourcePolicy: %q -> %q", policy, newPolicy)
+			}
+			policy = newPolicy
 		case identOptionBeacon{}:
 			conn := beacon.Connect(tb, ctx)
 			if conn.Enabled() {
@@ -172,18 +201,25 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) *Confort {
 			terminateFunc = opt.Value().(*func())
 		}
 	}
+
 	if namespace == "" {
-		tb.Fatal("confort: empty namespace")
+		logging.Fatal(tb, "empty namespace")
+	}
+	logging.Debugf(tb, "namespace: %s", namespace)
+
+	if policy == "" {
+		policy = ResourcePolicyReuse // default
 	}
 	if !beacon.ValidResourcePolicy(string(policy)) {
-		tb.Fatalf("confort: invalid resource policy %q", policy)
+		logging.Fatalf(tb, "invalid resource policy: %s", policy)
 	}
+	logging.Debugf(tb, "resource policy: %s", policy)
 
 	ctx, cancel := applyTimeout(ctx, timeout)
 	defer cancel()
 	cli, err := client.NewClientWithOpts(clientOps...)
 	if err != nil {
-		tb.Fatalf("confort: %s", err)
+		logging.Fatal(tb, err)
 	}
 	cli.NegotiateAPIVersion(ctx)
 
@@ -195,15 +231,20 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) *Confort {
 		},
 	}
 
+	logging.Debug(tb, "acquire LockForNamespace")
 	unlock, err := ex.LockForNamespace(ctx)
 	if err != nil {
-		tb.Fatal(err)
+		logging.Fatal(tb, err)
 	}
-	defer unlock()
+	defer func() {
+		logging.Debug(tb, "release LockForNamespace")
+		unlock()
+	}()
 
+	logging.Debugf(tb, "create namespace %q", namespace)
 	ns, err := backend.Namespace(ctx, namespace)
 	if err != nil {
-		tb.Fatalf("confort: %s", err)
+		logging.Fatal(tb, err)
 	}
 	term := func() {
 		tb.Helper()
@@ -212,9 +253,10 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) *Confort {
 			return
 		}
 		// release all resources
+		logging.Debugf(tb, "release all resources bound with namespace %q", namespace)
 		err := ns.Release(context.Background())
 		if err != nil {
-			tb.Log(err)
+			logging.Error(tb, err)
 		}
 	}
 	if terminateFunc != nil {
@@ -320,7 +362,7 @@ func (cft *Confort) Build(tb testing.TB, ctx context.Context, b *BuildParams, op
 
 	tarball, relDockerfile, err := createArchive(b.ContextDir, b.Dockerfile)
 	if err != nil {
-		tb.Fatalf("confort: %s", err)
+		logging.Fatal(tb, err)
 	}
 	defer func() {
 		_, _ = io.Copy(io.Discard, tarball)
@@ -342,17 +384,22 @@ func (cft *Confort) Build(tb testing.TB, ctx context.Context, b *BuildParams, op
 	}
 
 	if len(buildOption.Tags) == 0 {
-		tb.Fatal("image tag not specified")
+		logging.Fatal(tb, "image tag not specified")
 	}
+	logging.Debugf(tb, "LockForBuild: %s", buildOption.Tags[0])
 	unlock, err := cft.ex.LockForBuild(ctx, buildOption.Tags[0])
 	if err != nil {
-		tb.Fatal(err)
+		logging.Fatal(tb, err)
 	}
-	defer unlock()
+	defer func() {
+		logging.Debugf(tb, "release LockForBuild: %s", buildOption.Tags[0])
+		unlock()
+	}()
 
+	logging.Debugf(tb, "build image %q", buildOption.Tags[0])
 	err = cft.backend.BuildImage(ctx, tarball, buildOption, force, buildOut)
 	if err != nil {
-		tb.Fatalf("confort: %s", err)
+		logging.Fatal(tb, err)
 	}
 }
 
@@ -536,15 +583,20 @@ func (cft *Confort) LazyRun(tb testing.TB, ctx context.Context, c *ContainerPara
 	ctx, cancel := applyTimeout(ctx, cft.defaultTimeout)
 	defer cancel()
 
+	logging.Debugf(tb, "acquire LockForContainerSetup: %s", name)
 	unlock, err := cft.ex.LockForContainerSetup(ctx, name)
 	if err != nil {
-		tb.Fatal(err)
+		logging.Fatal(tb, err)
 	}
-	defer unlock()
+	defer func() {
+		logging.Debugf(tb, "release LockForContainerSetup: %s", name)
+		unlock()
+	}()
 
+	logging.Debugf(tb, "create container if not exists: %s", name)
 	containerID, err := cft.createContainer(ctx, name, alias, c, opts...)
 	if err != nil {
-		tb.Fatalf("confort: %s", err)
+		logging.Fatal(tb, err)
 	}
 	return &Container{
 		cft:   cft,
@@ -571,20 +623,26 @@ func (cft *Confort) Run(tb testing.TB, ctx context.Context, c *ContainerParams, 
 	ctx, cancel := applyTimeout(ctx, cft.defaultTimeout)
 	defer cancel()
 
+	logging.Debugf(tb, "acquire LockForContainerSetup: %s", name)
 	unlock, err := cft.ex.LockForContainerSetup(ctx, name)
 	if err != nil {
-		tb.Fatal(err)
+		logging.Fatal(tb, err)
 	}
-	defer unlock()
+	defer func() {
+		logging.Debugf(tb, "release LockForContainerSetup: %s", name)
+		unlock()
+	}()
 
+	logging.Debugf(tb, "create container if not exists: %s", name)
 	containerID, err := cft.createContainer(ctx, name, alias, c, opts...)
 	if err != nil {
-		tb.Fatalf("confort: %s", err)
+		logging.Fatal(tb, err)
 	}
 
+	logging.Debugf(tb, "start container if not started: %s", name)
 	_, err = cft.namespace.StartContainer(ctx, name)
 	if err != nil {
-		tb.Fatalf("confort: %s", err)
+		logging.Fatal(tb, err)
 	}
 	return &Container{
 		cft:   cft,
@@ -648,29 +706,40 @@ func (c *Container) Use(tb testing.TB, ctx context.Context, exclusive bool, opts
 		}
 	}
 
+	logging.Debugf(tb, "acquire LockForContainerSetup: %s", c.name)
 	unlock, err := c.cft.ex.LockForContainerSetup(ctx, c.name)
 	if err != nil {
-		tb.Fatal(err)
+		logging.Fatal(tb, err)
 	}
-	defer unlock()
+	defer func() {
+		logging.Debugf(tb, "release LockForContainerSetup: %s", c.name)
+		unlock()
+	}()
 
+	logging.Debugf(tb, "start container if not started: %s", c.name)
 	ports, err := c.cft.namespace.StartContainer(ctx, c.name)
 	if err != nil {
-		tb.Fatalf("confort: %s", err)
+		logging.Fatal(tb, err)
 	}
 
 	var init func() error
 	if initFunc != nil {
 		init = func() error {
+			logging.Debugf(tb, "call InitFunc: %s", c.name)
 			return initFunc(ctx, ports)
 		}
 	}
 	// If initFunc is not nil, it will be called after acquisition of exclusive lock.
 	// After that, the lock is downgraded to shared lock when exclusive is false.
 	// When initFunc returns error, the acquisition of lock fails.
-	release, err := c.cft.ex.LockForContainerUse(ctx, c.name, exclusive, init)
+	logging.Debugf(tb, "acquire LockForContainerUse: %s(exclusive=%t)", c.name, exclusive)
+	unlockContainer, err := c.cft.ex.LockForContainerUse(ctx, c.name, exclusive, init)
 	if err != nil {
-		tb.Fatalf("confort: %s", err)
+		logging.Fatal(tb, err)
+	}
+	release := func() {
+		logging.Debugf(tb, "release LockForContainerUse: %s(exclusive=%t)", c.name, exclusive)
+		unlockContainer()
 	}
 
 	if releaseFunc != nil {
