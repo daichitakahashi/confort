@@ -1,9 +1,7 @@
 package interrupt
 
 import (
-	"bytes"
 	"context"
-	"io"
 	"os"
 	"os/exec"
 	"syscall"
@@ -22,10 +20,8 @@ func TestTest_Interrupted(t *testing.T) {
 	namespace := uuid.NewString()
 	cmd := exec.Command("go", "run", "../../cmd/confort", "test", "-go=mod", "-namespace", namespace,
 		"--", "-v", "-tags=interrupt", "./tests")
-	buf := bytes.NewBuffer(nil)
-	w := io.MultiWriter(os.Stdout, buf)
-	cmd.Stdout = w
-	cmd.Stderr = w
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stdout
 
 	// Set new process group id.
 	// After the container is created, we send SIGINT to "confort test".
