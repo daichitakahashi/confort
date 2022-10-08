@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-var uniq = unique.New(func() (string, error) {
+var uniq, _ = unique.New(context.Background(), func() (string, error) {
 	return uuid.New().String(), nil
 })
 

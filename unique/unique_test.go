@@ -1,6 +1,7 @@
 package unique
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -9,11 +10,12 @@ import (
 
 func TestUnique_New(t *testing.T) {
 	t.Parallel()
+	ctx := context.Background()
 
 	var n int
-	var err error
-	unique := New(func() (int, error) {
-		return n, err
+	var genErr error
+	unique, err := New(ctx, func() (int, error) {
+		return n, genErr
 	})
 
 	v := unique.Must(t)
@@ -29,7 +31,7 @@ func TestUnique_New(t *testing.T) {
 	}
 
 	// force retry using ErrRetryable
-	err = ErrRetryable
+	genErr = ErrRetryable
 	_, err = unique.New()
 	if err == nil {
 		t.Fatal("error expected")
@@ -37,14 +39,14 @@ func TestUnique_New(t *testing.T) {
 
 	// error
 	e := errors.New("ERROR")
-	err = e
+	genErr = e
 	_, err = unique.New()
 	if err != e {
 		t.Fatalf("unexpected error: want %q, got %q", e, err)
 	}
 
 	n = 1
-	err = nil
+	genErr = nil
 	v = unique.Must(t)
 	if v != 1 {
 		t.Fatalf("unexpected value: want %d, got %d", 1, v)
@@ -53,8 +55,12 @@ func TestUnique_New(t *testing.T) {
 
 func TestUniqueString(t *testing.T) {
 	t.Parallel()
+	ctx := context.Background()
 
-	unique := String(1, WithRetry(999))
+	unique, err := String(ctx, 1, WithRetry(999))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	m := map[string]bool{}
 	for i := 0; i < len(letters); i++ {

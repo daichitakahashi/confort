@@ -32,11 +32,7 @@ type (
 	}
 	identOptionRetry  struct{}
 	identOptionBeacon struct{}
-	beaconOptions     struct {
-		store string
-		c     *beacon.Connection
-	}
-	uniqueOption struct{ option.Interface }
+	uniqueOption      struct{ option.Interface }
 )
 
 func (o uniqueOption) unique() Option { return o }
@@ -56,13 +52,9 @@ func WithRetry(n uint) Option {
 // the same beacon server and storeName.
 //
 // See confort.WithBeacon.
-func WithBeacon(tb testing.TB, ctx context.Context, storeName string) Option {
-	tb.Helper()
+func WithBeacon(storeName string) Option {
 	return uniqueOption{
-		Interface: option.New(identOptionBeacon{}, beaconOptions{
-			store: storeName,
-			c:     beacon.Connect(tb, ctx),
-		}),
+		Interface: option.New(identOptionBeacon{}, storeName),
 	}.unique()
 }
 
@@ -73,7 +65,7 @@ var ErrRetryable = errors.New("cannot create unique value but retryable")
 // New creates unique value generator. Argument fn is an arbitrary generator function.
 // When the generated value by fn is not unique or fn returns ErrRetryable, Unique retries.
 // By default, Unique retries 10 times.
-func New[T comparable](fn func() (T, error), opts ...Option) *Unique[T] {
+func New[T comparable](ctx context.Context, fn func() (T, error), opts ...Option) (*Unique[T], error) {
 	u := &Unique[T]{
 		g: &generator[T]{
 			f: fn,
@@ -81,26 +73,32 @@ func New[T comparable](fn func() (T, error), opts ...Option) *Unique[T] {
 		},
 		retry: 10,
 	}
-	var options beaconOptions
 
+	var storeName string
 	for _, opt := range opts {
 		switch opt.Ident() {
 		case identOptionRetry{}:
 			u.retry = opt.Value().(uint)
 		case identOptionBeacon{}:
-			options = opt.Value().(beaconOptions)
+			storeName = opt.Value().(string)
 		}
 	}
 
-	if options.store != "" && options.c.Enabled() {
-		u.g = &globalGenerator[T]{
-			f:     fn,
-			cli:   proto.NewUniqueValueServiceClient(options.c.Conn),
-			store: options.store,
+	if storeName != "" {
+		conn, err := beacon.Connect(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if conn.Enabled() {
+			u.g = &globalGenerator[T]{
+				f:     fn,
+				cli:   proto.NewUniqueValueServiceClient(conn.Conn),
+				store: storeName,
+			}
 		}
 	}
 
-	return u
+	return u, nil
 }
 
 // New returns unique value.
@@ -214,6 +212,6 @@ func StringFunc(n int) func() (string, error) {
 }
 
 // String is a shorthand of New(StringFunc(n)).
-func String(n int, opts ...Option) *Unique[string] {
-	return New(StringFunc(n), opts...)
+func String(ctx context.Context, n int, opts ...Option) (*Unique[string], error) {
+	return New(ctx, StringFunc(n), opts...)
 }

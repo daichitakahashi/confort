@@ -19,10 +19,16 @@ func TestInterrupt(t *testing.T) {
 	t.Log("connecting beacon server")
 
 	// create container
-	cft := confort.New(t, ctx,
+	cft, err := confort.New(ctx,
 		confort.WithNamespace(uuid.NewString(), false),
 		confort.WithBeacon(),
 	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = cft.Close()
+	})
 	cft.Run(t, ctx, &confort.ContainerParams{
 		Name:  "container",
 		Image: "alpine:3.16.2",
