@@ -27,10 +27,16 @@ const (
 func InitDatabase(tb testing.TB, ctx context.Context) ConnectFunc {
 	tb.Helper()
 
-	cft := confort.New(tb, ctx,
+	cft, err := confort.New(ctx,
 		confort.WithBeacon(),
 		confort.WithNamespace("integrationtest", false),
 	)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	tb.Cleanup(func() {
+		_ = cft.Close()
+	})
 
 	db := cft.Run(tb, ctx, &confort.ContainerParams{
 		Name:  "db",

@@ -2,6 +2,8 @@ package confort
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -21,6 +23,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	"github.com/lestrrat-go/option"
+	"go.uber.org/multierr"
 )
 
 var initOnce sync.Once
@@ -45,6 +48,7 @@ type Confort struct {
 	namespace      Namespace
 	defaultTimeout time.Duration
 	ex             exclusion.Control
+	term           func() error
 }
 
 type (
@@ -61,7 +65,6 @@ type (
 	identOptionDefaultTimeout struct{}
 	identOptionResourcePolicy struct{}
 	identOptionBeacon         struct{}
-	identOptionTerminateFunc  struct{}
 	newOption                 struct{ option.Interface }
 )
 
@@ -132,14 +135,6 @@ func WithBeacon() NewOption {
 	}.new()
 }
 
-// WithTerminateFunc extracts the function to release all resources created by Confort.
-// With this option, the responsibility for termination is passed to the user.
-func WithTerminateFunc(f *func()) NewOption {
-	return newOption{
-		Interface: option.New(identOptionTerminateFunc{}, f),
-	}
-}
-
 // New creates Confort instance which is an interface of controlling containers.
 // Confort creates docker resources like a network and containers. Also, it
 // provides an exclusion control of container usage.
@@ -147,22 +142,20 @@ func WithTerminateFunc(f *func()) NewOption {
 // If you want to control the same containers across parallelized tests, enable
 // integration with the beacon server by using `confort` command and WithBeacon
 // option.
-func New(tb testing.TB, ctx context.Context, opts ...NewOption) *Confort {
-	tb.Helper()
+func New(ctx context.Context, opts ...NewOption) (cft *Confort, err error) {
 	lazyInit()
 
 	var (
 		skipDeletion bool
-		beaconAddr   string
+		beaconConn   *beacon.Connection
 		ex           = exclusion.NewControl()
 
 		clientOps = []client.Opt{
 			client.FromEnv,
 		}
-		namespace     = os.Getenv(beacon.NamespaceEnv)
-		timeout       = time.Minute
-		policy        ResourcePolicy
-		terminateFunc *func()
+		namespace = os.Getenv(beacon.NamespaceEnv)
+		timeout   = time.Minute
+		policy    ResourcePolicy
 	)
 	if s := os.Getenv(beacon.ResourcePolicyEnv); s != "" {
 		policy = ResourcePolicy(s)
@@ -176,7 +169,7 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) *Confort {
 			o := opt.Value().(namespaceOption)
 			if namespace == "" || o.force {
 				if namespace != "" {
-					logging.Infof(tb, "namespace is overwritten by WithNamespace: %q -> %q", namespace, o.namespace)
+					logging.Infof(nil, "namespace is overwritten by WithNamespace: %q -> %q", namespace, o.namespace)
 				}
 				namespace = o.namespace
 			}
@@ -185,44 +178,56 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) *Confort {
 		case identOptionResourcePolicy{}:
 			newPolicy := opt.Value().(ResourcePolicy)
 			if policy != "" && policy != newPolicy {
-				logging.Infof(tb, "resource policy is overwritten by WithResourcePolicy: %q -> %q", policy, newPolicy)
+				logging.Infof(nil, "resource policy is overwritten by WithResourcePolicy: %q -> %q", policy, newPolicy)
 			}
 			policy = newPolicy
 		case identOptionBeacon{}:
-			conn := beacon.Connect(tb, ctx)
+			conn, err := beacon.Connect(ctx)
+			if err != nil {
+				return nil, err
+			}
 			if conn.Enabled() {
 				ex = exclusion.NewBeaconControl(
 					proto.NewBeaconServiceClient(conn.Conn),
 				)
 				skipDeletion = true
-				beaconAddr = conn.Addr
+				beaconConn = conn
 			}
-		case identOptionTerminateFunc{}:
-			terminateFunc = opt.Value().(*func())
 		}
+	}
+	if beaconConn != nil {
+		defer func() {
+			if err != nil {
+				_ = beaconConn.Close()
+			}
+		}()
 	}
 
 	if namespace == "" {
-		logging.Fatal(tb, "empty namespace")
+		return nil, errors.New("confort: empty namespace")
 	}
-	logging.Debugf(tb, "namespace: %s", namespace)
+	logging.Debugf(nil, "namespace: %s", namespace)
 
 	if policy == "" {
 		policy = ResourcePolicyReuse // default
 	}
 	if !beacon.ValidResourcePolicy(string(policy)) {
-		logging.Fatalf(tb, "invalid resource policy: %s", policy)
+		return nil, fmt.Errorf("confort: invalid resource policy: %s", policy)
 	}
-	logging.Debugf(tb, "resource policy: %s", policy)
+	logging.Debugf(nil, "resource policy: %s", policy)
 
 	ctx, cancel := applyTimeout(ctx, timeout)
 	defer cancel()
 	cli, err := client.NewClientWithOpts(clientOps...)
 	if err != nil {
-		logging.Fatal(tb, err)
+		return nil, fmt.Errorf("confort: %w", err)
 	}
 	cli.NegotiateAPIVersion(ctx)
 
+	var beaconAddr string
+	if beaconConn.Enabled() {
+		beaconAddr = beaconConn.Addr
+	}
 	backend := &dockerBackend{
 		cli:    cli,
 		policy: policy,
@@ -231,38 +236,34 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) *Confort {
 		},
 	}
 
-	logging.Debug(tb, "acquire LockForNamespace")
+	logging.Debug(nil, "acquire LockForNamespace")
 	unlock, err := ex.LockForNamespace(ctx)
 	if err != nil {
-		logging.Fatal(tb, err)
+		return nil, fmt.Errorf("confort: %w", err)
 	}
 	defer func() {
-		logging.Debug(tb, "release LockForNamespace")
+		logging.Debug(nil, "release LockForNamespace")
 		unlock()
 	}()
 
-	logging.Debugf(tb, "create namespace %q", namespace)
+	logging.Debugf(nil, "create namespace %q", namespace)
 	ns, err := backend.Namespace(ctx, namespace)
 	if err != nil {
-		logging.Fatal(tb, err)
+		return nil, fmt.Errorf("confort: %w", err)
 	}
-	term := func() {
-		tb.Helper()
+
+	term := func() error {
+		var err error
+		if beaconConn.Enabled() {
+			// TODO: disconnected from beacon server
+			err = beaconConn.Close()
+		}
 		if skipDeletion {
-			// if beacon is enabled, do not delete
-			return
+			return err
 		}
 		// release all resources
-		logging.Debugf(tb, "release all resources bound with namespace %q", namespace)
-		err := ns.Release(context.Background())
-		if err != nil {
-			logging.Error(tb, err)
-		}
-	}
-	if terminateFunc != nil {
-		*terminateFunc = term
-	} else {
-		tb.Cleanup(term)
+		logging.Debugf(nil, "release all resources bound with namespace %q", namespace)
+		return multierr.Append(err, ns.Release(context.Background()))
 	}
 
 	return &Confort{
@@ -270,7 +271,13 @@ func New(tb testing.TB, ctx context.Context, opts ...NewOption) *Confort {
 		namespace:      ns,
 		defaultTimeout: timeout,
 		ex:             ex,
-	}
+		term:           term,
+	}, nil
+}
+
+// Close releases all created resources with cft.
+func (cft *Confort) Close() error {
+	return cft.term()
 }
 
 func applyTimeout(ctx context.Context, defaultTimeout time.Duration) (context.Context, context.CancelFunc) {

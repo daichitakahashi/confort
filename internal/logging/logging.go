@@ -41,6 +41,9 @@ func file(depth int) string {
 }
 
 func Debug(tb testing.TB, args ...any) {
+	if tb == nil {
+		return
+	}
 	tb.Helper()
 	if LevelDebug.enabled(level) {
 		tb.Log(debugPrefix, fmt.Sprint(args...), file(2))
@@ -48,6 +51,9 @@ func Debug(tb testing.TB, args ...any) {
 }
 
 func Debugf(tb testing.TB, format string, args ...any) {
+	if tb == nil {
+		return
+	}
 	tb.Helper()
 	if LevelDebug.enabled(level) {
 		tb.Log(debugPrefix, fmt.Sprintf(format, args...), file(2))
@@ -55,6 +61,9 @@ func Debugf(tb testing.TB, format string, args ...any) {
 }
 
 func Info(tb testing.TB, args ...any) {
+	if tb == nil {
+		return
+	}
 	tb.Helper()
 	if LevelInfo.enabled(level) {
 		tb.Log(infoPrefix, fmt.Sprint(args...))
@@ -62,6 +71,9 @@ func Info(tb testing.TB, args ...any) {
 }
 
 func Infof(tb testing.TB, format string, args ...any) {
+	if tb == nil {
+		return
+	}
 	tb.Helper()
 	if LevelInfo.enabled(level) {
 		tb.Log(infoPrefix, fmt.Sprintf(format, args...))
@@ -69,6 +81,9 @@ func Infof(tb testing.TB, format string, args ...any) {
 }
 
 func Error(tb testing.TB, args ...any) {
+	if tb == nil {
+		return
+	}
 	tb.Helper()
 	if LevelError.enabled(level) {
 		tb.Log(errorPrefix, fmt.Sprint(args...), file(2))
