@@ -38,7 +38,7 @@ func InitDatabase(tb testing.TB, ctx context.Context) ConnectFunc {
 		_ = cft.Close()
 	})
 
-	db := cft.Run(tb, ctx, &confort.ContainerParams{
+	db, err := cft.Run(ctx, &confort.ContainerParams{
 		Name:  "db",
 		Image: "postgres:14.4-alpine3.16",
 		Env: map[string]string{
@@ -57,6 +57,9 @@ func InitDatabase(tb testing.TB, ctx context.Context) ConnectFunc {
 			}
 		}),
 	)
+	if err != nil {
+		tb.Fatal(err)
+	}
 
 	return func(tb testing.TB, ctx context.Context, exclusive bool) *pgxpool.Pool {
 		tb.Helper()

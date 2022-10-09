@@ -581,35 +581,34 @@ func (c *Container) Alias() string { return c.alias }
 //
 // If container is already created/started by other test or process, LazyRun just
 // store container info. It makes no error.
-func (cft *Confort) LazyRun(tb testing.TB, ctx context.Context, c *ContainerParams, opts ...RunOption) *Container {
-	tb.Helper()
+func (cft *Confort) LazyRun(ctx context.Context, c *ContainerParams, opts ...RunOption) (*Container, error) {
 	alias := c.Name
 	name := cft.namespace.Namespace() + c.Name
 
 	ctx, cancel := applyTimeout(ctx, cft.defaultTimeout)
 	defer cancel()
 
-	logging.Debugf(tb, "acquire LockForContainerSetup: %s", name)
+	logging.Debugf(nil, "acquire LockForContainerSetup: %s", name)
 	unlock, err := cft.ex.LockForContainerSetup(ctx, name)
 	if err != nil {
-		logging.Fatal(tb, err)
+		return nil, fmt.Errorf("confort: %w", err)
 	}
 	defer func() {
-		logging.Debugf(tb, "release LockForContainerSetup: %s", name)
+		logging.Debugf(nil, "release LockForContainerSetup: %s", name)
 		unlock()
 	}()
 
-	logging.Debugf(tb, "create container if not exists: %s", name)
+	logging.Debugf(nil, "create container if not exists: %s", name)
 	containerID, err := cft.createContainer(ctx, name, alias, c, opts...)
 	if err != nil {
-		logging.Fatal(tb, err)
+		return nil, fmt.Errorf("confort: %w", err)
 	}
 	return &Container{
 		cft:   cft,
 		id:    containerID,
 		name:  name,
 		alias: alias,
-	}
+	}, nil
 }
 
 // Run starts container with given parameters.
@@ -621,41 +620,40 @@ func (cft *Confort) LazyRun(tb testing.TB, ctx context.Context, c *ContainerPara
 // For now, without specifying host port, container loses the port binding occasionally.
 // If you want to use port binding and use a container with several network,
 // and encounter such trouble, give it a try.
-func (cft *Confort) Run(tb testing.TB, ctx context.Context, c *ContainerParams, opts ...RunOption) *Container {
-	tb.Helper()
+func (cft *Confort) Run(ctx context.Context, c *ContainerParams, opts ...RunOption) (*Container, error) {
 	alias := c.Name
 	name := cft.namespace.Namespace() + c.Name
 
 	ctx, cancel := applyTimeout(ctx, cft.defaultTimeout)
 	defer cancel()
 
-	logging.Debugf(tb, "acquire LockForContainerSetup: %s", name)
+	logging.Debugf(nil, "acquire LockForContainerSetup: %s", name)
 	unlock, err := cft.ex.LockForContainerSetup(ctx, name)
 	if err != nil {
-		logging.Fatal(tb, err)
+		return nil, fmt.Errorf("confort: %w", err)
 	}
 	defer func() {
-		logging.Debugf(tb, "release LockForContainerSetup: %s", name)
+		logging.Debugf(nil, "release LockForContainerSetup: %s", name)
 		unlock()
 	}()
 
-	logging.Debugf(tb, "create container if not exists: %s", name)
+	logging.Debugf(nil, "create container if not exists: %s", name)
 	containerID, err := cft.createContainer(ctx, name, alias, c, opts...)
 	if err != nil {
-		logging.Fatal(tb, err)
+		return nil, fmt.Errorf("confort: %w", err)
 	}
 
-	logging.Debugf(tb, "start container if not started: %s", name)
+	logging.Debugf(nil, "start container if not started: %s", name)
 	_, err = cft.namespace.StartContainer(ctx, name)
 	if err != nil {
-		logging.Fatal(tb, err)
+		return nil, fmt.Errorf("confort: %w", err)
 	}
 	return &Container{
 		cft:   cft,
 		id:    containerID,
 		name:  name,
 		alias: alias,
-	}
+	}, nil
 }
 
 type (

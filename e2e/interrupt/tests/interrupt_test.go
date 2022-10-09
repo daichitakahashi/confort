@@ -29,11 +29,14 @@ func TestInterrupt(t *testing.T) {
 	t.Cleanup(func() {
 		_ = cft.Close()
 	})
-	cft.Run(t, ctx, &confort.ContainerParams{
+	_, err = cft.Run(ctx, &confort.ContainerParams{
 		Name:  "container",
 		Image: "alpine:3.16.2",
 		Cmd:   []string{"sleep", "infinity"},
 	}, confort.WithPullOptions(&types.ImagePullOptions{}, io.Discard))
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Log("container is ready")
 
 	time.Sleep(time.Second * 20)

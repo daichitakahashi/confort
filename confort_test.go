@@ -53,6 +53,9 @@ func TestMain(m *testing.M) {
 		if err != nil {
 			c.Fatal(err)
 		}
+		c.Cleanup(func() {
+			_ = cft.Close()
+		})
 		cli, err := client.NewClientWithOpts(client.FromEnv)
 		if err != nil {
 			c.Fatal(err)
@@ -124,7 +127,7 @@ func TestConfort_Run_Communication(t *testing.T) {
 		_ = cft.Close()
 	})
 
-	comOne := cft.Run(t, ctx, &confort.ContainerParams{
+	comOne, err := cft.Run(ctx, &confort.ContainerParams{
 		Name:  "one",
 		Image: imageCommunicator,
 		Env: map[string]string{
@@ -133,6 +136,9 @@ func TestConfort_Run_Communication(t *testing.T) {
 		ExposedPorts: []string{"80/tcp"},
 		Waiter:       wait.LogContains("communicator is ready", 1),
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	portsOne := comOne.UseExclusive(t, ctx)
 	hostOne := portsOne.HostPort("80/tcp")
 	if hostOne == "" {
@@ -140,7 +146,7 @@ func TestConfort_Run_Communication(t *testing.T) {
 		t.Fatal("one: bound port not found")
 	}
 
-	comTwo := cft.Run(t, ctx, &confort.ContainerParams{
+	comTwo, err := cft.Run(ctx, &confort.ContainerParams{
 		Name:  "two",
 		Image: imageCommunicator,
 		Env: map[string]string{
@@ -149,6 +155,9 @@ func TestConfort_Run_Communication(t *testing.T) {
 		ExposedPorts: []string{"80/tcp"},
 		Waiter:       wait.LogContains("communicator is ready", 1),
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	portsTwo := comTwo.UseExclusive(t, ctx)
 	hostTwo := portsTwo.HostPort("80/tcp")
 	if hostTwo == "" {
@@ -191,12 +200,18 @@ func TestConfort_Run_ContainerIdentification(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		echo := cft.Run(t, ctx, &confort.ContainerParams{
+		t.Cleanup(func() {
+			_ = cft.Close()
+		})
+		echo, err := cft.Run(ctx, &confort.ContainerParams{
 			Name:         containerName,
 			Image:        imageEcho,
 			ExposedPorts: []string{port},
 			Waiter:       wait.Healthy(),
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
 		ports := echo.UseShared(t, ctx)
 		endpoint := ports.HostPort(nat.Port(port))
 		if endpoint == "" {
@@ -250,12 +265,16 @@ func TestConfort_Run_SameNameButAnotherImage(t *testing.T) {
 		_ = cft1.Close()
 	})
 
-	fullName := cft1.Run(t, ctx, &confort.ContainerParams{
+	echo, err := cft1.Run(ctx, &confort.ContainerParams{
 		Name:         containerName,
 		Image:        imageEcho,
 		ExposedPorts: []string{"80/tcp"},
 		Waiter:       wait.Healthy(),
-	}).Name()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fullName := echo.Name()
 
 	cft2, err := confort.New(ctx,
 		confort.WithNamespace(namespace, true),
@@ -267,17 +286,15 @@ func TestConfort_Run_SameNameButAnotherImage(t *testing.T) {
 		_ = cft2.Close()
 	})
 
-	result := testingc.Test(func(t *testingc.T) {
-		cft2.Run(t, ctx, &confort.ContainerParams{ // same name, but different image
-			Name:  containerName,
-			Image: imageCommunicator,
-		})
+	_, err = cft2.Run(ctx, &confort.ContainerParams{ // same name, but different image
+		Name:  containerName,
+		Image: imageCommunicator,
 	})
-	if !result.Failed() {
+	if err == nil {
 		t.Fatal("error expected on run containers that has same name and different image")
 	}
-	if !bytes.Contains(result.Logs(), []byte(fullName)) {
-		t.Fatalf("unexpected error: %s", result.Logs())
+	if !strings.Contains(err.Error(), fullName) {
+		t.Fatalf("unexpected error: %s", err)
 	}
 }
 
@@ -305,12 +322,15 @@ func TestConfort_LazyRun(t *testing.T) {
 
 		containerName := uniqueName.Must(t)
 
-		echo := cft.LazyRun(t, ctx, &confort.ContainerParams{
+		echo, err := cft.LazyRun(ctx, &confort.ContainerParams{
 			Name:         containerName,
 			Image:        imageEcho,
 			ExposedPorts: []string{"80/tcp"},
 			Waiter:       wait.Healthy(),
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		e1 := echo.UseShared(t, ctx)
 		e2 := echo.UseShared(t, ctx)
@@ -336,7 +356,10 @@ func TestConfort_LazyRun(t *testing.T) {
 			Waiter:       wait.Healthy(),
 		}
 
-		echo1 := cft.LazyRun(t, ctx, c)
+		echo1, err := cft.LazyRun(ctx, c)
+		if err != nil {
+			t.Fatal(err)
+		}
 		e1 := echo1.UseShared(t, ctx)
 
 		cft2, err := confort.New(ctx,
@@ -349,7 +372,10 @@ func TestConfort_LazyRun(t *testing.T) {
 			_ = cft.Close()
 		})
 
-		echo2 := cft2.Run(t, ctx, c)
+		echo2, err := cft2.Run(ctx, c)
+		if err != nil {
+			t.Fatal(err)
+		}
 		e2 := echo2.UseShared(t, ctx)
 		if diff := cmp.Diff(e1, e2); diff != "" {
 			t.Fatal(diff)
@@ -387,7 +413,7 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		_ = cft1.Close()
 	})
 
-	com1 := cft1.Run(t, ctx, &confort.ContainerParams{
+	com1, err := cft1.Run(ctx, &confort.ContainerParams{
 		Name:  "foo-A",
 		Image: imageCommunicator,
 		Env: map[string]string{
@@ -396,13 +422,16 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		ExposedPorts: []string{"80/tcp"},
 		Waiter:       wait.Healthy(),
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	e := com1.UseShared(t, ctx)
 	hostA := e.HostPort("80/tcp")
 	if hostA == "" {
 		t.Fatal("failed to get host/port")
 	}
 
-	com2 := cft1.Run(t, ctx, &confort.ContainerParams{
+	com2, err := cft1.Run(ctx, &confort.ContainerParams{
 		Name:  "foo-B",
 		Image: imageCommunicator,
 		Env: map[string]string{
@@ -413,6 +442,9 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		ExposedPorts: []string{"8080:80/tcp"},
 		Waiter:       wait.Healthy(),
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	e = com2.UseShared(t, ctx)
 	hostB := e.HostPort("80/tcp")
 	if hostB == "" {
@@ -429,7 +461,7 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		_ = cft2.Close()
 	})
 
-	com3 := cft2.Run(t, ctx, &confort.ContainerParams{ // same name container
+	com3, err := cft2.Run(ctx, &confort.ContainerParams{ // same name container
 		Name:  "B",
 		Image: imageCommunicator,
 		Env: map[string]string{
@@ -438,6 +470,9 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		ExposedPorts: []string{"8080:80/tcp"},
 		Waiter:       wait.Healthy(),
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	e = com3.UseShared(t, ctx)
 	hostB2 := e.HostPort("80/tcp")
 	if hostB2 == "" {
@@ -447,7 +482,7 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		t.Fatalf("expected same host: want %q, got %q", hostB, hostB2)
 	}
 
-	com4 := cft2.Run(t, ctx, &confort.ContainerParams{
+	com4, err := cft2.Run(ctx, &confort.ContainerParams{
 		Name:  "C",
 		Image: imageCommunicator,
 		Env: map[string]string{
@@ -456,6 +491,9 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 		ExposedPorts: []string{"80/tcp"},
 		Waiter:       wait.Healthy(),
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	e = com4.UseShared(t, ctx)
 	hostC := e.HostPort("80/tcp")
 	if hostC == "" {
@@ -912,10 +950,14 @@ func TestWithResourcePolicy(t *testing.T) {
 					_ = precedes.Close()
 				})
 
-				precedingContainerID := precedes.Run(t, ctx, &confort.ContainerParams{
+				echo, err := precedes.Run(ctx, &confort.ContainerParams{
 					Name:  containerNameSuffix,
 					Image: imageEcho,
-				}).ID()
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				precedingContainerID := echo.ID()
 
 				// try to re-create
 				var cft *confort.Confort
@@ -929,10 +971,14 @@ func TestWithResourcePolicy(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					containerID = cft.Run(t, ctx, &confort.ContainerParams{
+					echo, err := cft.Run(ctx, &confort.ContainerParams{
 						Name:  fmt.Sprintf("%s-%s", middleName, containerNameSuffix),
 						Image: imageEcho,
-					}).ID()
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+					containerID = echo.ID()
 				})
 				t.Cleanup(func() {
 					if !terminated {
@@ -968,10 +1014,14 @@ func TestWithResourcePolicy_reusable(t *testing.T) {
 		t.Fatal(err)
 	}
 	networkID := cft.Network().ID
-	containerID := cft.Run(t, ctx, &confort.ContainerParams{
+	echo, err := cft.Run(ctx, &confort.ContainerParams{
 		Name:  "echo",
 		Image: imageEcho,
-	}).ID()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	containerID := echo.ID()
 	_ = cft.Close()
 	t.Cleanup(func() {
 		err = cli.ContainerRemove(ctx, containerID, types.ContainerRemoveOptions{
@@ -1078,10 +1128,13 @@ func TestWithBeacon(t *testing.T) {
 				return
 			}
 		})
-		cft.Run(t, ctx, &confort.ContainerParams{
+		_, err = cft.Run(ctx, &confort.ContainerParams{
 			Name:  "tester",
 			Image: "github.com/daichitakahashi/confort/testdata/echo:test",
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
 		_ = cft.Close()
 		done = true
 
@@ -1349,7 +1402,7 @@ func TestWithContainerConfig(t *testing.T) {
 		labelValue = t.Name()
 	)
 
-	cft.Run(t, ctx, &confort.ContainerParams{
+	_, err = cft.Run(ctx, &confort.ContainerParams{
 		Name:  "echo",
 		Image: imageEcho,
 	}, confort.WithContainerConfig(func(config *container.Config) {
@@ -1358,6 +1411,9 @@ func TestWithContainerConfig(t *testing.T) {
 		}
 		config.Labels[label] = labelValue
 	}))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// check the labeled container exists
 	list, err := cli.ContainerList(ctx, types.ContainerListOptions{
@@ -1388,7 +1444,7 @@ func TestWithHostConfig(t *testing.T) {
 		_ = cft.Close()
 	})
 
-	communicator := cft.Run(t, ctx, &confort.ContainerParams{
+	communicator, err := cft.Run(ctx, &confort.ContainerParams{
 		Name:  "communicator",
 		Image: imageCommunicator,
 		Env: map[string]string{
@@ -1400,6 +1456,9 @@ func TestWithHostConfig(t *testing.T) {
 		// configure container to communicate with itself using extra_hosts
 		config.ExtraHosts = append(config.ExtraHosts, "reflect:127.0.0.1")
 	}))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	ports := communicator.UseExclusive(t, ctx)
 	host := ports.HostPort("80/tcp")
@@ -1436,7 +1495,7 @@ func TestWithNetworkingConfig(t *testing.T) {
 	t.Cleanup(func() {
 		_ = cft1.Close()
 	})
-	communicator := cft1.Run(t, ctx, &confort.ContainerParams{
+	communicator, err := cft1.Run(ctx, &confort.ContainerParams{
 		Name:  name,
 		Image: imageCommunicator,
 		Env: map[string]string{
@@ -1450,6 +1509,9 @@ func TestWithNetworkingConfig(t *testing.T) {
 			cfg.Aliases = append(cfg.Aliases, alias)
 		}
 	}))
+	if err != nil {
+		t.Fatal(err)
+	}
 	host := communicator.UseExclusive(t, ctx).HostPort("80/tcp")
 	if host == "" {
 		t.Fatalf("%s: bound port not found", name)
@@ -1485,13 +1547,16 @@ func TestWithConfigConsistency(t *testing.T) {
 		"ENV1": "VALUE",
 		"ENV2": "VALUE",
 	}
-	cft.Run(t, ctx, &confort.ContainerParams{
+	_, err = cft.Run(ctx, &confort.ContainerParams{
 		Name:         "echo",
 		Image:        imageEcho,
 		ExposedPorts: ports,
 		Env:          env,
 		Waiter:       wait.Healthy(),
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	testCases := []struct {
 		desc   string
@@ -1538,19 +1603,17 @@ func TestWithConfigConsistency(t *testing.T) {
 				_ = cft.Close()
 			})
 
-			result := testingc.Test(func(t *testingc.T) {
-				cft.Run(t, ctx, &confort.ContainerParams{
-					Name:         "echo",
-					Image:        imageEcho,
-					ExposedPorts: tc.ports,
-					Env:          tc.env,
-					Waiter:       wait.Healthy(),
-				}, confort.WithConfigConsistency(true))
-			})
-			if tc.failed && !result.Failed() {
+			_, err = cft.Run(ctx, &confort.ContainerParams{
+				Name:         "echo",
+				Image:        imageEcho,
+				ExposedPorts: tc.ports,
+				Env:          tc.env,
+				Waiter:       wait.Healthy(),
+			}, confort.WithConfigConsistency(true))
+			if tc.failed && err == nil {
 				t.Fatal("expected fail because of inconsistency, but not failed")
-			} else if !tc.failed && result.Failed() {
-				t.Fatalf("expected not to fail, but failed: %s", result.Logs())
+			} else if !tc.failed && err != nil {
+				t.Fatalf("expected not to fail, but failed: %s", err)
 			}
 		})
 	}
@@ -1588,12 +1651,15 @@ func TestWithPullOptions(t *testing.T) {
 
 	// pull and run
 	out := &bytes.Buffer{}
-	c := cft.Run(t, ctx, &confort.ContainerParams{
+	c, err := cft.Run(ctx, &confort.ContainerParams{
 		Name:         containerName,
 		Image:        pullImage,
 		ExposedPorts: []string{"80/tcp"},
 		Waiter:       wait.Healthy(),
 	}, confort.WithPullOptions(&types.ImagePullOptions{}, out))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	t.Log(out.String())
 	if out.Len() == 0 {
@@ -1631,12 +1697,15 @@ func TestWithReleaseFunc(t *testing.T) {
 		_ = cft.Close()
 	})
 
-	echo := cft.Run(t, ctx, &confort.ContainerParams{
+	echo, err := cft.Run(ctx, &confort.ContainerParams{
 		Name:         "echo",
 		Image:        imageEcho,
 		ExposedPorts: []string{"80/tcp"},
 		Waiter:       wait.Healthy(),
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// test that the container is not released until the release is called.
 	var release func()
@@ -1675,12 +1744,15 @@ func TestWithInitFunc(t *testing.T) {
 		_ = cft.Close()
 	})
 
-	echo := cft.Run(t, ctx, &confort.ContainerParams{
+	echo, err := cft.Run(ctx, &confort.ContainerParams{
 		Name:         "echo",
 		Image:        imageEcho,
 		ExposedPorts: []string{"80/tcp"},
 		Waiter:       wait.Healthy(),
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	var try, done int
 	use := func(t *testingc.T) {
@@ -1803,11 +1875,12 @@ func TestConfort_Run_UnsupportedStatus(t *testing.T) {
 		})
 	})
 
-	tryRun := func(t *testingc.T) {
-		cft.Run(t, ctx, &confort.ContainerParams{
+	tryRun := func() error {
+		_, err := cft.Run(ctx, &confort.ContainerParams{
 			Name:  "foo",
 			Image: imageEcho,
 		})
+		return err
 	}
 
 	// unsupported container status "pause"
@@ -1815,8 +1888,8 @@ func TestConfort_Run_UnsupportedStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := testingc.Test(tryRun)
-	if !result.Failed() {
+	err = tryRun()
+	if err == nil {
 		t.Fatal("unexpected success")
 	}
 
@@ -1825,8 +1898,8 @@ func TestConfort_Run_UnsupportedStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result = testingc.Test(tryRun)
-	if !result.Failed() {
+	err = tryRun()
+	if err == nil {
 		t.Fatal("unexpected success")
 	}
 }
