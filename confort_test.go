@@ -70,11 +70,14 @@ func TestMain(m *testing.M) {
 				_ = cft.Close()
 			}()
 			c.Logf("building image: %s", imageCommunicator)
-			cft.Build(c, ctx, &confort.BuildParams{
+			err = cft.Build(ctx, &confort.BuildParams{
 				Image:      imageCommunicator,
 				Dockerfile: "testdata/communicator/Dockerfile",
 				ContextDir: "testdata/communicator",
 			}, confort.WithBuildOutput(io.Discard), confort.WithForceBuild())
+			if err != nil {
+				c.Fatal(err)
+			}
 			c.Cleanup(func() {
 				c.Logf("remove image: %s", imageCommunicator)
 				_, err := cli.ImageRemove(ctx, imageCommunicator, types.ImageRemoveOptions{})
@@ -83,11 +86,14 @@ func TestMain(m *testing.M) {
 				}
 			})
 			c.Logf("building image: %s", imageEcho)
-			cft.Build(c, ctx, &confort.BuildParams{
+			err = cft.Build(ctx, &confort.BuildParams{
 				Image:      imageEcho,
 				Dockerfile: "testdata/echo/Dockerfile",
 				ContextDir: "testdata/echo/",
 			}, confort.WithBuildOutput(io.Discard), confort.WithForceBuild())
+			if err != nil {
+				c.Fatal(err)
+			}
 			c.Cleanup(func() {
 				c.Logf("remove image: %s", imageEcho)
 				_, err := cli.ImageRemove(ctx, imageEcho, types.ImageRemoveOptions{})
@@ -1219,7 +1225,7 @@ func TestWithImageBuildOptions(t *testing.T) {
 	)
 
 	// build labeled image
-	cft.Build(t, ctx, build,
+	err = cft.Build(ctx, build,
 		confort.WithBuildOutput(io.Discard),
 		confort.WithImageBuildOptions(func(option *types.ImageBuildOptions) {
 			if option.Labels == nil {
@@ -1228,6 +1234,9 @@ func TestWithImageBuildOptions(t *testing.T) {
 			option.Labels[label] = labelValue
 		}),
 	)
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		removeImageIfExists(t, cli, build.Image)
 	})
@@ -1277,10 +1286,13 @@ func TestWithForceBuild_WithBuildOutput(t *testing.T) {
 	}
 
 	// build once
-	cft.Build(t, ctx, build,
+	err = cft.Build(ctx, build,
 		confort.WithForceBuild(),
 		confort.WithBuildOutput(io.Discard),
 	)
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		removeImageIfExists(t, cli, build.Image)
 	})
@@ -1288,19 +1300,25 @@ func TestWithForceBuild_WithBuildOutput(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 
 	// force build
-	cft.Build(t, ctx, build,
+	err = cft.Build(ctx, build,
 		confort.WithForceBuild(),
 		confort.WithBuildOutput(buf),
 	)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if buf.Len() == 0 {
 		t.Fatal("expected build log to be written to buf, but got no output")
 	}
 	buf.Reset()
 
 	// build if the image not exists
-	cft.Build(t, ctx, build,
+	err = cft.Build(ctx, build,
 		confort.WithBuildOutput(buf),
 	)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if buf.Len() > 0 {
 		t.Error("expected build to be skipped, but build log is written")
 		t.Log(buf.String())

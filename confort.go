@@ -343,9 +343,7 @@ type BuildParams struct {
 //
 // When same name image already exists, it doesn't perform building.
 // WithForceBuild enables us to build image on every call of Build.
-func (cft *Confort) Build(tb testing.TB, ctx context.Context, b *BuildParams, opts ...BuildOption) {
-	tb.Helper()
-
+func (cft *Confort) Build(ctx context.Context, b *BuildParams, opts ...BuildOption) error {
 	buildOut := io.Discard
 
 	ctx, cancel := applyTimeout(ctx, cft.defaultTimeout)
@@ -369,7 +367,7 @@ func (cft *Confort) Build(tb testing.TB, ctx context.Context, b *BuildParams, op
 
 	tarball, relDockerfile, err := createArchive(b.ContextDir, b.Dockerfile)
 	if err != nil {
-		logging.Fatal(tb, err)
+		return fmt.Errorf("confort: %w", err)
 	}
 	defer func() {
 		_, _ = io.Copy(io.Discard, tarball)
@@ -391,23 +389,24 @@ func (cft *Confort) Build(tb testing.TB, ctx context.Context, b *BuildParams, op
 	}
 
 	if len(buildOption.Tags) == 0 {
-		logging.Fatal(tb, "image tag not specified")
+		return errors.New("confort: image tag not specified")
 	}
-	logging.Debugf(tb, "LockForBuild: %s", buildOption.Tags[0])
+	logging.Debugf(nil, "LockForBuild: %s", buildOption.Tags[0])
 	unlock, err := cft.ex.LockForBuild(ctx, buildOption.Tags[0])
 	if err != nil {
-		logging.Fatal(tb, err)
+		return fmt.Errorf("confort: %w", err)
 	}
 	defer func() {
-		logging.Debugf(tb, "release LockForBuild: %s", buildOption.Tags[0])
+		logging.Debugf(nil, "release LockForBuild: %s", buildOption.Tags[0])
 		unlock()
 	}()
 
-	logging.Debugf(tb, "build image %q", buildOption.Tags[0])
+	logging.Debugf(nil, "build image %q", buildOption.Tags[0])
 	err = cft.backend.BuildImage(ctx, tarball, buildOption, force, buildOut)
 	if err != nil {
-		logging.Fatal(tb, err)
+		return fmt.Errorf("confort: %w", err)
 	}
+	return nil
 }
 
 type ContainerParams struct {
