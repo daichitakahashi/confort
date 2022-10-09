@@ -9,7 +9,6 @@ import (
 	"os"
 	"strconv"
 	"sync"
-	"testing"
 	"time"
 
 	"github.com/daichitakahashi/confort/internal/beacon"
@@ -661,24 +660,18 @@ type (
 		option.Interface
 		use() UseOption
 	}
-	identOptionReleaseFunc struct{}
-	identOptionInitFunc    struct{}
-	useOption              struct {
+	identOptionInitFunc struct{}
+	useOption           struct {
 		option.Interface
 	}
 )
 
 func (o useOption) use() UseOption { return o }
 
-// WithReleaseFunc extracts the function to release lock of the container.
-// With this option, the responsibility for releasing the container is passed to the user.
-func WithReleaseFunc(f *func()) UseOption {
-	return useOption{
-		Interface: option.New(identOptionReleaseFunc{}, f),
-	}.use()
-}
-
-type InitFunc func(ctx context.Context, ports Ports) error
+type (
+	ReleaseFunc func()
+	InitFunc    func(ctx context.Context, ports Ports) error
+)
 
 // WithInitFunc sets initializer to set up container using the given port.
 // The init will be performed only once per container, executed with an exclusive lock.
@@ -696,74 +689,62 @@ func WithInitFunc(init InitFunc) UseOption {
 // use the container exclusively.
 // When other tests have already acquired an exclusive or shared lock for the container, it blocks until all
 // previous locks are released.
-func (c *Container) Use(tb testing.TB, ctx context.Context, exclusive bool, opts ...UseOption) Ports {
-	tb.Helper()
-
-	var releaseFunc *func()
+func (c *Container) Use(ctx context.Context, exclusive bool, opts ...UseOption) (Ports, ReleaseFunc, error) {
 	var initFunc InitFunc
 	for _, opt := range opts {
 		switch opt.Ident() {
-		case identOptionReleaseFunc{}:
-			releaseFunc = opt.Value().(*func())
 		case identOptionInitFunc{}:
 			initFunc = opt.Value().(InitFunc)
 		}
 	}
 
-	logging.Debugf(tb, "acquire LockForContainerSetup: %s", c.name)
+	logging.Debugf(nil, "acquire LockForContainerSetup: %s", c.name)
 	unlock, err := c.cft.ex.LockForContainerSetup(ctx, c.name)
 	if err != nil {
-		logging.Fatal(tb, err)
+		return nil, nil, fmt.Errorf("confort: %w", err)
 	}
 	defer func() {
-		logging.Debugf(tb, "release LockForContainerSetup: %s", c.name)
+		logging.Debugf(nil, "release LockForContainerSetup: %s", c.name)
 		unlock()
 	}()
 
-	logging.Debugf(tb, "start container if not started: %s", c.name)
+	logging.Debugf(nil, "start container if not started: %s", c.name)
 	ports, err := c.cft.namespace.StartContainer(ctx, c.name)
 	if err != nil {
-		logging.Fatal(tb, err)
+		return nil, nil, fmt.Errorf("confort: %w", err)
 	}
 
 	var init func() error
 	if initFunc != nil {
 		init = func() error {
-			logging.Debugf(tb, "call InitFunc: %s", c.name)
+			logging.Debugf(nil, "call InitFunc: %s", c.name)
 			return initFunc(ctx, ports)
 		}
 	}
 	// If initFunc is not nil, it will be called after acquisition of exclusive lock.
 	// After that, the lock is downgraded to shared lock when exclusive is false.
 	// When initFunc returns error, the acquisition of lock fails.
-	logging.Debugf(tb, "acquire LockForContainerUse: %s(exclusive=%t)", c.name, exclusive)
+	logging.Debugf(nil, "acquire LockForContainerUse: %s(exclusive=%t)", c.name, exclusive)
 	unlockContainer, err := c.cft.ex.LockForContainerUse(ctx, c.name, exclusive, init)
 	if err != nil {
-		logging.Fatal(tb, err)
+		return nil, nil, fmt.Errorf("confort: %w", err)
 	}
 	release := func() {
-		logging.Debugf(tb, "release LockForContainerUse: %s(exclusive=%t)", c.name, exclusive)
+		logging.Debugf(nil, "release LockForContainerUse: %s(exclusive=%t)", c.name, exclusive)
 		unlockContainer()
 	}
 
-	if releaseFunc != nil {
-		*releaseFunc = release
-	} else {
-		tb.Cleanup(release)
-	}
-	return ports
+	return ports, release, nil
 }
 
 // UseExclusive acquires an exclusive lock for using the container explicitly and returns its endpoint.
-func (c *Container) UseExclusive(tb testing.TB, ctx context.Context, opts ...UseOption) Ports {
-	tb.Helper()
-	return c.Use(tb, ctx, true, opts...)
+func (c *Container) UseExclusive(ctx context.Context, opts ...UseOption) (Ports, ReleaseFunc, error) {
+	return c.Use(ctx, true, opts...)
 }
 
 // UseShared acquires a shared lock for using the container explicitly and returns its endpoint.
-func (c *Container) UseShared(tb testing.TB, ctx context.Context, opts ...UseOption) Ports {
-	tb.Helper()
-	return c.Use(tb, ctx, false, opts...)
+func (c *Container) UseShared(ctx context.Context, opts ...UseOption) (Ports, ReleaseFunc, error) {
+	return c.Use(ctx, false, opts...)
 }
 
 // Network returns docker network representation associated with Confort.
