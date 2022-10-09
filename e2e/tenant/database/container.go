@@ -64,7 +64,7 @@ func InitDatabase(tb testing.TB, ctx context.Context) ConnectFunc {
 	return func(tb testing.TB, ctx context.Context, exclusive bool) *pgxpool.Pool {
 		tb.Helper()
 
-		ports := db.Use(tb, ctx, exclusive, confort.WithInitFunc(func(ctx context.Context, ports confort.Ports) error {
+		ports, release, err := db.Use(ctx, exclusive, confort.WithInitFunc(func(ctx context.Context, ports confort.Ports) error {
 			cfg, err := configFromPorts(ports)
 			if err != nil {
 				return err
@@ -76,6 +76,10 @@ func InitDatabase(tb testing.TB, ctx context.Context) ConnectFunc {
 			defer pool.Close()
 			return CreateTableIfNotExists(ctx, pool)
 		}))
+		if err != nil {
+			tb.Fatal(err)
+		}
+		tb.Cleanup(release)
 
 		cfg, err := configFromPorts(ports)
 		if err != nil {

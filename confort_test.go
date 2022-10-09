@@ -139,7 +139,11 @@ func TestConfort_Run_Communication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	portsOne := comOne.UseExclusive(t, ctx)
+	portsOne, releaseOne, err := comOne.UseExclusive(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(releaseOne)
 	hostOne := portsOne.HostPort("80/tcp")
 	if hostOne == "" {
 		t.Logf("%#v", portsOne)
@@ -158,7 +162,11 @@ func TestConfort_Run_Communication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	portsTwo := comTwo.UseExclusive(t, ctx)
+	portsTwo, releaseTwo, err := comTwo.UseExclusive(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(releaseTwo)
 	hostTwo := portsTwo.HostPort("80/tcp")
 	if hostTwo == "" {
 		t.Fatal("two: bound port not found")
@@ -212,7 +220,11 @@ func TestConfort_Run_ContainerIdentification(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		ports := echo.UseShared(t, ctx)
+		ports, release, err := echo.UseShared(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(release)
 		endpoint := ports.HostPort(nat.Port(port))
 		if endpoint == "" {
 			t.Fatalf("cannot get endpoint of %q: %v", port, ports)
@@ -332,8 +344,16 @@ func TestConfort_LazyRun(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		e1 := echo.UseShared(t, ctx)
-		e2 := echo.UseShared(t, ctx)
+		e1, release1, err := echo.UseShared(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(release1)
+		e2, release2, err := echo.UseShared(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(release2)
 		if diff := cmp.Diff(e1, e2); diff != "" {
 			t.Fatal(diff)
 		}
@@ -360,7 +380,11 @@ func TestConfort_LazyRun(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		e1 := echo1.UseShared(t, ctx)
+		e1, release1, err := echo1.UseShared(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(release1)
 
 		cft2, err := confort.New(ctx,
 			confort.WithNamespace(namespace, true),
@@ -376,7 +400,12 @@ func TestConfort_LazyRun(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		e2 := echo2.UseShared(t, ctx)
+		e2, release2, err := echo2.UseShared(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(release2)
+
 		if diff := cmp.Diff(e1, e2); diff != "" {
 			t.Fatal(diff)
 		}
@@ -425,7 +454,11 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := com1.UseShared(t, ctx)
+	e, release1, err := com1.UseShared(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(release1)
 	hostA := e.HostPort("80/tcp")
 	if hostA == "" {
 		t.Fatal("failed to get host/port")
@@ -445,7 +478,11 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e = com2.UseShared(t, ctx)
+	e, release2, err := com2.UseShared(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(release2)
 	hostB := e.HostPort("80/tcp")
 	if hostB == "" {
 		t.Fatal("failed to get host/port")
@@ -473,7 +510,11 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e = com3.UseShared(t, ctx)
+	e, release3, err := com3.UseShared(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(release3)
 	hostB2 := e.HostPort("80/tcp")
 	if hostB2 == "" {
 		t.Fatal("failed to get host/port")
@@ -494,7 +535,11 @@ func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e = com4.UseShared(t, ctx)
+	e, release4, err := com4.UseShared(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(release4)
 	hostC := e.HostPort("80/tcp")
 	if hostC == "" {
 		t.Fatal("failed to get host/port")
@@ -1460,7 +1505,11 @@ func TestWithHostConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ports := communicator.UseExclusive(t, ctx)
+	ports, release, err := communicator.UseExclusive(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(release)
 	host := ports.HostPort("80/tcp")
 	if host == "" {
 		t.Fatal("two: bound port not found")
@@ -1512,7 +1561,12 @@ func TestWithNetworkingConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	host := communicator.UseExclusive(t, ctx).HostPort("80/tcp")
+	ports, release, err := communicator.UseExclusive(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(release)
+	host := ports.HostPort("80/tcp")
 	if host == "" {
 		t.Fatalf("%s: bound port not found", name)
 	}
@@ -1667,7 +1721,12 @@ func TestWithPullOptions(t *testing.T) {
 	}
 
 	// check if container works
-	ports := c.UseShared(t, ctx)
+	ports, release, err := c.UseShared(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(release)
+
 	endpoint := ports.HostPort("80/tcp")
 	if endpoint == "" {
 		t.Fatal("endpoint not found")
@@ -1682,53 +1741,6 @@ func TestWithPullOptions(t *testing.T) {
 	removed := removeImageIfExists(t, cli, pullImage)
 	if !removed {
 		t.Fatalf("cannot remove pulled image %q", pullImage)
-	}
-}
-
-func TestWithReleaseFunc(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	cft, err := confort.New(ctx, confort.WithNamespace(t.Name(), true))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		_ = cft.Close()
-	})
-
-	echo, err := cft.Run(ctx, &confort.ContainerParams{
-		Name:         "echo",
-		Image:        imageEcho,
-		ExposedPorts: []string{"80/tcp"},
-		Waiter:       wait.Healthy(),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// test that the container is not released until the release is called.
-	var release func()
-	result := testingc.Test(func(t *testingc.T) {
-		echo.UseExclusive(t, ctx, confort.WithReleaseFunc(&release))
-	})
-	if result.Failed() {
-		t.Fatal(string(result.Logs()))
-	}
-
-	use := func(t *testingc.T) {
-		ctx, cancel := context.WithTimeout(ctx, time.Second)
-		defer cancel()
-		echo.UseExclusive(t, ctx)
-	}
-	if !testingc.Test(use).Failed() {
-		release()
-		t.Fatal("timeout expected")
-	}
-
-	release()
-	if result := testingc.Test(use); result.Failed() {
-		t.Fatalf("unexpected failure: %s", result.Logs())
 	}
 }
 
@@ -1755,8 +1767,8 @@ func TestWithInitFunc(t *testing.T) {
 	}
 
 	var try, done int
-	use := func(t *testingc.T) {
-		echo.UseShared(t, ctx, confort.WithInitFunc(func(ctx context.Context, ports confort.Ports) error {
+	use := func() error {
+		_, release, err := echo.UseShared(ctx, confort.WithInitFunc(func(ctx context.Context, ports confort.Ports) error {
 			if try++; try < 3 {
 				return errors.New("dummy error")
 			}
@@ -1766,18 +1778,22 @@ func TestWithInitFunc(t *testing.T) {
 			done++
 			return nil
 		}))
+		if err == nil {
+			t.Cleanup(release)
+		}
+		return err
 	}
 
 	for i := 0; i < 5; i++ {
-		result := testingc.Test(use)
+		err := use()
 		if i < 2 {
-			if !result.Failed() {
+			if err == nil {
 				t.Fatal("expected error on init")
 			}
 			continue
 		}
-		if result.Failed() {
-			t.Fatalf("unexpected failure: %s", result.Logs())
+		if err != nil {
+			t.Fatalf("unexpected failure: %s", err)
 		}
 	}
 	if done != 1 {
