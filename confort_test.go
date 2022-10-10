@@ -1252,42 +1252,6 @@ func TestWithBeacon(t *testing.T) {
 	})
 }
 
-//
-// func TestWithTerminateFunc(t *testing.T) {
-// 	t.Parallel()
-// 	ctx := context.Background()
-//
-// 	cli, err := client.NewClientWithOpts(client.FromEnv)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-//
-// 	cft, err := confort.New(ctx,
-// 		confort.WithNamespace(t.Name(), true),
-// 	)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-//
-// 	nw := cft.Network()
-//
-// 	// check network is alive
-// 	_, err = cli.NetworkInspect(ctx, nw.ID, types.NetworkInspectOptions{})
-// 	if err != nil {
-// 		_ = cft.Close()
-// 		t.Fatal(err)
-// 	}
-//
-// 	// terminate
-// 	_ = cft.Close()
-//
-// 	// check network is removed
-// 	actual, err := cli.NetworkInspect(ctx, nw.ID, types.NetworkInspectOptions{})
-// 	if err == nil {
-// 		t.Fatalf("network expected to be removed, but exists: name=%q", actual.Name)
-// 	}
-// }
-
 func TestWithImageBuildOptions(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

@@ -442,7 +442,7 @@ func (d *dockerNamespace) StartContainer(ctx context.Context, name string) (Port
 	c, ok := d.containers[name]
 	d.m.RUnlock()
 	if !ok {
-		return nil, errors.New(containerNotFound(name))
+		return nil, fmt.Errorf("dockerNamespace: container %q not found", name)
 	} else if c.running {
 		return c.ports, nil
 	}
@@ -471,10 +471,6 @@ func (d *dockerNamespace) StartContainer(ctx context.Context, name string) (Port
 	c.running = true
 	c.ports = Ports(portMap)
 	return c.ports, nil
-}
-
-func containerNotFound(name string) string {
-	return fmt.Sprintf("dockerBackend: container %q not found", name)
 }
 
 func (d *dockerNamespace) Release(ctx context.Context) error {
