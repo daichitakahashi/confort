@@ -48,16 +48,16 @@ func connect(ctx context.Context) (*Connection, error) {
 	addr, err := Address(ctx, LockFilePath())
 	if err != nil {
 		if errors.Is(err, ErrIntegrationDisabled) {
-			logging.Info(nil, err)
+			logging.Info(err)
 			return &Connection{}, nil
 		}
 		return nil, err
 	}
 	if addr == "" {
-		logging.Info(nil, "cannot get the address of beacon server")
+		logging.Info("cannot get the address of beacon server")
 		return &Connection{}, nil
 	}
-	logging.Debugf(nil, "the address of beacon server: %s", addr)
+	logging.Debugf("the address of beacon server: %s", addr)
 
 	conn, err := grpc.DialContext(ctx, addr, grpc.WithTransportCredentials(
 		insecure.NewCredentials(),
@@ -79,7 +79,7 @@ func connect(ctx context.Context) (*Connection, error) {
 			Service: "beacon",
 		})
 		status = resp.GetStatus()
-		logging.Debugf(nil, "got health check status of beacon server: %s", status)
+		logging.Debugf("got health check status of beacon server: %s", status)
 		if status == health.HealthCheckResponse_SERVING {
 			break
 		}

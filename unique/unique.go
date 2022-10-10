@@ -12,7 +12,6 @@ import (
 
 	"github.com/daichitakahashi/confort/internal/beacon"
 	"github.com/daichitakahashi/confort/internal/beacon/proto"
-	"github.com/daichitakahashi/confort/internal/logging"
 	"github.com/lestrrat-go/option"
 )
 
@@ -114,7 +113,7 @@ func (u *Unique[T]) Must(tb testing.TB) T {
 
 	v, err := u.g.generate(u.retry)
 	if err != nil {
-		logging.Fatal(tb, err)
+		tb.Fatal(err)
 	}
 	return v
 }
