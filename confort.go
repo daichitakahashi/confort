@@ -168,7 +168,7 @@ func New(ctx context.Context, opts ...NewOption) (cft *Confort, err error) {
 			o := opt.Value().(namespaceOption)
 			if namespace == "" || o.force {
 				if namespace != "" {
-					logging.Infof(nil, "namespace is overwritten by WithNamespace: %q -> %q", namespace, o.namespace)
+					logging.Infof("namespace is overwritten by WithNamespace: %q -> %q", namespace, o.namespace)
 				}
 				namespace = o.namespace
 			}
@@ -177,7 +177,7 @@ func New(ctx context.Context, opts ...NewOption) (cft *Confort, err error) {
 		case identOptionResourcePolicy{}:
 			newPolicy := opt.Value().(ResourcePolicy)
 			if policy != "" && policy != newPolicy {
-				logging.Infof(nil, "resource policy is overwritten by WithResourcePolicy: %q -> %q", policy, newPolicy)
+				logging.Infof("resource policy is overwritten by WithResourcePolicy: %q -> %q", policy, newPolicy)
 			}
 			policy = newPolicy
 		case identOptionBeacon{}:
@@ -205,7 +205,7 @@ func New(ctx context.Context, opts ...NewOption) (cft *Confort, err error) {
 	if namespace == "" {
 		return nil, errors.New("confort: empty namespace")
 	}
-	logging.Debugf(nil, "namespace: %s", namespace)
+	logging.Debugf("namespace: %s", namespace)
 
 	if policy == "" {
 		policy = ResourcePolicyReuse // default
@@ -213,7 +213,7 @@ func New(ctx context.Context, opts ...NewOption) (cft *Confort, err error) {
 	if !beacon.ValidResourcePolicy(string(policy)) {
 		return nil, fmt.Errorf("confort: invalid resource policy: %s", policy)
 	}
-	logging.Debugf(nil, "resource policy: %s", policy)
+	logging.Debugf("resource policy: %s", policy)
 
 	ctx, cancel := applyTimeout(ctx, timeout)
 	defer cancel()
@@ -235,17 +235,17 @@ func New(ctx context.Context, opts ...NewOption) (cft *Confort, err error) {
 		},
 	}
 
-	logging.Debug(nil, "acquire LockForNamespace")
+	logging.Debug("acquire LockForNamespace")
 	unlock, err := ex.LockForNamespace(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("confort: %w", err)
 	}
 	defer func() {
-		logging.Debug(nil, "release LockForNamespace")
+		logging.Debug("release LockForNamespace")
 		unlock()
 	}()
 
-	logging.Debugf(nil, "create namespace %q", namespace)
+	logging.Debugf("create namespace %q", namespace)
 	ns, err := backend.Namespace(ctx, namespace)
 	if err != nil {
 		return nil, fmt.Errorf("confort: %w", err)
@@ -261,7 +261,7 @@ func New(ctx context.Context, opts ...NewOption) (cft *Confort, err error) {
 			return err
 		}
 		// release all resources
-		logging.Debugf(nil, "release all resources bound with namespace %q", namespace)
+		logging.Debugf("release all resources bound with namespace %q", namespace)
 		return multierr.Append(err, ns.Release(context.Background()))
 	}
 
@@ -390,17 +390,17 @@ func (cft *Confort) Build(ctx context.Context, b *BuildParams, opts ...BuildOpti
 	if len(buildOption.Tags) == 0 {
 		return errors.New("confort: image tag not specified")
 	}
-	logging.Debugf(nil, "LockForBuild: %s", buildOption.Tags[0])
+	logging.Debugf("LockForBuild: %s", buildOption.Tags[0])
 	unlock, err := cft.ex.LockForBuild(ctx, buildOption.Tags[0])
 	if err != nil {
 		return fmt.Errorf("confort: %w", err)
 	}
 	defer func() {
-		logging.Debugf(nil, "release LockForBuild: %s", buildOption.Tags[0])
+		logging.Debugf("release LockForBuild: %s", buildOption.Tags[0])
 		unlock()
 	}()
 
-	logging.Debugf(nil, "build image %q", buildOption.Tags[0])
+	logging.Debugf("build image %q", buildOption.Tags[0])
 	err = cft.backend.BuildImage(ctx, tarball, buildOption, force, buildOut)
 	if err != nil {
 		return fmt.Errorf("confort: %w", err)
@@ -587,17 +587,17 @@ func (cft *Confort) LazyRun(ctx context.Context, c *ContainerParams, opts ...Run
 	ctx, cancel := applyTimeout(ctx, cft.defaultTimeout)
 	defer cancel()
 
-	logging.Debugf(nil, "acquire LockForContainerSetup: %s", name)
+	logging.Debugf("acquire LockForContainerSetup: %s", name)
 	unlock, err := cft.ex.LockForContainerSetup(ctx, name)
 	if err != nil {
 		return nil, fmt.Errorf("confort: %w", err)
 	}
 	defer func() {
-		logging.Debugf(nil, "release LockForContainerSetup: %s", name)
+		logging.Debugf("release LockForContainerSetup: %s", name)
 		unlock()
 	}()
 
-	logging.Debugf(nil, "create container if not exists: %s", name)
+	logging.Debugf("create container if not exists: %s", name)
 	containerID, err := cft.createContainer(ctx, name, alias, c, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("confort: %w", err)
@@ -626,23 +626,23 @@ func (cft *Confort) Run(ctx context.Context, c *ContainerParams, opts ...RunOpti
 	ctx, cancel := applyTimeout(ctx, cft.defaultTimeout)
 	defer cancel()
 
-	logging.Debugf(nil, "acquire LockForContainerSetup: %s", name)
+	logging.Debugf("acquire LockForContainerSetup: %s", name)
 	unlock, err := cft.ex.LockForContainerSetup(ctx, name)
 	if err != nil {
 		return nil, fmt.Errorf("confort: %w", err)
 	}
 	defer func() {
-		logging.Debugf(nil, "release LockForContainerSetup: %s", name)
+		logging.Debugf("release LockForContainerSetup: %s", name)
 		unlock()
 	}()
 
-	logging.Debugf(nil, "create container if not exists: %s", name)
+	logging.Debugf("create container if not exists: %s", name)
 	containerID, err := cft.createContainer(ctx, name, alias, c, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("confort: %w", err)
 	}
 
-	logging.Debugf(nil, "start container if not started: %s", name)
+	logging.Debugf("start container if not started: %s", name)
 	_, err = cft.namespace.StartContainer(ctx, name)
 	if err != nil {
 		return nil, fmt.Errorf("confort: %w", err)
@@ -698,17 +698,17 @@ func (c *Container) Use(ctx context.Context, exclusive bool, opts ...UseOption) 
 		}
 	}
 
-	logging.Debugf(nil, "acquire LockForContainerSetup: %s", c.name)
+	logging.Debugf("acquire LockForContainerSetup: %s", c.name)
 	unlock, err := c.cft.ex.LockForContainerSetup(ctx, c.name)
 	if err != nil {
 		return nil, nil, fmt.Errorf("confort: %w", err)
 	}
 	defer func() {
-		logging.Debugf(nil, "release LockForContainerSetup: %s", c.name)
+		logging.Debugf("release LockForContainerSetup: %s", c.name)
 		unlock()
 	}()
 
-	logging.Debugf(nil, "start container if not started: %s", c.name)
+	logging.Debugf("start container if not started: %s", c.name)
 	ports, err := c.cft.namespace.StartContainer(ctx, c.name)
 	if err != nil {
 		return nil, nil, fmt.Errorf("confort: %w", err)
@@ -717,20 +717,20 @@ func (c *Container) Use(ctx context.Context, exclusive bool, opts ...UseOption) 
 	var init func() error
 	if initFunc != nil {
 		init = func() error {
-			logging.Debugf(nil, "call InitFunc: %s", c.name)
+			logging.Debugf("call InitFunc: %s", c.name)
 			return initFunc(ctx, ports)
 		}
 	}
 	// If initFunc is not nil, it will be called after acquisition of exclusive lock.
 	// After that, the lock is downgraded to shared lock when exclusive is false.
 	// When initFunc returns error, the acquisition of lock fails.
-	logging.Debugf(nil, "acquire LockForContainerUse: %s(exclusive=%t)", c.name, exclusive)
+	logging.Debugf("acquire LockForContainerUse: %s(exclusive=%t)", c.name, exclusive)
 	unlockContainer, err := c.cft.ex.LockForContainerUse(ctx, c.name, exclusive, init)
 	if err != nil {
 		return nil, nil, fmt.Errorf("confort: %w", err)
 	}
 	release := func() {
-		logging.Debugf(nil, "release LockForContainerUse: %s(exclusive=%t)", c.name, exclusive)
+		logging.Debugf("release LockForContainerUse: %s(exclusive=%t)", c.name, exclusive)
 		unlockContainer()
 	}
 
