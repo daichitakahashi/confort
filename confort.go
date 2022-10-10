@@ -575,41 +575,6 @@ func (c *Container) Name() string { return c.name }
 // a docker network created in New or attached by Confort.Run.
 func (c *Container) Alias() string { return c.alias }
 
-// LazyRun creates container but doesn't start.
-// When container is required by UseShared or UseExclusive, the container starts.
-//
-// If container is already created/started by other test or process, LazyRun just
-// store container info. It makes no error.
-func (cft *Confort) LazyRun(ctx context.Context, c *ContainerParams, opts ...RunOption) (*Container, error) {
-	alias := c.Name
-	name := cft.namespace.Namespace() + c.Name
-
-	ctx, cancel := applyTimeout(ctx, cft.defaultTimeout)
-	defer cancel()
-
-	logging.Debugf("acquire LockForContainerSetup: %s", name)
-	unlock, err := cft.ex.LockForContainerSetup(ctx, name)
-	if err != nil {
-		return nil, fmt.Errorf("confort: %w", err)
-	}
-	defer func() {
-		logging.Debugf("release LockForContainerSetup: %s", name)
-		unlock()
-	}()
-
-	logging.Debugf("create container if not exists: %s", name)
-	containerID, err := cft.createContainer(ctx, name, alias, c, opts...)
-	if err != nil {
-		return nil, fmt.Errorf("confort: %w", err)
-	}
-	return &Container{
-		cft:   cft,
-		id:    containerID,
-		name:  name,
-		alias: alias,
-	}, nil
-}
-
 // Run starts container with given parameters.
 // If container already exists and not started, it starts.
 // It reuses already started container and its endpoint information.

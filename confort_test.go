@@ -26,7 +26,6 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
-	"github.com/google/go-cmp/cmp"
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 )
@@ -308,114 +307,6 @@ func TestConfort_Run_SameNameButAnotherImage(t *testing.T) {
 	if !strings.Contains(err.Error(), fullName) {
 		t.Fatalf("unexpected error: %s", err)
 	}
-}
-
-// test LazyRun
-func TestConfort_LazyRun(t *testing.T) {
-	t.Parallel()
-
-	var (
-		ctx       = context.Background()
-		namespace = uniqueName.Must(t)
-	)
-
-	cft, err := confort.New(ctx,
-		confort.WithNamespace(namespace, true),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		_ = cft.Close()
-	})
-
-	t.Run("Use after LazyRun", func(t *testing.T) {
-		t.Parallel()
-
-		containerName := uniqueName.Must(t)
-
-		echo, err := cft.LazyRun(ctx, &confort.ContainerParams{
-			Name:         containerName,
-			Image:        imageEcho,
-			ExposedPorts: []string{"80/tcp"},
-			Waiter:       wait.Healthy(),
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		e1, release1, err := echo.UseShared(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(release1)
-		e2, release2, err := echo.UseShared(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(release2)
-		if diff := cmp.Diff(e1, e2); diff != "" {
-			t.Fatal(diff)
-		}
-		endpoint := e1.HostPort("80/tcp")
-		if endpoint == "" {
-			t.Fatal("endpoint not found")
-		}
-		assertEchoWorks(t, endpoint)
-	})
-
-	t.Run("Run after LazyRun from another instance", func(t *testing.T) {
-		t.Parallel()
-
-		containerName := uniqueName.Must(t)
-
-		c := &confort.ContainerParams{
-			Name:         containerName,
-			Image:        imageEcho,
-			ExposedPorts: []string{"80/tcp"},
-			Waiter:       wait.Healthy(),
-		}
-
-		echo1, err := cft.LazyRun(ctx, c)
-		if err != nil {
-			t.Fatal(err)
-		}
-		e1, release1, err := echo1.UseShared(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(release1)
-
-		cft2, err := confort.New(ctx,
-			confort.WithNamespace(namespace, true),
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() {
-			_ = cft.Close()
-		})
-
-		echo2, err := cft2.Run(ctx, c)
-		if err != nil {
-			t.Fatal(err)
-		}
-		e2, release2, err := echo2.UseShared(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(release2)
-
-		if diff := cmp.Diff(e1, e2); diff != "" {
-			t.Fatal(diff)
-		}
-
-		endpoint := e1.HostPort("80/tcp")
-		if endpoint == "" {
-			t.Fatal("endpoint not found")
-		}
-		assertEchoWorks(t, endpoint)
-	})
 }
 
 // test if container can join different networks simultaneously

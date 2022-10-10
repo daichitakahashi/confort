@@ -16,6 +16,7 @@ import (
 	"github.com/docker/cli/cli/command/image/build"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/archive"
@@ -278,6 +279,9 @@ func (d *dockerNamespace) CreateContainer(
 
 	containers, err := d.cli.ContainerList(ctx, types.ContainerListOptions{
 		All: true, // contains exiting/paused images
+		Filters: filters.NewArgs(
+			filters.Arg("name", name),
+		),
 	})
 	if err != nil {
 		return "", err
