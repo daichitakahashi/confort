@@ -1,5 +1,11 @@
 # Changelog
 
+## [v1.1.0](https://github.com/daichitakahashi/confort/compare/v1.0.0...v1.1.0) - 2022-10-11
+- Remove `testing.TB` from arguments and return error by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/47
+- Update unique: add `unique.Must` by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/48
+- Bump github.com/daichitakahashi/gocmd: v1.0.0 -> v1.0.1 by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/49
+- Fix flaky by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/50
+
 ## [v1.0.0](https://github.com/daichitakahashi/confort/compare/v0.4.1...v1.0.0) - 2022-10-02
 - Update internal/cmd: `confort test` should handle SIGTERM and SIGINT to release created resources by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/34
 - Unexport beacon by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/40
