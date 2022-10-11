@@ -1024,10 +1024,10 @@ func TestWithBeacon(t *testing.T) {
 	}
 	go func() {
 		_ = srv.Serve(ln)
-		_ = ln.Close()
 	}()
 	t.Cleanup(func() {
 		srv.Stop()
+		_ = ln.Close()
 	})
 
 	// write lock file
@@ -1037,14 +1037,6 @@ func TestWithBeacon(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv(beacon.LockFileEnv, lockFile)
-
-	conn, err := beacon.Connect(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !conn.Enabled() {
-		t.Fatal("failed to connect beacon server")
-	}
 
 	t.Run("confort", func(t *testing.T) {
 		t.Parallel()

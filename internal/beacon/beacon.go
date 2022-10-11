@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/daichitakahashi/confort/internal/logging"
@@ -12,11 +11,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	health "google.golang.org/grpc/health/grpc_health_v1"
-)
-
-var (
-	connMu sync.Mutex
-	conn   *Connection
 )
 
 type Connection struct {
@@ -33,18 +27,10 @@ func (c *Connection) Close() error {
 }
 
 func Connect(ctx context.Context) (*Connection, error) {
-	connMu.Lock()
-	defer connMu.Unlock()
-	if conn != nil {
-		return conn, nil
-	}
-	var err error
-	conn, err = connect(ctx)
-	return conn, err
+	return connect(ctx)
 }
 
 func connect(ctx context.Context) (*Connection, error) {
-
 	addr, err := Address(ctx, LockFilePath())
 	if err != nil {
 		if errors.Is(err, ErrIntegrationDisabled) {
