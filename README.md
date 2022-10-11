@@ -34,12 +34,18 @@ func TestExample(t *testing.T) {
     ctx := context.Background()
     
     // CFT_NAMESPACE=your_ci_id
-    cft := confort.New(t, ctx,
+    cft, err := confort.New(ctx,
         confort.WithNamespace("fallback-namespace", false),
     )
-    
+    if err != nil {
+        t.Fatal(err)
+    }
+    t.Cleanup(func() {
+        _ = cft.Close()
+    })
+
     // start container
-    db := cft.Run(t, ctx, &confort.ContainerParams{
+    db, err := cft.Run(t, ctx, &confort.ContainerParams{
         Name:  "db",
         Image: "postgres:14.4-alpine3.16",
         Env: map[string]string{
@@ -60,6 +66,9 @@ func TestExample(t *testing.T) {
             }
         }),
     )
+    if err != nil {
+        t.Fatal(err)
+    }
     
     // use container exclusively. the container will be released after the test finished
     // UseShared is also available
@@ -67,7 +76,7 @@ func TestExample(t *testing.T) {
     addr := ports.HostPort("5432/tcp")
     // connect PostgreSQL using `addr`
 	
-    uniq := unique.String(12)
+    uniq := unique.Must(unique.String(ctx, 12))
     schema := uniq.Must(t)
     // create a schema using `schema` as its name
 }
@@ -82,7 +91,7 @@ func TestExample(t *testing.T) {
     // The function does not fail even if the beacon server is not enabled. But beacon.Enabled == false.
 
     // CFT_NAMESPACE=your_ci_id
-    cft := confort.New(t, ctx,
+    cft, err := confort.New(ctx,
         confort.WithNamespace("fallback-namespace", false),
         // Following line enables an integration with `confort` command if it's available.
         // Connect will be established using an address of the beacon server from `.confort.lock` or CFT_BEACON_ADDR.
@@ -92,12 +101,12 @@ func TestExample(t *testing.T) {
 
     // ...
 
-    unique := unique.String(12,
+    uniq := unique.Must(unique.String(ctx, 12,
         // Following line enables an integration with `confort` command too. 
         // This stores the values created across the entire test
         // and helps create unique one.
         unique.WithBeacon(t, ctx, "database-name"), 
-    )
+    ))
     // ...
 }
 ```

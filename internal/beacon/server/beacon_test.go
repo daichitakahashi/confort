@@ -10,9 +10,9 @@ import (
 	"google.golang.org/grpc"
 )
 
-var uniq, _ = unique.New(context.Background(), func() (string, error) {
+var uniq = unique.Must(unique.New(context.Background(), func() (string, error) {
 	return uuid.New().String(), nil
-})
+}))
 
 func lock(t *testing.T, stream proto.BeaconService_LockForNamespaceClient, op proto.LockOp) (*proto.LockResponse, error) {
 	t.Helper()
