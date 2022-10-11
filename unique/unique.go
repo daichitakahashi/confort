@@ -100,6 +100,18 @@ func New[T comparable](ctx context.Context, fn func() (T, error), opts ...Option
 	return u, nil
 }
 
+// Must is a helper that wraps a call to a function returning (*Unique[T], error)
+// and panics if the error is non-nil. It is intended for use in variable initializations
+// such as
+//
+//	var u = unique.Must(unique.String(context.Background(), 10))
+func Must[T comparable](u *Unique[T], err error) *Unique[T] {
+	if err != nil {
+		panic(err)
+	}
+	return u
+}
+
 // New returns unique value.
 func (u *Unique[T]) New() (T, error) {
 	return u.g.generate(u.retry)
