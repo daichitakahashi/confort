@@ -72,7 +72,11 @@ func TestExample(t *testing.T) {
     
     // use container exclusively. the container will be released after the test finished
     // UseShared is also available
-    ports := db.UseExclusive(t, ctx)
+    ports, release, err := db.UseExclusive(ctx)
+    if err != nil {
+        t.Fatal(err)
+    }
+    t.Cleanup(release)
     addr := ports.HostPort("5432/tcp")
     // connect PostgreSQL using `addr`
 	
