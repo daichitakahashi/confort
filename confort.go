@@ -563,6 +563,7 @@ type Container struct {
 	id    string
 	name  string
 	alias string
+	ports Ports
 }
 
 // ID returns its container id.
@@ -608,7 +609,7 @@ func (cft *Confort) Run(ctx context.Context, c *ContainerParams, opts ...RunOpti
 	}
 
 	logging.Debugf("start container if not started: %s", name)
-	_, err = cft.namespace.StartContainer(ctx, name)
+	ports, err := cft.namespace.StartContainer(ctx, name)
 	if err != nil {
 		return nil, fmt.Errorf("confort: %w", err)
 	}
@@ -617,6 +618,7 @@ func (cft *Confort) Run(ctx context.Context, c *ContainerParams, opts ...RunOpti
 		id:    containerID,
 		name:  name,
 		alias: alias,
+		ports: ports,
 	}, nil
 }
 
@@ -663,27 +665,11 @@ func (c *Container) Use(ctx context.Context, exclusive bool, opts ...UseOption) 
 		}
 	}
 
-	logging.Debugf("acquire LockForContainerSetup: %s", c.name)
-	unlock, err := c.cft.ex.LockForContainerSetup(ctx, c.name)
-	if err != nil {
-		return nil, nil, fmt.Errorf("confort: %w", err)
-	}
-	defer func() {
-		logging.Debugf("release LockForContainerSetup: %s", c.name)
-		unlock()
-	}()
-
-	logging.Debugf("start container if not started: %s", c.name)
-	ports, err := c.cft.namespace.StartContainer(ctx, c.name)
-	if err != nil {
-		return nil, nil, fmt.Errorf("confort: %w", err)
-	}
-
 	var init func() error
 	if initFunc != nil {
 		init = func() error {
 			logging.Debugf("call InitFunc: %s", c.name)
-			return initFunc(ctx, ports)
+			return initFunc(ctx, c.ports)
 		}
 	}
 	// If initFunc is not nil, it will be called after acquisition of exclusive lock.
@@ -699,7 +685,7 @@ func (c *Container) Use(ctx context.Context, exclusive bool, opts ...UseOption) 
 		unlockContainer()
 	}
 
-	return ports, release, nil
+	return c.ports, release, nil
 }
 
 // UseExclusive acquires an exclusive lock for using the container explicitly and returns its endpoint.
