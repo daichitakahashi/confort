@@ -34,8 +34,8 @@ enum AcquireOp {
   ACQUIRE_OP_SHARED_LOCK = 2;
   ACQUIRE_OP_INIT_SHARED_LOCK = 3;
   ACQUIRE_OP_UNLOCK = 4;
-  ACQUIRE_OP_SET_INIT_DONE = 5;
-  ACQUIRE_OP_SET_INIT_FAILED = 6;
+  ACQUIRE_OP_SET_INIT_DONE = 5 [deprecated = true];
+  ACQUIRE_OP_SET_INIT_FAILED = 6 [deprecated = true];
 }
 
 enum LockState {
@@ -57,12 +57,34 @@ message KeyedLockRequest {
   LockOp operation = 2;
 }
 
-message AcquireLockRequest {
+message AcquireLockParam {
+  AcquireOp operation = 1;
+}
+
+message AcquireLockAcquireParam {
+  map<string, AcquireLockParam> targets = 1;
+}
+
+message AcquireLockInitParam {
   string key = 1;
-  AcquireOp operation = 2;
+  bool initSucceeded = 2;
+}
+
+message AcquireLockRequest {
+  reserved 1, 2;
+  oneof param {
+    AcquireLockAcquireParam acquire = 3;
+    AcquireLockInitParam init = 4;
+    google.protobuf.Empty release = 5;
+  }
+}
+
+message AcquireLockResult {
+  LockState state = 1;
+  bool acquireInit = 2;
 }
 
 message AcquireLockResponse {
-  LockState state = 1;
-  bool acquireInit = 2;
+  reserved 1, 2;
+  map<string, AcquireLockResult> results = 3;
 }

@@ -13,6 +13,7 @@ type Locker struct {
 	build          *KeyedLock
 	containerSetup *KeyedLock
 	containerUse   *KeyedLock
+	acquirer       *Acquirer
 	once           *oncewait.Factory
 }
 
@@ -21,6 +22,7 @@ func NewLocker() *Locker {
 		build:          NewKeyedLock(),
 		containerSetup: NewKeyedLock(),
 		containerUse:   NewKeyedLock(),
+		acquirer:       NewAcquirer(),
 		once:           &oncewait.Factory{},
 	}
 }
@@ -83,51 +85,94 @@ func (l *ContainerLock) Release() {
 	}
 }
 
-func (l *Locker) AcquireContainerLock(ctx context.Context, name string, exclusive, init bool) (*ContainerLock, error) {
-	var err error
-	if init {
-		var acquireInit bool
-		l.once.Get(name).Do(func() {
-			err = l.containerUse.Lock(ctx, name) // exclusive lock
-			if err != nil {
-				l.once.Refresh(name)
-				return
+type AcquireContainerLockEntry struct {
+	Exclusive bool
+	Init      bool
+
+	l  *Locker
+	cl *ContainerLock
+	p  AcquireParam
+}
+
+func (p *AcquireContainerLockEntry) init(l *Locker, name string) {
+	p.l = l
+
+	p.p = AcquireParam{
+		Lock: func(ctx context.Context, notifyLock func()) error {
+			var err error
+			if p.Init {
+				var initAcquired bool
+				l.once.Get(name).Do(func() {
+					err = l.containerUse.Lock(ctx, name) // exclusive lock
+					if err != nil {
+						l.once.Refresh(name)
+						return
+					}
+					initAcquired = true
+				})
+				if err != nil {
+					return err
+				}
+				if initAcquired {
+					notifyLock()
+					p.cl = &ContainerLock{
+						l:          l.containerUse,
+						once:       l.once,
+						name:       name,
+						init:       true,
+						exclusive:  p.Exclusive,
+						downgraded: 0,
+					}
+					return nil
+				}
 			}
-			acquireInit = true
-		})
-		if err != nil {
-			return nil, err
-		}
-		if acquireInit {
-			return &ContainerLock{
+
+			// no init
+			var downgraded int32
+			if p.Exclusive {
+				err = l.containerUse.Lock(ctx, name)
+			} else {
+				err = l.containerUse.RLock(ctx, name)
+				downgraded = 1
+			}
+			if err != nil {
+				return err
+			}
+			notifyLock()
+
+			p.cl = &ContainerLock{
 				l:          l.containerUse,
 				once:       l.once,
 				name:       name,
-				init:       true,
-				exclusive:  exclusive,
-				downgraded: 0,
-			}, nil
-		}
+				init:       false,
+				exclusive:  p.Exclusive,
+				downgraded: downgraded,
+			}
+			return nil
+		},
+		Unlock: func() {
+			if p.cl != nil {
+				p.cl.Release()
+			}
+		},
 	}
+}
 
-	// no init
-	var downgraded int32
-	if exclusive {
-		err = l.containerUse.Lock(ctx, name)
-	} else {
-		err = l.containerUse.RLock(ctx, name)
-		downgraded = 1
+func (p *AcquireContainerLockEntry) ContainerLock() *ContainerLock {
+	return p.cl
+}
+
+func (l *Locker) AcquireContainerLock(ctx context.Context, entries map[string]*AcquireContainerLockEntry) (func(), error) {
+	p := map[string]AcquireParam{}
+	for name, e := range entries {
+		e.init(l, name)
+		p[name] = e.p
 	}
+	err := l.acquirer.Acquire(ctx, p)
 	if err != nil {
 		return nil, err
 	}
-
-	return &ContainerLock{
-		l:          l.containerUse,
-		once:       l.once,
-		name:       name,
-		init:       false,
-		exclusive:  exclusive,
-		downgraded: downgraded,
+	return func() {
+		l.acquirer.Release(p)
 	}, nil
 }

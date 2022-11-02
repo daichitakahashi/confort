@@ -259,8 +259,15 @@ func TestBeaconServer_AcquireContainerLock(t *testing.T) {
 	lock := func(t *testing.T, stream proto.BeaconService_AcquireContainerLockClient, name string, op proto.AcquireOp) (*proto.AcquireLockResponse, error) {
 		t.Helper()
 		err := stream.Send(&proto.AcquireLockRequest{
-			Key:       name,
-			Operation: op,
+			Param: &proto.AcquireLockRequest_Acquire{
+				Acquire: &proto.AcquireLockAcquireParam{
+					Targets: map[string]*proto.AcquireLockParam{
+						name: {
+							Operation: op,
+						},
+					},
+				},
+			},
 		})
 		if err != nil {
 			t.Fatal(err)

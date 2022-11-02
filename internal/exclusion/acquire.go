@@ -84,9 +84,6 @@ func (a *Acquirer) Release(params map[string]AcquireParam) {
 	for _, p := range params {
 		p.Unlock()
 	}
-	a.c.m.Lock()
-	defer a.c.m.Unlock()
-	a.c.proceed()
 }
 
 type acquireSet struct {
