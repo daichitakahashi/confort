@@ -207,7 +207,12 @@ func lockForContainerUse(c exclusion.Control, name string) error {
 			// during that, more than two shared locks will be acquired.
 			time.Sleep(time.Millisecond / 2)
 
-			unlock, err := c.LockForContainerUse(ctx, name, false, nil)
+			unlock, err := c.LockForContainerUse(ctx, map[string]exclusion.ContainerUseParam{
+				name: {
+					Exclusive: false,
+					Init:      nil,
+				},
+			})
 			if err != nil {
 				switch status.Code(err) {
 				case codes.Canceled, codes.Unavailable:
@@ -231,7 +236,12 @@ func lockForContainerUse(c exclusion.Control, name string) error {
 	done := make(chan bool)
 	go func() {
 		for i := 0; i < 200; i++ {
-			unlock, err := c.LockForContainerUse(ctx, name, true, nil)
+			unlock, err := c.LockForContainerUse(ctx, map[string]exclusion.ContainerUseParam{
+				name: {
+					Exclusive: true,
+					Init:      nil,
+				},
+			})
 			if err != nil {
 				log.Printf("%d/200 %s", i+1, err)
 				return
@@ -291,12 +301,17 @@ func lockForContainerUseWithInit(c exclusion.Control, name string, exclusive boo
 	var sentinel = errors.New("sentinel error")
 
 	for i := 0; i < 10; i++ {
-		unlock, err := c.LockForContainerUse(ctx, name, exclusive, func() error {
-			count++
-			if count == 1 {
-				return sentinel
-			}
-			return nil
+		unlock, err := c.LockForContainerUse(ctx, map[string]exclusion.ContainerUseParam{
+			name: {
+				Exclusive: exclusive,
+				Init: func() error {
+					count++
+					if count == 1 {
+						return sentinel
+					}
+					return nil
+				},
+			},
 		})
 		if err != nil {
 			if errors.Is(err, sentinel) {
@@ -363,7 +378,12 @@ func testLockForContainerUseDowngrade(t *testing.T, c exclusion.Control) {
 		t.Parallel()
 
 		name := uuid.NewString()
-		unlock, err := c.LockForContainerUse(ctx, name, true, func() error { return nil })
+		unlock, err := c.LockForContainerUse(ctx, map[string]exclusion.ContainerUseParam{
+			name: {
+				Exclusive: true,
+				Init:      func() error { return nil },
+			},
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -371,7 +391,12 @@ func testLockForContainerUseDowngrade(t *testing.T, c exclusion.Control) {
 
 		ctx, cancel := context.WithTimeout(ctx, time.Second)
 		defer cancel()
-		_, err = c.LockForContainerUse(ctx, name, false, nil)
+		_, err = c.LockForContainerUse(ctx, map[string]exclusion.ContainerUseParam{
+			name: {
+				Exclusive: false,
+				Init:      nil,
+			},
+		})
 		if err == nil {
 			t.Fatalf("unexpected lock acquisition")
 		} else if !errors.Is(err, context.DeadlineExceeded) && status.Code(err) != codes.DeadlineExceeded {
@@ -384,13 +409,23 @@ func testLockForContainerUseDowngrade(t *testing.T, c exclusion.Control) {
 		t.Parallel()
 
 		name := uuid.NewString()
-		unlock, err := c.LockForContainerUse(ctx, name, false, func() error { return nil })
+		unlock, err := c.LockForContainerUse(ctx, map[string]exclusion.ContainerUseParam{
+			name: {
+				Exclusive: false,
+				Init:      func() error { return nil },
+			},
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer unlock()
 
-		unlock, err = c.LockForContainerUse(ctx, name, false, func() error { return nil })
+		unlock, err = c.LockForContainerUse(ctx, map[string]exclusion.ContainerUseParam{
+			name: {
+				Exclusive: false,
+				Init:      func() error { return nil },
+			},
+		})
 		if err != nil {
 			t.Fatal(err)
 		}

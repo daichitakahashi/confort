@@ -176,14 +176,6 @@ func (b *beaconServer) LockForContainerSetup(stream proto.BeaconService_LockForC
 
 func (b *beaconServer) AcquireContainerLock(stream proto.BeaconService_AcquireContainerLockServer) error {
 	ctx := stream.Context()
-	var key string
-	var op proto.AcquireOp = -1
-	var lock *exclusion.ContainerLock
-	defer func() {
-		if lock != nil {
-			lock.Release()
-		}
-	}()
 
 	for {
 		req, err := stream.Recv()
@@ -193,114 +185,118 @@ func (b *beaconServer) AcquireContainerLock(stream proto.BeaconService_AcquireCo
 		if err != nil {
 			return err
 		}
-		k := req.GetKey()
-		if k == "" {
-			return status.Error(codes.InvalidArgument, "empty key")
+		acquireParam, ok := req.GetParam().(*proto.AcquireLockRequest_Acquire)
+		if !ok {
+			return status.Error(codes.InvalidArgument, "invalid operation")
 		}
 
-		switch req.GetOperation() {
-		case proto.AcquireOp_ACQUIRE_OP_LOCK:
-			if lock != nil {
-				return status.Error(codes.InvalidArgument, "trying second lock")
+		entries := map[string]*exclusion.AcquireContainerLockEntry{}
+		for key, target := range acquireParam.Acquire.GetTargets() {
+			if key == "" {
+				return status.Error(codes.InvalidArgument, "empty key")
 			}
-			key = k
-			lock, err = b.l.AcquireContainerLock(ctx, key, true, false)
-			if err != nil {
-				return err
+			var exclusive, init bool
+			switch target.GetOperation() {
+			case proto.AcquireOp_ACQUIRE_OP_LOCK:
+				exclusive = true
+			case proto.AcquireOp_ACQUIRE_OP_INIT_LOCK:
+				exclusive = true
+				init = true
+			case proto.AcquireOp_ACQUIRE_OP_SHARED_LOCK:
+				exclusive = false
+			case proto.AcquireOp_ACQUIRE_OP_INIT_SHARED_LOCK:
+				exclusive = false
+				init = true
+			default:
+				return status.Error(codes.InvalidArgument, "invalid operation")
 			}
-			err = stream.Send(&proto.AcquireLockResponse{
-				State:       proto.LockState_LOCK_STATE_LOCKED,
-				AcquireInit: false,
-			})
-		case proto.AcquireOp_ACQUIRE_OP_INIT_LOCK:
-			if lock != nil {
-				return status.Error(codes.InvalidArgument, "trying second lock")
+			entries[key] = &exclusion.AcquireContainerLockEntry{
+				Exclusive: exclusive,
+				Init:      init,
 			}
-			key = k
-			op = proto.AcquireOp_ACQUIRE_OP_INIT_LOCK
-			lock, err = b.l.AcquireContainerLock(ctx, key, true, true)
-			if err != nil {
-				return err
-			}
-			err = stream.Send(&proto.AcquireLockResponse{
-				State:       proto.LockState_LOCK_STATE_LOCKED,
-				AcquireInit: lock.InitAcquired(),
-			})
-		case proto.AcquireOp_ACQUIRE_OP_SHARED_LOCK:
-			if lock != nil {
-				return status.Error(codes.InvalidArgument, "trying second lock")
-			}
-			key = k
-			lock, err = b.l.AcquireContainerLock(ctx, key, false, false)
-			if err != nil {
-				return err
-			}
-			err = stream.Send(&proto.AcquireLockResponse{
-				State:       proto.LockState_LOCK_STATE_SHARED_LOCKED,
-				AcquireInit: false,
-			})
-		case proto.AcquireOp_ACQUIRE_OP_INIT_SHARED_LOCK:
-			if lock != nil {
-				return status.Error(codes.InvalidArgument, "trying second lock")
-			}
-			key = k
-			op = proto.AcquireOp_ACQUIRE_OP_INIT_SHARED_LOCK
-			lock, err = b.l.AcquireContainerLock(ctx, key, false, true)
-			if err != nil {
-				return err
-			}
-			err = stream.Send(&proto.AcquireLockResponse{
-				State:       proto.LockState_LOCK_STATE_LOCKED,
-				AcquireInit: lock.InitAcquired(),
-			})
-		case proto.AcquireOp_ACQUIRE_OP_UNLOCK:
-			if lock == nil || key != k {
-				return status.Error(codes.InvalidArgument, "unlock on unlocked key")
-			}
-			lock.Release()
-			key = ""
-			op = -1
-			lock = nil
-			err = stream.Send(&proto.AcquireLockResponse{
-				State:       proto.LockState_LOCK_STATE_UNLOCKED,
-				AcquireInit: false,
-			})
-		case proto.AcquireOp_ACQUIRE_OP_SET_INIT_DONE:
-			if lock == nil || key != k {
-				return status.Error(codes.InvalidArgument, "set init result on unlocked key")
-			}
-			if !lock.InitAcquired() {
-				return status.Error(codes.InvalidArgument, "set init result on lock without init")
-			}
-			lock.SetInitResult(true)
-			state := proto.LockState_LOCK_STATE_LOCKED
-			if op == proto.AcquireOp_ACQUIRE_OP_INIT_SHARED_LOCK {
-				state = proto.LockState_LOCK_STATE_SHARED_LOCKED
-			}
-			err = stream.Send(&proto.AcquireLockResponse{
-				State:       state,
-				AcquireInit: false,
-			})
-		case proto.AcquireOp_ACQUIRE_OP_SET_INIT_FAILED:
-			if lock == nil || key != k {
-				return status.Error(codes.InvalidArgument, "set init result on unlocked key")
-			}
-			if !lock.InitAcquired() {
-				return status.Error(codes.InvalidArgument, "set init result on lock without init")
-			}
-			lock.SetInitResult(false)
-			lock.Release()
-			key = ""
-			op = -1
-			lock = nil
-			err = stream.Send(&proto.AcquireLockResponse{
-				State:       proto.LockState_LOCK_STATE_UNLOCKED,
-				AcquireInit: false,
-			})
 		}
+		release, err := b.l.AcquireContainerLock(ctx, entries)
 		if err != nil {
 			return err
 		}
+		initTargets := map[string]struct{}{}
+		results := map[string]*proto.AcquireLockResult{}
+		for key, entry := range entries {
+			initAcquired := entry.ContainerLock().InitAcquired()
+			var state proto.LockState
+			if entry.Exclusive {
+				state = proto.LockState_LOCK_STATE_LOCKED
+			} else if initAcquired {
+				state = proto.LockState_LOCK_STATE_LOCKED
+			} else {
+				state = proto.LockState_LOCK_STATE_SHARED_LOCKED
+			}
+			if initAcquired {
+				initTargets[key] = struct{}{}
+			}
+
+			results[key] = &proto.AcquireLockResult{
+				State:       state,
+				AcquireInit: initAcquired,
+			}
+		}
+		err = stream.Send(&proto.AcquireLockResponse{
+			Results: results,
+		})
+		if err != nil {
+			release()
+			return err
+		}
+
+		var e error
+	InitLoop:
+		for i := 0; i < len(initTargets); i++ {
+			req, err := stream.Recv()
+			if err != nil {
+				release()
+				return err
+			}
+
+			switch param := req.GetParam().(type) {
+			case *proto.AcquireLockRequest_Init:
+				key := param.Init.GetKey()
+				succeeded := param.Init.GetInitSucceeded()
+
+				entries[key].ContainerLock().SetInitResult(succeeded)
+				delete(initTargets, key)
+				if !succeeded {
+					break InitLoop
+				}
+			case *proto.AcquireLockRequest_Release:
+				break InitLoop
+			default:
+				e = status.Error(codes.InvalidArgument, "invalid operation")
+				break InitLoop
+			}
+		}
+		var failed bool
+		for key := range initTargets {
+			entries[key].ContainerLock().SetInitResult(false)
+			failed = true
+		}
+		if e != nil {
+			release()
+			return e
+		} else if failed {
+			release()
+			continue
+		}
+
+		req, err = stream.Recv()
+		if err != nil {
+			release()
+			return err
+		}
+		_, ok = req.GetParam().(*proto.AcquireLockRequest_Release)
+		if !ok {
+			return status.Error(codes.InvalidArgument, "invalid operation")
+		}
+		release()
 	}
 }
 

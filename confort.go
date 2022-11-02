@@ -676,7 +676,12 @@ func (c *Container) Use(ctx context.Context, exclusive bool, opts ...UseOption) 
 	// After that, the lock is downgraded to shared lock when exclusive is false.
 	// When initFunc returns error, the acquisition of lock fails.
 	logging.Debugf("acquire LockForContainerUse: %s(exclusive=%t)", c.name, exclusive)
-	unlockContainer, err := c.cft.ex.LockForContainerUse(ctx, c.name, exclusive, init)
+	unlockContainer, err := c.cft.ex.LockForContainerUse(ctx, map[string]exclusion.ContainerUseParam{
+		c.name: {
+			Exclusive: exclusive,
+			Init:      init,
+		},
+	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("confort: %w", err)
 	}
