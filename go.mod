@@ -3,7 +3,7 @@ module github.com/daichitakahashi/confort
 go 1.19
 
 require (
-	github.com/daichitakahashi/gocmd v1.0.1
+	github.com/daichitakahashi/gocmd v1.0.2
 	github.com/daichitakahashi/oncewait v1.0.0
 	github.com/daichitakahashi/testingc v0.0.1
 	github.com/docker/cli v20.10.18+incompatible
@@ -54,11 +54,11 @@ require (
 	github.com/sirupsen/logrus v1.8.1 // indirect
 	go.opencensus.io v0.23.0 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
-	golang.org/x/crypto v0.0.0-20211202192323-5770296d904e // indirect
-	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
-	golang.org/x/net v0.0.0-20220909164309-bea034e7d591 // indirect
-	golang.org/x/sys v0.0.0-20220913175220-63ea55921009 // indirect
-	golang.org/x/text v0.3.7 // indirect
+	golang.org/x/crypto v0.1.0 // indirect
+	golang.org/x/mod v0.6.0 // indirect
+	golang.org/x/net v0.1.0 // indirect
+	golang.org/x/sys v0.1.0 // indirect
+	golang.org/x/text v0.4.0 // indirect
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac // indirect
 	google.golang.org/genproto v0.0.0-20220914210030-581e60b4ef85 // indirect
 )
