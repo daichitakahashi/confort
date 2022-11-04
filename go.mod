@@ -19,7 +19,7 @@ require (
 	github.com/lestrrat-go/option v1.0.0
 	go.uber.org/multierr v1.8.0
 	golang.org/x/sync v0.0.0-20220907140024-f12130a52804
-	google.golang.org/grpc v1.49.0
+	google.golang.org/grpc v1.50.1
 	google.golang.org/protobuf v1.28.1
 )
 
