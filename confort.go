@@ -665,9 +665,9 @@ func (c *Container) Use(ctx context.Context, exclusive bool, opts ...UseOption) 
 		}
 	}
 
-	var init func() error
+	var init func(ctx context.Context) error
 	if initFunc != nil {
-		init = func() error {
+		init = func(ctx context.Context) error {
 			logging.Debugf("call InitFunc: %s", c.name)
 			return initFunc(ctx, c.ports)
 		}
@@ -706,4 +706,88 @@ func (c *Container) UseShared(ctx context.Context, opts ...UseOption) (Ports, Re
 // Network returns docker network representation associated with Confort.
 func (cft *Confort) Network() *types.NetworkResource {
 	return cft.namespace.Network()
+}
+
+type Acquirer struct {
+	ex     exclusion.Control
+	params map[string]exclusion.ContainerUseParam
+	ports  map[*Container]Ports
+}
+
+// Acquire initiates the acquisition of locks of the multi-containers.
+// To avoid the deadlock in your test cases, use Acquire as below:
+//
+//	ports, release, err := Acquire().
+//		Use(container1, true).
+//		Use(container2, false, WithInitFunc(initContainer2)).
+//		Do(ctx)
+//	if err != nil {
+//		t.Fatal(err)
+//	}
+//	t.Cleanup(release)
+//
+//	ports1 := ports[container1]
+//	ports2 := ports[container2]
+//
+//	* Acquire locks of container1 and container2 at the same time
+//	* If either lock acquisition or initContainer2 fails, lock acquisition for all containers fails
+//	* If initContainer2 succeeded but acquisition failed, the successful result of init is preserved
+//	* Returned func releases all acquired locks
+func Acquire() *Acquirer {
+	return &Acquirer{
+		params: map[string]exclusion.ContainerUseParam{},
+		ports:  map[*Container]Ports{},
+	}
+}
+
+// Use registers a container as the target of acquiring lock.
+func (a *Acquirer) Use(c *Container, exclusive bool, opts ...UseOption) *Acquirer {
+	if a.ex == nil {
+		a.ex = c.cft.ex
+	}
+
+	var initFunc InitFunc
+	for _, opt := range opts {
+		switch opt.Ident() {
+		case identOptionInitFunc{}:
+			initFunc = opt.Value().(InitFunc)
+		}
+	}
+
+	var init func(ctx context.Context) error
+	if initFunc != nil {
+		init = func(ctx context.Context) error {
+			logging.Debugf("call InitFunc: %s", c.name)
+			return initFunc(ctx, c.ports)
+		}
+	}
+
+	a.params[c.name] = exclusion.ContainerUseParam{
+		Exclusive: exclusive,
+		Init:      init,
+	}
+	a.ports[c] = c.ports
+	return a
+}
+
+// UseExclusive registers a container as the target of acquiring exclusive lock.
+func (a *Acquirer) UseExclusive(c *Container, opts ...UseOption) *Acquirer {
+	return a.Use(c, true, opts...)
+}
+
+// UseShared registers a container as the target of acquiring shared lock.
+func (a *Acquirer) UseShared(c *Container, opts ...UseOption) *Acquirer {
+	return a.Use(c, false, opts...)
+}
+
+// Do acquisition of locks.
+func (a *Acquirer) Do(ctx context.Context) (map[*Container]Ports, ReleaseFunc, error) {
+	if a.ex == nil {
+		return nil, nil, errors.New("no targets")
+	}
+	release, err := a.ex.LockForContainerUse(ctx, a.params)
+	if err != nil {
+		return nil, nil, err
+	}
+	return a.ports, release, nil
 }

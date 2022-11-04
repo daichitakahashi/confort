@@ -41,7 +41,7 @@ func (c *control) LockForContainerSetup(ctx context.Context, name string) (func(
 
 type ContainerUseParam struct {
 	Exclusive bool
-	Init      func() error
+	Init      func(ctx context.Context) error
 }
 
 func (c *control) LockForContainerUse(ctx context.Context, params map[string]ContainerUseParam) (unlock func(), err error) {
@@ -61,7 +61,7 @@ func (c *control) LockForContainerUse(ctx context.Context, params map[string]Con
 		lock := entry.ContainerLock()
 		if lock.InitAcquired() {
 			if initErr == nil {
-				initErr = initSafe(params[name].Init)
+				initErr = initSafe(ctx, params[name].Init)
 			}
 			lock.SetInitResult(initErr == nil)
 		}
@@ -73,14 +73,14 @@ func (c *control) LockForContainerUse(ctx context.Context, params map[string]Con
 	return unlock, nil
 }
 
-func initSafe(init func() error) (err error) {
+func initSafe(ctx context.Context, init func(ctx context.Context) error) (err error) {
 	defer func() {
 		r := recover()
 		if r != nil {
 			err = fmt.Errorf("%v", r)
 		}
 	}()
-	return init()
+	return init(ctx)
 }
 
 var _ Control = (*control)(nil)
@@ -219,7 +219,7 @@ func (b *beaconControl) LockForContainerUse(ctx context.Context, params map[stri
 	}
 	for name, result := range resp.GetResults() {
 		if result.GetAcquireInit() {
-			initErr := initSafe(params[name].Init)
+			initErr := initSafe(ctx, params[name].Init)
 			err = stream.Send(&proto.AcquireLockRequest{
 				Param: &proto.AcquireLockRequest_Init{
 					Init: &proto.AcquireLockInitParam{
