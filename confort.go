@@ -709,9 +709,8 @@ func (cft *Confort) Network() *types.NetworkResource {
 }
 
 type Acquirer struct {
-	ex     exclusion.Control
-	params map[string]exclusion.ContainerUseParam
-	ports  map[*Container]Ports
+	targets []*Container
+	params  map[string]exclusion.ContainerUseParam
 }
 
 // Acquire initiates the acquisition of locks of the multi-containers.
@@ -736,16 +735,11 @@ type Acquirer struct {
 func Acquire() *Acquirer {
 	return &Acquirer{
 		params: map[string]exclusion.ContainerUseParam{},
-		ports:  map[*Container]Ports{},
 	}
 }
 
 // Use registers a container as the target of acquiring lock.
 func (a *Acquirer) Use(c *Container, exclusive bool, opts ...UseOption) *Acquirer {
-	if a.ex == nil {
-		a.ex = c.cft.ex
-	}
-
 	var initFunc InitFunc
 	for _, opt := range opts {
 		switch opt.Ident() {
@@ -762,11 +756,12 @@ func (a *Acquirer) Use(c *Container, exclusive bool, opts ...UseOption) *Acquire
 		}
 	}
 
+	logging.Debugf("register target for LockForContainerUse: %s(exclusive=%t) to %p", c.name, exclusive, a)
+	a.targets = append(a.targets, c)
 	a.params[c.name] = exclusion.ContainerUseParam{
 		Exclusive: exclusive,
 		Init:      init,
 	}
-	a.ports[c] = c.ports
 	return a
 }
 
@@ -782,12 +777,22 @@ func (a *Acquirer) UseShared(c *Container, opts ...UseOption) *Acquirer {
 
 // Do acquisition of locks.
 func (a *Acquirer) Do(ctx context.Context) (map[*Container]Ports, ReleaseFunc, error) {
-	if a.ex == nil {
+	if len(a.targets) == 0 {
 		return nil, nil, errors.New("no targets")
 	}
-	release, err := a.ex.LockForContainerUse(ctx, a.params)
+	ex := a.targets[0].cft.ex
+
+	logging.Debugf("acquire LockForContainerUse: %p", a)
+	release, err := ex.LockForContainerUse(ctx, a.params)
 	if err != nil {
 		return nil, nil, err
 	}
-	return a.ports, release, nil
+
+	ports := map[*Container]Ports{}
+	for _, c := range a.targets {
+		ports[c] = c.ports
+	}
+
+	logging.Debugf("release LockForContainerUse: %p", a)
+	return ports, release, nil
 }

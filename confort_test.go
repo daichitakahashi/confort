@@ -11,6 +11,7 @@ import (
 	"net/http/httputil"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 )
 
@@ -1764,5 +1766,127 @@ func TestConfort_Run_UnsupportedStatus(t *testing.T) {
 	err = tryRun()
 	if err == nil {
 		t.Fatal("unexpected success")
+	}
+}
+
+func TestAcquire(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	cft, err := confort.New(ctx,
+		confort.WithNamespace(t.Name(), true),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = cft.Close()
+	})
+
+	exposed := nat.Port("80/tcp")
+	one, err := cft.Run(ctx, &confort.ContainerParams{
+		Name:  "one",
+		Image: imageCommunicator,
+		Env: map[string]string{
+			"CM_TARGET": "two",
+		},
+		ExposedPorts: []string{string(exposed)},
+		Waiter:       wait.LogContains("communicator is ready", 1),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	two, err := cft.Run(ctx, &confort.ContainerParams{
+		Name:  "two",
+		Image: imageCommunicator,
+		Env: map[string]string{
+			"CM_TARGET": "one",
+		},
+		ExposedPorts: []string{string(exposed)},
+		Waiter:       wait.LogContains("communicator is ready", 1),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	initFunc := func(t *testing.T, status string) confort.InitFunc {
+		return func(ctx context.Context, ports confort.Ports) error {
+			communicate(t, ports.HostPort(exposed), "set", status)
+			return nil
+		}
+	}
+	test := func(ports map[*confort.Container]confort.Ports) error {
+		oneHost := ports[one].HostPort(exposed)
+		twoHost := ports[two].HostPort(exposed)
+		communicate(t, oneHost, "exchange", "")
+		oneStatus := communicate(t, oneHost, "get", "")
+		twoStatus := communicate(t, twoHost, "get", "")
+		if oneStatus != "two" || twoStatus != "one" {
+			return fmt.Errorf("unexpected status: one=%s, two=%s", oneStatus, twoStatus)
+		}
+		communicate(t, oneHost, "exchange", "")
+		return nil
+	}
+
+	doOneTwo := func(ctx context.Context) error {
+		ports, release, err := confort.Acquire().
+			UseShared(one, confort.WithInitFunc(initFunc(t, "one"))).
+			UseExclusive(two, confort.WithInitFunc(initFunc(t, "two"))).
+			Do(ctx)
+		if err != nil {
+			return err
+		}
+		defer release()
+		return test(ports)
+	}
+	doTwoOne := func(ctx context.Context) error {
+		ports, release, err := confort.Acquire().
+			UseShared(two, confort.WithInitFunc(initFunc(t, "two"))).
+			UseExclusive(one, confort.WithInitFunc(initFunc(t, "one"))).
+			Do(ctx)
+		if err != nil {
+			return err
+		}
+		defer release()
+		return test(ports)
+	}
+
+	cond := sync.NewCond(new(sync.Mutex))
+	var counter int
+	rendezvous := func() {
+		cond.L.Lock()
+		counter++
+		cond.Broadcast()
+		for counter < 2 {
+			cond.Wait()
+		}
+		cond.L.Unlock()
+	}
+
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		rendezvous()
+		for i := 0; i < 50; i++ {
+			err := doOneTwo(ctx)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	eg.Go(func() error {
+		rendezvous()
+		for i := 0; i < 50; i++ {
+			err := doTwoOne(ctx)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	err = eg.Wait()
+	if err != nil {
+		t.Fatal(err)
 	}
 }
