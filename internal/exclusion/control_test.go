@@ -304,7 +304,7 @@ func lockForContainerUseWithInit(c exclusion.Control, name string, exclusive boo
 		unlock, err := c.LockForContainerUse(ctx, map[string]exclusion.ContainerUseParam{
 			name: {
 				Exclusive: exclusive,
-				Init: func() error {
+				Init: func(context.Context) error {
 					count++
 					if count == 1 {
 						return sentinel
@@ -381,7 +381,7 @@ func testLockForContainerUseDowngrade(t *testing.T, c exclusion.Control) {
 		unlock, err := c.LockForContainerUse(ctx, map[string]exclusion.ContainerUseParam{
 			name: {
 				Exclusive: true,
-				Init:      func() error { return nil },
+				Init:      func(context.Context) error { return nil },
 			},
 		})
 		if err != nil {
@@ -412,7 +412,7 @@ func testLockForContainerUseDowngrade(t *testing.T, c exclusion.Control) {
 		unlock, err := c.LockForContainerUse(ctx, map[string]exclusion.ContainerUseParam{
 			name: {
 				Exclusive: false,
-				Init:      func() error { return nil },
+				Init:      func(context.Context) error { return nil },
 			},
 		})
 		if err != nil {
@@ -423,7 +423,7 @@ func testLockForContainerUseDowngrade(t *testing.T, c exclusion.Control) {
 		unlock, err = c.LockForContainerUse(ctx, map[string]exclusion.ContainerUseParam{
 			name: {
 				Exclusive: false,
-				Init:      func() error { return nil },
+				Init:      func(context.Context) error { return nil },
 			},
 		})
 		if err != nil {
