@@ -24,19 +24,22 @@ const (
 	Database   = dbUser
 )
 
-func InitDatabase(tb testing.TB, ctx context.Context) ConnectFunc {
-	tb.Helper()
-
+func InitDatabase(ctx context.Context) (_ ConnectFunc, _ func(), err error) {
 	cft, err := confort.New(ctx,
 		confort.WithBeacon(),
 		confort.WithNamespace("integrationtest", false),
 	)
 	if err != nil {
-		tb.Fatal(err)
+		return nil, nil, err
 	}
-	tb.Cleanup(func() {
+	term := func() {
 		_ = cft.Close()
-	})
+	}
+	defer func() {
+		if err != nil {
+			term()
+		}
+	}()
 
 	db, err := cft.Run(ctx, &confort.ContainerParams{
 		Name:  "db",
@@ -58,7 +61,7 @@ func InitDatabase(tb testing.TB, ctx context.Context) ConnectFunc {
 		}),
 	)
 	if err != nil {
-		tb.Fatal(err)
+		return nil, nil, err
 	}
 
 	return func(tb testing.TB, ctx context.Context, exclusive bool) *pgxpool.Pool {
@@ -93,7 +96,7 @@ func InitDatabase(tb testing.TB, ctx context.Context) ConnectFunc {
 			pool.Close()
 		})
 		return pool
-	}
+	}, term, nil
 }
 
 func configFromPorts(ports confort.Ports) (cfg pgconn.Config, err error) {

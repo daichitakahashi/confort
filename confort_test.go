@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -44,71 +46,68 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	testingc.M(m, func(c *testingc.MC) int {
-		ctx := context.Background()
-		c.Setenv(beacon.LogLevelEnv, "0")
+	ctx := context.Background()
+	err := os.Setenv(beacon.LogLevelEnv, "0")
+	if err != nil {
+		log.Panic(err)
+	}
 
-		cft, err := confort.New(ctx,
-			confort.WithNamespace("for-build", false),
-		)
-		if err != nil {
-			c.Fatal(err)
-		}
-		c.Cleanup(func() {
-			_ = cft.Close()
-		})
-		cli, err := client.NewClientWithOpts(client.FromEnv)
-		if err != nil {
-			c.Fatal(err)
-		}
-		func() {
-			c.Cleanup(func() {
-				_, err := cli.ImagesPrune(ctx, filters.NewArgs(
-					filters.Arg("dangling", "true"),
-				))
-				if err != nil {
-					c.Logf("prune dangling images failed: %s", err)
-				}
-			})
-			defer func() {
-				_ = cft.Close()
-			}()
-			c.Logf("building image: %s", imageCommunicator)
-			err = cft.Build(ctx, &confort.BuildParams{
-				Image:      imageCommunicator,
-				Dockerfile: "testdata/communicator/Dockerfile",
-				ContextDir: "testdata/communicator",
-			}, confort.WithBuildOutput(io.Discard), confort.WithForceBuild())
-			if err != nil {
-				c.Fatal(err)
-			}
-			c.Cleanup(func() {
-				c.Logf("remove image: %s", imageCommunicator)
-				_, err := cli.ImageRemove(ctx, imageCommunicator, types.ImageRemoveOptions{})
-				if err != nil {
-					c.Logf("failed to remove image %q: %s", imageCommunicator, err)
-				}
-			})
-			c.Logf("building image: %s", imageEcho)
-			err = cft.Build(ctx, &confort.BuildParams{
-				Image:      imageEcho,
-				Dockerfile: "testdata/echo/Dockerfile",
-				ContextDir: "testdata/echo/",
-			}, confort.WithBuildOutput(io.Discard), confort.WithForceBuild())
-			if err != nil {
-				c.Fatal(err)
-			}
-			c.Cleanup(func() {
-				c.Logf("remove image: %s", imageEcho)
-				_, err := cli.ImageRemove(ctx, imageEcho, types.ImageRemoveOptions{})
-				if err != nil {
-					c.Logf("failed to remove image %q: %s", imageEcho, err)
-				}
-			})
-		}()
+	cft, err := confort.New(ctx,
+		confort.WithNamespace("for-build", false),
+	)
+	if err != nil {
+		log.Panic(err)
+	}
+	defer func() {
+		_ = cft.Close()
+	}()
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		log.Panic(err)
+	}
 
-		return c.Run()
-	})
+	defer func() {
+		_, err := cli.ImagesPrune(ctx, filters.NewArgs(
+			filters.Arg("dangling", "true"),
+		))
+		if err != nil {
+			log.Printf("prune dangling images failed: %s", err)
+		}
+	}()
+	log.Printf("building image: %s", imageCommunicator)
+	err = cft.Build(ctx, &confort.BuildParams{
+		Image:      imageCommunicator,
+		Dockerfile: "testdata/communicator/Dockerfile",
+		ContextDir: "testdata/communicator",
+	}, confort.WithBuildOutput(io.Discard), confort.WithForceBuild())
+	if err != nil {
+		log.Panic(err)
+	}
+	defer func() {
+		log.Printf("remove image: %s", imageCommunicator)
+		_, err := cli.ImageRemove(ctx, imageCommunicator, types.ImageRemoveOptions{})
+		if err != nil {
+			log.Printf("failed to remove image %q: %s", imageCommunicator, err)
+		}
+	}()
+	log.Printf("building image: %s", imageEcho)
+	err = cft.Build(ctx, &confort.BuildParams{
+		Image:      imageEcho,
+		Dockerfile: "testdata/echo/Dockerfile",
+		ContextDir: "testdata/echo/",
+	}, confort.WithBuildOutput(io.Discard), confort.WithForceBuild())
+	if err != nil {
+		log.Println(err)
+	}
+	defer func() {
+		log.Printf("remove image: %s", imageEcho)
+		_, err := cli.ImageRemove(ctx, imageEcho, types.ImageRemoveOptions{})
+		if err != nil {
+			log.Printf("failed to remove image %q: %s", imageEcho, err)
+		}
+	}()
+
+	m.Run()
 }
 
 // test network creation and communication between host and container,
