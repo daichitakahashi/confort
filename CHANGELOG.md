@@ -1,5 +1,10 @@
 # Changelog
 
+## [v1.2.1](https://github.com/daichitakahashi/confort/compare/v1.2.0...v1.2.1) - 2022-12-12
+- Bump github.com/daichitakahashi/testingc from 0.0.1 to 0.0.2 by @dependabot in https://github.com/daichitakahashi/confort/pull/63
+- Bump google.golang.org/grpc from 1.50.1 to 1.51.0 by @dependabot in https://github.com/daichitakahashi/confort/pull/65
+- Bump github.com/daichitakahashi/gocmd from 1.0.2 to 1.0.4 by @dependabot in https://github.com/daichitakahashi/confort/pull/66
+
 ## [v1.2.0](https://github.com/daichitakahashi/confort/compare/v1.1.0...v1.2.0) - 2022-11-05
 - Update confort: do not call createContainer in `Container.Use` by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/54
 - Bump github.com/daichitakahashi/gocmd: v1.0.1 -> v1.0.2 by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/56
