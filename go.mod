@@ -17,7 +17,7 @@ require (
 	github.com/jackc/pgx/v4 v4.17.2
 	github.com/lestrrat-go/backoff/v2 v2.0.8
 	github.com/lestrrat-go/option v1.0.0
-	go.uber.org/multierr v1.8.0
+	go.uber.org/multierr v1.9.0
 	golang.org/x/sync v0.0.0-20220907140024-f12130a52804
 	google.golang.org/grpc v1.51.0
 	google.golang.org/protobuf v1.28.1
