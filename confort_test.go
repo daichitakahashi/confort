@@ -17,11 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daichitakahashi/confort"
-	"github.com/daichitakahashi/confort/internal/beacon"
-	"github.com/daichitakahashi/confort/internal/beacon/server"
-	"github.com/daichitakahashi/confort/unique"
-	"github.com/daichitakahashi/confort/wait"
 	"github.com/daichitakahashi/testingc"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -32,6 +27,12 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
+
+	"github.com/daichitakahashi/confort"
+	"github.com/daichitakahashi/confort/internal/beacon"
+	"github.com/daichitakahashi/confort/internal/beacon/server"
+	"github.com/daichitakahashi/confort/unique"
+	"github.com/daichitakahashi/confort/wait"
 )
 
 const (
@@ -65,6 +66,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		log.Panic(err)
 	}
+	cli.NegotiateAPIVersion(ctx)
 
 	defer func() {
 		_, err := cli.ImagesPrune(ctx, filters.NewArgs(
@@ -493,6 +495,7 @@ func TestWithClientOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	c.NegotiateAPIVersion(ctx)
 
 	// wrap transport
 	logOut := bytes.NewBuffer(nil)
@@ -611,6 +614,7 @@ func TestWithDefaultTimeout(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		cli.NegotiateAPIVersion(context.Background())
 		httpCli := cli.HTTPClient()
 		transport := httpCli.Transport
 
@@ -735,6 +739,7 @@ func TestWithResourcePolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cli.NegotiateAPIVersion(ctx)
 
 	// define assertions
 
@@ -942,6 +947,7 @@ func TestWithResourcePolicy_reusable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cli.NegotiateAPIVersion(ctx)
 
 	cft, err := confort.New(ctx,
 		confort.WithNamespace(t.Name(), true),
@@ -1072,6 +1078,7 @@ func TestWithBeacon(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		cli.NegotiateAPIVersion(ctx)
 
 		containerName := namespace + "-tester"
 		containers, err := cli.ContainerList(ctx, types.ContainerListOptions{
@@ -1154,6 +1161,7 @@ func TestWithImageBuildOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cli.NegotiateAPIVersion(ctx)
 
 	tag := "label"
 	build := &confort.BuildParams{
@@ -1220,6 +1228,7 @@ func TestWithForceBuild_WithBuildOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cli.NegotiateAPIVersion(ctx)
 
 	tag := "force"
 	build := &confort.BuildParams{
@@ -1279,6 +1288,7 @@ func TestWithContainerConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cli.NegotiateAPIVersion(ctx)
 
 	cft, err := confort.New(ctx,
 		confort.WithNamespace(t.Name(), true),
@@ -1547,6 +1557,7 @@ func TestWithPullOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cli.NegotiateAPIVersion(ctx)
 
 	// remove target image if already exists
 	_ = removeImageIfExists(t, cli, pullImage)
@@ -1722,6 +1733,7 @@ func TestConfort_Run_UnsupportedStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cli.NegotiateAPIVersion(ctx)
 	created, err := cli.ContainerCreate(ctx, &container.Config{
 		Image: imageEcho,
 	}, &container.HostConfig{}, &network.NetworkingConfig{}, nil, containerName)
@@ -1758,7 +1770,7 @@ func TestConfort_Run_UnsupportedStatus(t *testing.T) {
 	}
 
 	// unsupported container status "exited"
-	err = cli.ContainerStop(ctx, created.ID, nil)
+	err = cli.ContainerStop(ctx, created.ID, container.StopOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
