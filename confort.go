@@ -149,7 +149,7 @@ func New(ctx context.Context, opts ...NewOption) (cft *Confort, err error) {
 		beaconConn   *beacon.Connection
 		ex           = exclusion.NewControl()
 
-		clientOps = []client.Opt{
+		clientOpts = []client.Opt{
 			client.FromEnv,
 		}
 		namespace = os.Getenv(beacon.NamespaceEnv)
@@ -163,7 +163,7 @@ func New(ctx context.Context, opts ...NewOption) (cft *Confort, err error) {
 	for _, opt := range opts {
 		switch opt.Ident() {
 		case identOptionClientOptions{}:
-			clientOps = opt.Value().([]client.Opt)
+			clientOpts = opt.Value().([]client.Opt)
 		case identOptionNamespace{}:
 			o := opt.Value().(namespaceOption)
 			if namespace == "" || o.force {
@@ -217,7 +217,7 @@ func New(ctx context.Context, opts ...NewOption) (cft *Confort, err error) {
 
 	ctx, cancel := applyTimeout(ctx, timeout)
 	defer cancel()
-	cli, err := client.NewClientWithOpts(clientOps...)
+	cli, err := client.NewClientWithOpts(clientOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("confort: %w", err)
 	}
