@@ -644,7 +644,7 @@ type (
 // The init will be performed only once per container, executed with an exclusive lock.
 // If you use a container with Confort.UseShared, the lock state is downgraded to the shared lock after init.
 //
-// The returned error makes the acquired lock released and testing.TB fail.
+// The returned error makes the acquired lock released.
 // After that, you can attempt to use the container and init again.
 func WithInitFunc(init InitFunc) UseOption {
 	return useOption{

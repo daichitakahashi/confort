@@ -11,6 +11,7 @@ import (
 	"time"
 
 	composetypes "github.com/compose-spec/compose-go/types"
+	"github.com/daichitakahashi/confort/internal/exclusion"
 	"github.com/docker/cli/cli/command"
 	composecmd "github.com/docker/compose/v2/cmd/compose"
 	"github.com/docker/compose/v2/pkg/api"
@@ -23,6 +24,7 @@ type Compose struct {
 	svc            api.Service
 	proj           *composetypes.Project
 	defaultTimeout time.Duration
+	ex             exclusion.Control
 }
 
 type (
@@ -97,6 +99,7 @@ func New(ctx context.Context, configFiles []string, opts ...NewOption) (*Compose
 			client.FromEnv,
 		}
 		timeout time.Duration
+		ex      = exclusion.NewControl()
 		err     error
 	)
 	for _, opt := range opts {
@@ -147,6 +150,7 @@ func New(ctx context.Context, configFiles []string, opts ...NewOption) (*Compose
 		svc:            service,
 		proj:           project,
 		defaultTimeout: timeout,
+		ex:             ex,
 	}, nil
 }
 
@@ -223,4 +227,45 @@ func applyTimeout(ctx context.Context, defaultTimeout time.Duration) (context.Co
 		return ctx, func() {}
 	}
 	return context.WithTimeout(ctx, defaultTimeout)
+}
+
+type Service struct {
+	c *Compose
+	s composetypes.ServiceConfig
+}
+
+func (c *Compose) Up(ctx context.Context, service string) (*Service, error) {
+	// check service name
+	serviceConfig, err := c.proj.GetService(service)
+	if err != nil {
+		return nil, fmt.Errorf("compose: %w", err)
+	}
+
+	ctx, cancel := applyTimeout(ctx, c.defaultTimeout)
+	defer cancel()
+
+	unlock, err := c.ex.LockForContainerSetup(ctx, fmt.Sprintf("%s-%s", c.proj.Name, service))
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+
+	// create and start service
+	err = c.svc.Up(ctx, c.proj, api.UpOptions{
+		Create: api.CreateOptions{
+			Services: []string{service},
+		},
+		Start: api.StartOptions{
+			Services: []string{service},
+			Wait:     true,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to launch service %q: %w", service, err)
+	}
+
+	return &Service{
+		c: c,
+		s: serviceConfig,
+	}, nil
 }
