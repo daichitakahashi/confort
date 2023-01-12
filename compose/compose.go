@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	composetypes "github.com/compose-spec/compose-go/types"
 	"github.com/docker/cli/cli/command"
@@ -18,17 +19,22 @@ import (
 	"github.com/lestrrat-go/option"
 )
 
-type Compose struct{}
+type Compose struct {
+	svc            api.Service
+	proj           *composetypes.Project
+	defaultTimeout time.Duration
+}
 
 type (
 	NewOption interface {
 		option.Interface
 		new() NewOption
 	}
-	identOptionProjectDir    struct{}
-	identOptionProjectName   struct{}
-	identOptionClientOptions struct{}
-	newOption                struct{ option.Interface }
+	identOptionProjectDir     struct{}
+	identOptionProjectName    struct{}
+	identOptionClientOptions  struct{}
+	identOptionDefaultTimeout struct{}
+	newOption                 struct{ option.Interface }
 )
 
 func (o newOption) new() NewOption { return o }
@@ -68,6 +74,17 @@ func WithClientOptions(opts ...client.Opt) NewOption {
 	}.new()
 }
 
+// WithDefaultTimeout sets the default timeout for each request to the Docker API and beacon server.
+// The default value of the "default timeout" is 1 min.
+// If default timeout is 0, Confort doesn't apply any timeout for ctx.
+//
+// If a timeout has already been set to ctx, the default timeout is not applied.
+func WithDefaultTimeout(d time.Duration) NewOption {
+	return newOption{
+		Interface: option.New(identOptionDefaultTimeout{}, d),
+	}.new()
+}
+
 func New(ctx context.Context, configFiles []string, opts ...NewOption) (*Compose, error) {
 	if len(configFiles) == 0 {
 		return nil, errors.New("no config file specified")
@@ -79,7 +96,8 @@ func New(ctx context.Context, configFiles []string, opts ...NewOption) (*Compose
 		clientOpts  = []client.Opt{
 			client.FromEnv,
 		}
-		err error
+		timeout time.Duration
+		err     error
 	)
 	for _, opt := range opts {
 		switch opt.Ident() {
@@ -89,16 +107,22 @@ func New(ctx context.Context, configFiles []string, opts ...NewOption) (*Compose
 			projectName = opt.Value().(string)
 		case identOptionClientOptions{}:
 			clientOpts = opt.Value().([]client.Opt)
+		case identOptionDefaultTimeout{}:
+			timeout = opt.Value().(time.Duration)
 		}
 	}
 
+	ctx, cancel := applyTimeout(ctx, timeout)
+	defer cancel()
+
+	// create docker cli instance and compose service
 	dockerCli, err := command.NewDockerCli(
 		command.DockerCliOption(command.WithInitializeClient(func(dockerCli *command.DockerCli) (client.APIClient, error) {
 			apiClient, err := client.NewClientWithOpts(clientOpts...)
 			if err != nil {
 				return nil, err
 			}
-			apiClient.NegotiateAPIVersion(context.Background())
+			apiClient.NegotiateAPIVersion(ctx)
 			return apiClient, nil
 		})),
 	)
@@ -108,19 +132,22 @@ func New(ctx context.Context, configFiles []string, opts ...NewOption) (*Compose
 	service := api.NewServiceProxy().
 		WithService(compose.NewComposeService(dockerCli))
 
+	// load configurations
 	project, err := prepareProject(ctx, projectDir, projectName, configFiles)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load configuration files correctly: %w", err)
+	}
 	for _, service := range project.Services {
 		service.CustomLabels = service.CustomLabels.
 			Add("CUSTOM_ENV1", "VALUE1").
 			Add("CUSTOM_ENV2", "VALUE2")
 	}
 
-	err = service.Up(ctx, project, api.UpOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	return &Compose{}, nil
+	return &Compose{
+		svc:            service,
+		proj:           project,
+		defaultTimeout: timeout,
+	}, nil
 }
 
 func prepareProject(ctx context.Context, dir, name string, configFiles []string) (*composetypes.Project, error) {
@@ -185,4 +212,15 @@ func resolveConfigFilePath(base string, configFiles []string) (r []string, err e
 		r = append(r, f)
 	}
 	return r, nil
+}
+
+func applyTimeout(ctx context.Context, defaultTimeout time.Duration) (context.Context, context.CancelFunc) {
+	if defaultTimeout == 0 {
+		return ctx, func() {}
+	}
+	_, ok := ctx.Deadline()
+	if ok {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, defaultTimeout)
 }
