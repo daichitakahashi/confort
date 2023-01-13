@@ -154,3 +154,16 @@ func chdir(t *testing.T, dir string) (newWorkingDir string) {
 	}
 	return newWorkingDir
 }
+
+func TestComposeUp(t *testing.T) {
+	ctx := context.Background()
+	compose, err := New(ctx, []string{"compose/testdata/compose.yaml"}, WithProjectDir(ModDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = compose.Up(ctx, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+}

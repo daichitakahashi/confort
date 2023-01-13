@@ -11,6 +11,7 @@ import (
 	"time"
 
 	composetypes "github.com/compose-spec/compose-go/types"
+	"github.com/daichitakahashi/confort"
 	"github.com/daichitakahashi/confort/internal/exclusion"
 	"github.com/docker/cli/cli/command"
 	composecmd "github.com/docker/compose/v2/cmd/compose"
@@ -21,6 +22,7 @@ import (
 )
 
 type Compose struct {
+	cli            client.APIClient
 	svc            api.Service
 	proj           *composetypes.Project
 	defaultTimeout time.Duration
@@ -118,14 +120,16 @@ func New(ctx context.Context, configFiles []string, opts ...NewOption) (*Compose
 	ctx, cancel := applyTimeout(ctx, timeout)
 	defer cancel()
 
+	// create docker API client
+	apiClient, err := client.NewClientWithOpts(clientOpts...)
+	if err != nil {
+		return nil, err
+	}
+	apiClient.NegotiateAPIVersion(ctx)
+
 	// create docker cli instance and compose service
 	dockerCli, err := command.NewDockerCli(
 		command.DockerCliOption(command.WithInitializeClient(func(dockerCli *command.DockerCli) (client.APIClient, error) {
-			apiClient, err := client.NewClientWithOpts(clientOpts...)
-			if err != nil {
-				return nil, err
-			}
-			apiClient.NegotiateAPIVersion(ctx)
 			return apiClient, nil
 		})),
 	)
@@ -147,6 +151,7 @@ func New(ctx context.Context, configFiles []string, opts ...NewOption) (*Compose
 	}
 
 	return &Compose{
+		cli:            apiClient,
 		svc:            service,
 		proj:           project,
 		defaultTimeout: timeout,
@@ -230,8 +235,9 @@ func applyTimeout(ctx context.Context, defaultTimeout time.Duration) (context.Co
 }
 
 type Service struct {
-	c *Compose
-	s composetypes.ServiceConfig
+	c     *Compose
+	s     composetypes.ServiceConfig
+	ports confort.Ports
 }
 
 func (c *Compose) Up(ctx context.Context, service string) (*Service, error) {
@@ -257,15 +263,31 @@ func (c *Compose) Up(ctx context.Context, service string) (*Service, error) {
 		},
 		Start: api.StartOptions{
 			Services: []string{service},
-			Wait:     true,
+			Wait:     true, // wait until running/healthy(depend on compose.yaml)
 		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to launch service %q: %w", service, err)
 	}
 
+	// get bound ports
+	s, err := c.svc.Ps(ctx, c.proj.Name, api.PsOptions{
+		Services: []string{service},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get service info: %w", err)
+	} else if len(s) == 0 {
+		return nil, fmt.Errorf("service %q not found", service)
+	}
+	containerID := s[0].ID
+	info, err := c.cli.ContainerInspect(ctx, containerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get service container info: %w", err)
+	}
+
 	return &Service{
-		c: c,
-		s: serviceConfig,
+		c:     c,
+		s:     serviceConfig,
+		ports: confort.Ports(info.NetworkSettings.Ports),
 	}, nil
 }

@@ -2,3 +2,6 @@ services:
   default:
     image: alpine:3.16.2
     entrypoint: ["sleep", "infinity"]
+    ports:
+      - 8080:80
+      - 81/tcp
