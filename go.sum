@@ -234,8 +234,8 @@ github.com/d2g/dhcp4 v0.0.0-20170904100407-a1d1b6c41b1c/go.mod h1:Ct2BUK8SB0YC1S
 github.com/d2g/dhcp4client v1.0.0/go.mod h1:j0hNfjhrt2SxUOw55nL0ATM/z4Yt3t2Kd1mW34z5W5s=
 github.com/d2g/dhcp4server v0.0.0-20181031114812-7d4a0a7f59a5/go.mod h1:Eo87+Kg/IX2hfWJfwxMzLyuSZyxSoAug2nGa1G2QAi8=
 github.com/d2g/hardwareaddr v0.0.0-20190221164911-e7d9fbe030e4/go.mod h1:bMl4RjIciD2oAxI7DmWRx6gbeqrkoLqv3MV0vzNad+I=
-github.com/daichitakahashi/gocmd v1.0.6 h1:mKYYt5jgF3QR5Bj1g6gLhygRJlVWh+1w4Q6QBGGHrLM=
-github.com/daichitakahashi/gocmd v1.0.6/go.mod h1:a++2qgk47bvtm4ZKuqSuv9PuGoSx2P7byqR0LFTd/TQ=
+github.com/daichitakahashi/gocmd v1.0.7 h1:nMbncRiyuImdekmc30w9WSC+itdhRCCBqN2XUkLhf78=
+github.com/daichitakahashi/gocmd v1.0.7/go.mod h1:a++2qgk47bvtm4ZKuqSuv9PuGoSx2P7byqR0LFTd/TQ=
 github.com/daichitakahashi/oncewait v1.0.0 h1:ANXeuO0JVVL4MPi8RlCB9sS1CffBV25Ux1ltc1MHrtA=
 github.com/daichitakahashi/oncewait v1.0.0/go.mod h1:KharQPUGj322xxiHjngOTcyKTLCTz8/FoUEQ918ZHCM=
 github.com/daichitakahashi/testingc v0.0.2 h1:iRF0qhnpaoqrzP2yM4jZOU0X3+JQ7tRH/574k2wtNMk=

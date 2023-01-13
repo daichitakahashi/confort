@@ -3,7 +3,7 @@ module github.com/daichitakahashi/confort
 go 1.19
 
 require (
-	github.com/daichitakahashi/gocmd v1.0.6
+	github.com/daichitakahashi/gocmd v1.0.7
 	github.com/daichitakahashi/oncewait v1.0.0
 	github.com/daichitakahashi/testingc v0.0.2
 	github.com/docker/cli v20.10.22+incompatible
