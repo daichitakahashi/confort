@@ -56,10 +56,10 @@ const ModDir = "\000mod\000"
 // Also, file paths of configuration(compose.yaml) is resolved based on this
 // directory. Default value is a current directory of the process.
 //
-// ModDir is a special value that indicate the location of go.mod of the test
-// target module. This allows any package of modules to specify a configuration
-// file with a relative path starting from the module's root directory.
-func WithProjectDir(dir string) NewOption {
+// If ModDir is passed as a part of args, the value is replaced with the location
+// of go.mod of the test target module.
+// This allows any test code of the module to specify same configuration files.
+func WithProjectDir(dir ...string) NewOption {
 	return newOption{
 		Interface: option.New(identOptionProjectDir{}, dir),
 	}.new()
@@ -99,7 +99,7 @@ func New(ctx context.Context, configFiles []string, opts ...NewOption) (*Compose
 	}
 
 	var (
-		projectDir  = "."
+		projectDir  = []string{"."}
 		projectName string
 		clientOpts  = []client.Opt{
 			client.FromEnv,
@@ -111,7 +111,7 @@ func New(ctx context.Context, configFiles []string, opts ...NewOption) (*Compose
 	for _, opt := range opts {
 		switch opt.Ident() {
 		case identOptionProjectDir{}:
-			projectDir = opt.Value().(string)
+			projectDir = opt.Value().([]string)
 		case identOptionProjectName{}:
 			projectName = opt.Value().(string)
 		case identOptionClientOptions{}:
@@ -164,26 +164,29 @@ func New(ctx context.Context, configFiles []string, opts ...NewOption) (*Compose
 	}, nil
 }
 
-func prepareProject(ctx context.Context, dir, name string, configFiles []string) (*composetypes.Project, error) {
-	// ModDir is a special value.
-	// Retrieve module file path and use its parent directory as a project directory.
-	if dir == ModDir {
-		val, err := resolveGoModDir(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get module directory: %w", err)
+func prepareProject(ctx context.Context, dir []string, name string, configFiles []string) (*composetypes.Project, error) {
+	for i := range dir {
+		// ModDir is a special value.
+		// Retrieve module file path and use its parent directory as a project directory.
+		if dir[i] == ModDir {
+			val, err := resolveGoModDir(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get module directory: %w", err)
+			}
+			dir[i] = val
 		}
-		dir = val
 	}
+	projectDir := filepath.Join(dir...)
+
 	// Resolve config file paths with project directory.
-	configFiles, err := resolveConfigFilePath(dir, configFiles)
+	configFiles, err := resolveConfigFilePath(projectDir, configFiles)
 	if err != nil {
 		return nil, err
 	}
-
 	proj, err := (&composecmd.ProjectOptions{
 		ConfigPaths: configFiles,
 		ProjectName: name,
-		ProjectDir:  dir,
+		ProjectDir:  projectDir,
 	}).ToProject(nil) // Specify services to launch
 	if err != nil {
 		return nil, fmt.Errorf("failed to load project: %w", err)

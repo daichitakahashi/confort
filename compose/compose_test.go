@@ -24,7 +24,7 @@ func TestPrepareProject(t *testing.T) {
 
 	testCases := []struct {
 		desc                string
-		projectDir          string
+		projectDir          []string
 		projectName         string
 		configFiles         []string
 		errorExpected       bool
@@ -69,42 +69,48 @@ func TestPrepareProject(t *testing.T) {
 			expectedServiceName: "default",
 		}, {
 			desc:                "specify project directory(absolute path)",
-			projectDir:          filepath.Join(wd, "another"),
+			projectDir:          []string{wd, "another"},
 			expectedWorkingDir:  filepath.Join(wd, "another"),
 			expectedProjectName: "another",
 			expectedServiceName: "another",
 		}, {
 			desc:                "specify project directory(relative path)",
-			projectDir:          "./another",
+			projectDir:          []string{"./another"},
 			expectedWorkingDir:  filepath.Join(wd, "another"),
 			expectedProjectName: "another",
 			expectedServiceName: "another",
 		}, {
 			desc:                "specify project directory and name",
-			projectDir:          filepath.Join(wd, "another"),
+			projectDir:          []string{wd, "another"},
 			projectName:         "new-project",
 			expectedWorkingDir:  filepath.Join(wd, "another"),
 			expectedProjectName: "new-project",
 			expectedServiceName: "another",
 		}, {
 			desc:                "specify project directory, name and custom config",
-			projectDir:          filepath.Join(wd, "another"),
+			projectDir:          []string{wd, "another"},
 			configFiles:         []string{"../custom-compose.yaml"},
 			expectedWorkingDir:  filepath.Join(wd, "another"),
 			expectedProjectName: "another",
 			expectedServiceName: "custom",
 		}, {
 			desc:          "specify root directory as project directory",
-			projectDir:    string(filepath.Separator),
+			projectDir:    []string{string(filepath.Separator)},
 			configFiles:   []string{filepath.Join(wd, "compose.yaml")},
 			errorExpected: true,
 		}, {
 			desc:                "specify module directory as project directory",
-			projectDir:          ModDir,
+			projectDir:          []string{ModDir},
 			configFiles:         []string{"compose/testdata/compose.yaml"},
 			expectedWorkingDir:  modDir,
 			expectedProjectName: modDirName,
 			expectedServiceName: "default",
+		}, {
+			desc:                "specify project directory by relative path from module directory",
+			projectDir:          []string{ModDir, "compose/testdata/another"},
+			expectedWorkingDir:  filepath.Join(wd, "another"),
+			expectedProjectName: "another",
+			expectedServiceName: "another",
 		},
 	}
 
