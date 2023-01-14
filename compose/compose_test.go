@@ -167,6 +167,9 @@ func TestComposeUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		_ = compose.Close()
+	}()
 
 	_, err = compose.Up(ctx, "default")
 	if err != nil {

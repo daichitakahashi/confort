@@ -20,6 +20,7 @@ import (
 	"github.com/docker/compose/v2/pkg/compose"
 	"github.com/docker/docker/client"
 	"github.com/lestrrat-go/option"
+	"go.uber.org/multierr"
 )
 
 type Compose struct {
@@ -162,6 +163,31 @@ func New(ctx context.Context, configFiles []string, opts ...NewOption) (*Compose
 		ex:             ex,
 		services:       map[string]bool{},
 	}, nil
+}
+
+func (c *Compose) Close() error {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	services := make([]string, 0, len(c.services))
+	for service := range c.services {
+		services = append(services, service)
+	}
+	if len(services) == 0 {
+		return nil
+	}
+
+	ctx := context.Background()
+	return multierr.Append(
+		c.svc.Stop(ctx, c.proj.Name, api.StopOptions{
+			Services: services,
+		}),
+		c.svc.Remove(ctx, c.proj.Name, api.RemoveOptions{
+			Volumes:  true, // TODO: requires consideration
+			Force:    true,
+			Services: services,
+		}),
+	)
 }
 
 func prepareProject(ctx context.Context, dir []string, name string, configFiles []string) (*composetypes.Project, error) {
