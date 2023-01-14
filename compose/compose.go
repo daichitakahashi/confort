@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	composetypes "github.com/compose-spec/compose-go/types"
@@ -27,6 +28,9 @@ type Compose struct {
 	proj           *composetypes.Project
 	defaultTimeout time.Duration
 	ex             exclusion.Control
+
+	m        sync.Mutex
+	services map[string]bool
 }
 
 type (
@@ -156,6 +160,7 @@ func New(ctx context.Context, configFiles []string, opts ...NewOption) (*Compose
 		proj:           project,
 		defaultTimeout: timeout,
 		ex:             ex,
+		services:       map[string]bool{},
 	}, nil
 }
 
@@ -241,7 +246,7 @@ type Service struct {
 }
 
 func (c *Compose) Up(ctx context.Context, service string) (*Service, error) {
-	// check service name
+	// Check service name.
 	serviceConfig, err := c.proj.GetService(service)
 	if err != nil {
 		return nil, fmt.Errorf("compose: %w", err)
@@ -252,33 +257,62 @@ func (c *Compose) Up(ctx context.Context, service string) (*Service, error) {
 
 	unlock, err := c.ex.LockForContainerSetup(ctx, fmt.Sprintf("%s-%s", c.proj.Name, service))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to acquire lock of %q: %w", service, err)
 	}
 	defer unlock()
 
-	// create and start service
-	err = c.svc.Up(ctx, c.proj, api.UpOptions{
-		Create: api.CreateOptions{
-			Services: []string{service},
-		},
-		Start: api.StartOptions{
-			Services: []string{service},
-			Wait:     true, // wait until running/healthy(depend on compose.yaml)
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to launch service %q: %w", service, err)
-	}
-
-	// get bound ports
+	// Check service status.
 	s, err := c.svc.Ps(ctx, c.proj.Name, api.PsOptions{
 		Services: []string{service},
+		All:      true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get service info: %w", err)
-	} else if len(s) == 0 {
-		return nil, fmt.Errorf("service %q not found", service)
 	}
+
+	doUp := len(s) == 0
+	if !doUp {
+		switch s[0].State {
+		case "running":
+		case "created", "exiting":
+			fmt.Println(s[0].State)
+			doUp = true
+		case "paused":
+			return nil, fmt.Errorf("cannot start %q, unpause is not supported", service)
+		default:
+			return nil, fmt.Errorf("cannot start %q, unexpected container state %q", service, s[0].State)
+		}
+	}
+	if doUp {
+		// If the running service doesn't exist, create and start it.
+		err = c.svc.Up(ctx, c.proj, api.UpOptions{
+			Create: api.CreateOptions{
+				Services: []string{service},
+			},
+			Start: api.StartOptions{
+				Services: []string{service},
+				Wait:     true, // Wait until running/healthy state(depend on configuration).
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to launch service %q: %w", service, err)
+		}
+
+		s, err = c.svc.Ps(ctx, c.proj.Name, api.PsOptions{
+			Services: []string{service},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to get service info: %w", err)
+		} else if len(s) == 0 {
+			return nil, fmt.Errorf("service %q not found", service)
+		}
+
+		c.m.Lock()
+		c.services[service] = true
+		c.m.Unlock()
+	}
+
+	// Get bound ports.
 	containerID := s[0].ID
 	info, err := c.cli.ContainerInspect(ctx, containerID)
 	if err != nil {
