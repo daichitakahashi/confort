@@ -26,29 +26,33 @@ type Fetcher interface {
 }
 
 type (
+	ident interface {
+		wait()
+	}
 	Option interface {
 		option.Interface
-		wait() Option
+		ident
 	}
 	identOptionInterval struct{}
 	identOptionTimeout  struct{}
-	waitOption          struct{ option.Interface }
+	waitOption          struct {
+		option.Interface
+		ident
+	}
 )
-
-func (o waitOption) wait() Option { return o }
 
 // WithInterval sets the interval between container readiness checks.
 func WithInterval(d time.Duration) Option {
 	return waitOption{
 		Interface: option.New(identOptionInterval{}, d),
-	}.wait()
+	}
 }
 
 // WithTimeout sets the timeout for waiting for the container to be ready.
 func WithTimeout(d time.Duration) Option {
 	return waitOption{
 		Interface: option.New(identOptionTimeout{}, d),
-	}.wait()
+	}
 }
 
 const (

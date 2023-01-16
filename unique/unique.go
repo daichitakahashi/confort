@@ -25,16 +25,20 @@ type uniqueValueGenerator[T comparable] interface {
 }
 
 type (
+	ident interface {
+		unique()
+	}
 	Option interface {
 		option.Interface
-		unique() Option
+		ident
 	}
 	identOptionRetry  struct{}
 	identOptionBeacon struct{}
-	uniqueOption      struct{ option.Interface }
+	uniqueOption      struct {
+		option.Interface
+		ident
+	}
 )
-
-func (o uniqueOption) unique() Option { return o }
 
 // WithRetry configures the maximum number of retries for unique value generation.
 func WithRetry(n uint) Option {
@@ -43,7 +47,7 @@ func WithRetry(n uint) Option {
 	}
 	return uniqueOption{
 		Interface: option.New(identOptionRetry{}, n),
-	}.unique()
+	}
 }
 
 // WithBeacon configures Unique to integrate with a starting beacon server.
@@ -54,7 +58,7 @@ func WithRetry(n uint) Option {
 func WithBeacon(storeName string) Option {
 	return uniqueOption{
 		Interface: option.New(identOptionBeacon{}, storeName),
-	}.unique()
+	}
 }
 
 // ErrRetryable indicates that the generation of a unique value has temporarily

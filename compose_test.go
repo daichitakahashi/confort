@@ -1,4 +1,4 @@
-package compose
+package confort
 
 import (
 	"context"
@@ -13,7 +13,7 @@ func TestPrepareProject(t *testing.T) {
 	ctx := context.Background()
 
 	// change working directory to testdata
-	wd := chdir(t, "testdata")
+	wd := chdir(t, "testdata/compose")
 
 	// get module directory
 	modDir, err := resolveGoModDir(ctx)
@@ -35,13 +35,13 @@ func TestPrepareProject(t *testing.T) {
 		{
 			desc:                "load default config file",
 			expectedWorkingDir:  wd,
-			expectedProjectName: "testdata",
+			expectedProjectName: "compose",
 			expectedServiceName: "default",
 		}, {
 			desc:                "load custom config file",
 			configFiles:         []string{"custom-compose.yaml"},
 			expectedWorkingDir:  wd,
-			expectedProjectName: "testdata",
+			expectedProjectName: "compose",
 			expectedServiceName: "custom",
 		}, {
 			desc:                "load another config file from another directory",
@@ -53,13 +53,13 @@ func TestPrepareProject(t *testing.T) {
 			desc:                "ignore empty file name",
 			configFiles:         []string{""},
 			expectedWorkingDir:  wd,
-			expectedProjectName: "testdata",
+			expectedProjectName: "compose",
 			expectedServiceName: "default",
 		}, {
 			desc:                "ignore '-' as config file source",
 			configFiles:         []string{"-"},
 			expectedWorkingDir:  wd,
-			expectedProjectName: "testdata",
+			expectedProjectName: "compose",
 			expectedServiceName: "default",
 		}, {
 			desc:                "specify project name",
@@ -101,13 +101,13 @@ func TestPrepareProject(t *testing.T) {
 		}, {
 			desc:                "specify module directory as project directory",
 			projectDir:          []string{ModDir},
-			configFiles:         []string{"compose/testdata/compose.yaml"},
+			configFiles:         []string{"testdata/compose/compose.yaml"},
 			expectedWorkingDir:  modDir,
 			expectedProjectName: modDirName,
 			expectedServiceName: "default",
 		}, {
 			desc:                "specify project directory by relative path from module directory",
-			projectDir:          []string{ModDir, "compose/testdata/another"},
+			projectDir:          []string{ModDir, "testdata/compose/another"},
 			expectedWorkingDir:  filepath.Join(wd, "another"),
 			expectedProjectName: "another",
 			expectedServiceName: "another",
@@ -163,7 +163,7 @@ func chdir(t *testing.T, dir string) (newWorkingDir string) {
 
 func TestComposeUp(t *testing.T) {
 	ctx := context.Background()
-	compose, err := New(ctx, []string{"compose/testdata/compose.yaml"}, WithProjectDir(ModDir))
+	compose, err := Compose(ctx, []string{"testdata/compose/compose.yaml"}, WithProjectDir(ModDir))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,4 +1,4 @@
-package compose
+package confort
 
 import (
 	"context"
@@ -12,7 +12,6 @@ import (
 	"time"
 
 	composetypes "github.com/compose-spec/compose-go/types"
-	"github.com/daichitakahashi/confort"
 	"github.com/daichitakahashi/confort/internal/exclusion"
 	"github.com/docker/cli/cli/command"
 	composecmd "github.com/docker/compose/v2/cmd/compose"
@@ -23,7 +22,7 @@ import (
 	"go.uber.org/multierr"
 )
 
-type Compose struct {
+type ComposeProject struct {
 	cli            client.APIClient
 	svc            api.Service
 	proj           *composetypes.Project
@@ -35,18 +34,20 @@ type Compose struct {
 }
 
 type (
-	NewOption interface {
-		option.Interface
-		new() NewOption
+	composeIdent interface {
+		compose()
 	}
-	identOptionProjectDir     struct{}
-	identOptionProjectName    struct{}
-	identOptionClientOptions  struct{}
-	identOptionDefaultTimeout struct{}
-	newOption                 struct{ option.Interface }
+	ComposeOption interface {
+		option.Interface
+		composeIdent
+	}
+	identOptionProjectDir  struct{}
+	identOptionProjectName struct{}
+	composeOption          struct {
+		option.Interface
+		composeIdent
+	}
 )
-
-func (o newOption) new() NewOption { return o }
 
 // ModDir is a special value that indicates the location of go.mod of the test
 // target module. Use with WithProjectDir option.
@@ -60,41 +61,21 @@ const ModDir = "\000mod\000"
 // If ModDir is passed as a part of args, the value is replaced with the location
 // of go.mod of the test target module.
 // This allows any test code of the module to specify same configuration files.
-func WithProjectDir(dir ...string) NewOption {
-	return newOption{
+func WithProjectDir(dir ...string) ComposeOption {
+	return composeOption{
 		Interface: option.New(identOptionProjectDir{}, dir),
-	}.new()
+	}
 }
 
 // WithProjectName sets project name, which works as namespace.
 // Default name is a name of project directory.
-func WithProjectName(name string) NewOption {
-	return newOption{
+func WithProjectName(name string) ComposeOption {
+	return composeOption{
 		Interface: option.New(identOptionProjectName{}, name),
-	}.new()
+	}
 }
 
-// WithClientOptions sets options for Docker API client.
-// Default option is client.FromEnv.
-// For detail, see client.NewClientWithOpts.
-func WithClientOptions(opts ...client.Opt) NewOption {
-	return newOption{
-		Interface: option.New(identOptionClientOptions{}, opts),
-	}.new()
-}
-
-// WithDefaultTimeout sets the default timeout for each request to the Docker API and beacon server.
-// The default value of the "default timeout" is 1 min.
-// If default timeout is 0, Confort doesn't apply any timeout for ctx.
-//
-// If a timeout has already been set to ctx, the default timeout is not applied.
-func WithDefaultTimeout(d time.Duration) NewOption {
-	return newOption{
-		Interface: option.New(identOptionDefaultTimeout{}, d),
-	}.new()
-}
-
-func New(ctx context.Context, configFiles []string, opts ...NewOption) (*Compose, error) {
+func Compose(ctx context.Context, configFiles []string, opts ...ComposeOption) (*ComposeProject, error) {
 	if len(configFiles) == 0 {
 		return nil, errors.New("no config file specified")
 	}
@@ -155,7 +136,7 @@ func New(ctx context.Context, configFiles []string, opts ...NewOption) (*Compose
 			Add("CUSTOM_ENV2", "VALUE2")
 	}
 
-	return &Compose{
+	return &ComposeProject{
 		cli:            apiClient,
 		svc:            service,
 		proj:           project,
@@ -165,7 +146,7 @@ func New(ctx context.Context, configFiles []string, opts ...NewOption) (*Compose
 	}, nil
 }
 
-func (c *Compose) Close() error {
+func (c *ComposeProject) Close() error {
 	c.m.Lock()
 	defer c.m.Unlock()
 
@@ -257,24 +238,13 @@ func resolveConfigFilePath(base string, configFiles []string) (r []string, err e
 	return r, nil
 }
 
-func applyTimeout(ctx context.Context, defaultTimeout time.Duration) (context.Context, context.CancelFunc) {
-	if defaultTimeout == 0 {
-		return ctx, func() {}
-	}
-	_, ok := ctx.Deadline()
-	if ok {
-		return ctx, func() {}
-	}
-	return context.WithTimeout(ctx, defaultTimeout)
-}
-
 type Service struct {
-	c     *Compose
+	c     *ComposeProject
 	s     composetypes.ServiceConfig
-	ports confort.Ports
+	ports Ports
 }
 
-func (c *Compose) Up(ctx context.Context, service string) (*Service, error) {
+func (c *ComposeProject) Up(ctx context.Context, service string) (*Service, error) {
 	// Check service name.
 	serviceConfig, err := c.proj.GetService(service)
 	if err != nil {
@@ -351,6 +321,6 @@ func (c *Compose) Up(ctx context.Context, service string) (*Service, error) {
 	return &Service{
 		c:     c,
 		s:     serviceConfig,
-		ports: confort.Ports(info.NetworkSettings.Ports),
+		ports: Ports(info.NetworkSettings.Ports),
 	}, nil
 }
