@@ -26,9 +26,7 @@ type Fetcher interface {
 }
 
 type (
-	ident interface {
-		wait()
-	}
+	ident  interface{ wait() }
 	Option interface {
 		option.Interface
 		ident

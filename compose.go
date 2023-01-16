@@ -34,9 +34,7 @@ type ComposeProject struct {
 }
 
 type (
-	composeIdent interface {
-		compose()
-	}
+	composeIdent  interface{ compose() }
 	ComposeOption interface {
 		option.Interface
 		composeIdent

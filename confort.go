@@ -51,9 +51,7 @@ type Confort struct {
 }
 
 type (
-	newIdent interface {
-		new()
-	}
+	newIdent  interface{ new() }
 	NewOption interface {
 		option.Interface
 		new()
@@ -311,9 +309,7 @@ func (cft *Confort) Namespace() string {
 }
 
 type (
-	buildIdent interface {
-		build()
-	}
+	buildIdent  interface{ build() }
 	BuildOption interface {
 		option.Interface
 		buildIdent
@@ -508,9 +504,7 @@ func (cft *Confort) createContainer(ctx context.Context, name, alias string, c *
 }
 
 type (
-	runIdent interface {
-		run()
-	}
+	runIdent  interface{ run() }
 	RunOption interface {
 		option.Interface
 		runIdent
@@ -646,9 +640,7 @@ func (cft *Confort) Run(ctx context.Context, c *ContainerParams, opts ...RunOpti
 }
 
 type (
-	useIdent interface {
-		use()
-	}
+	useIdent  interface{ use() }
 	UseOption interface {
 		option.Interface
 		useIdent

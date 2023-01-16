@@ -25,9 +25,7 @@ type uniqueValueGenerator[T comparable] interface {
 }
 
 type (
-	ident interface {
-		unique()
-	}
+	ident  interface{ unique() }
 	Option interface {
 		option.Interface
 		ident
