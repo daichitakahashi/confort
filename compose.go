@@ -13,6 +13,7 @@ import (
 
 	composetypes "github.com/compose-spec/compose-go/types"
 	"github.com/daichitakahashi/confort/internal/exclusion"
+	"github.com/daichitakahashi/confort/wait"
 	"github.com/docker/cli/cli/command"
 	composecmd "github.com/docker/compose/v2/cmd/compose"
 	"github.com/docker/compose/v2/pkg/api"
@@ -23,7 +24,7 @@ import (
 )
 
 type ComposeProject struct {
-	cli            client.APIClient
+	cli            *client.Client
 	svc            api.Service
 	proj           *composetypes.Project
 	defaultTimeout time.Duration
@@ -243,6 +244,25 @@ func resolveConfigFilePath(base string, configFiles []string) (r []string, err e
 	return r, nil
 }
 
+type (
+	upIdent  interface{ up() }
+	UpOption interface {
+		option.Interface
+		upIdent
+	}
+	identOptionWaiter struct{}
+	upOption          struct {
+		option.Interface
+		upIdent
+	}
+)
+
+func WithWaiter(w *wait.Waiter) UpOption {
+	return upOption{
+		Interface: option.New(identOptionWaiter{}, w),
+	}
+}
+
 type Service struct {
 	c     *ComposeProject
 	s     composetypes.ServiceConfig
@@ -250,7 +270,7 @@ type Service struct {
 	ports Ports
 }
 
-func (c *ComposeProject) Up(ctx context.Context, service string) (*Service, error) {
+func (c *ComposeProject) Up(ctx context.Context, service string, opts ...UpOption) (*Service, error) {
 	// Check service name.
 	serviceConfig, err := c.proj.GetService(service)
 	if err != nil {
@@ -259,6 +279,14 @@ func (c *ComposeProject) Up(ctx context.Context, service string) (*Service, erro
 
 	ctx, cancel := applyTimeout(ctx, c.defaultTimeout)
 	defer cancel()
+
+	var w *wait.Waiter
+	for _, opt := range opts {
+		switch opt.Ident() {
+		case identOptionWaiter{}:
+			w = opt.Value().(*wait.Waiter)
+		}
+	}
 
 	name := fmt.Sprintf("%s-%s", c.proj.Name, service)
 	unlock, err := c.ex.LockForContainerSetup(ctx, name)
@@ -322,6 +350,17 @@ func (c *ComposeProject) Up(ctx context.Context, service string) (*Service, erro
 	info, err := c.cli.ContainerInspect(ctx, containerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get service container info: %w", err)
+	}
+
+	if w != nil {
+		err = w.Wait(ctx, &fetcher{
+			cli:         c.cli,
+			containerID: containerID,
+			ports:       info.NetworkSettings.Ports,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("error on waiting service: %w", err)
+		}
 	}
 
 	return &Service{
