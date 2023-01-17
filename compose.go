@@ -216,6 +216,13 @@ func resolveGoModDir(ctx context.Context) (string, error) {
 		// If go.mod doesn't exist, use current directory.
 		return ".", nil
 	}
+	_, err = os.Stat(v)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("go.mod not found: %s", v)
+		}
+		return "", fmt.Errorf("failed to check go.mod: %w", err)
+	}
 	return filepath.Dir(v), nil
 }
 
@@ -274,7 +281,6 @@ func (c *ComposeProject) Up(ctx context.Context, service string) (*Service, erro
 		switch s[0].State {
 		case "running":
 		case "created", "exiting":
-			fmt.Println(s[0].State)
 			doUp = true
 		case "paused":
 			return nil, fmt.Errorf("cannot start %q, unpause is not supported", service)
