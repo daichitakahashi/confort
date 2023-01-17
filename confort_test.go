@@ -1827,7 +1827,7 @@ func TestAcquire(t *testing.T) {
 			return nil
 		}
 	}
-	test := func(ports map[*confort.Container]confort.Ports) error {
+	test := func(ports map[confort.AcquisitionTarget]confort.Ports) error {
 		oneHost := ports[one].HostPort(exposed)
 		twoHost := ports[two].HostPort(exposed)
 		communicate(t, oneHost, "exchange", "")

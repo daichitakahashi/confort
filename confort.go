@@ -674,6 +674,36 @@ func WithInitFunc(init InitFunc) UseOption {
 // When other tests have already acquired an exclusive or shared lock for the container, it blocks until all
 // previous locks are released.
 func (c *Container) Use(ctx context.Context, exclusive bool, opts ...UseOption) (Ports, ReleaseFunc, error) {
+	return use(ctx, c, exclusive, opts...)
+}
+
+// AcquisitionTarget represents a target of container acquisition.
+// Container and Service satisfy this interface.
+type AcquisitionTarget interface {
+	containerIdent() string
+	containerPorts() Ports
+	exclusionControl() exclusion.Control
+}
+
+func (c *Container) containerIdent() string {
+	return c.name
+}
+
+func (c *Container) containerPorts() Ports {
+	return c.ports
+}
+
+func (c *Container) exclusionControl() exclusion.Control {
+	return c.cft.ex
+}
+
+func use(ctx context.Context, t AcquisitionTarget, exclusive bool, opts ...UseOption) (Ports, ReleaseFunc, error) {
+	var (
+		name  = t.containerIdent()
+		ports = t.containerPorts()
+		ex    = t.exclusionControl()
+	)
+
 	var initFunc InitFunc
 	for _, opt := range opts {
 		switch opt.Ident() {
@@ -685,16 +715,16 @@ func (c *Container) Use(ctx context.Context, exclusive bool, opts ...UseOption) 
 	var init func(ctx context.Context) error
 	if initFunc != nil {
 		init = func(ctx context.Context) error {
-			logging.Debugf("call InitFunc: %s", c.name)
-			return initFunc(ctx, c.ports)
+			logging.Debugf("call InitFunc: %s", name)
+			return initFunc(ctx, ports)
 		}
 	}
 	// If initFunc is not nil, it will be called after acquisition of exclusive lock.
 	// After that, the lock is downgraded to shared lock when exclusive is false.
 	// When initFunc returns error, the acquisition of lock fails.
-	logging.Debugf("acquire LockForContainerUse: %s(exclusive=%t)", c.name, exclusive)
-	unlockContainer, err := c.cft.ex.LockForContainerUse(ctx, map[string]exclusion.ContainerUseParam{
-		c.name: {
+	logging.Debugf("acquire LockForContainerUse: %s(exclusive=%t)", name, exclusive)
+	unlockContainer, err := ex.LockForContainerUse(ctx, map[string]exclusion.ContainerUseParam{
+		name: {
 			Exclusive: exclusive,
 			Init:      init,
 		},
@@ -703,21 +733,21 @@ func (c *Container) Use(ctx context.Context, exclusive bool, opts ...UseOption) 
 		return nil, nil, fmt.Errorf("confort: %w", err)
 	}
 	release := func() {
-		logging.Debugf("release LockForContainerUse: %s(exclusive=%t)", c.name, exclusive)
+		logging.Debugf("release LockForContainerUse: %s(exclusive=%t)", name, exclusive)
 		unlockContainer()
 	}
 
-	return c.ports, release, nil
+	return ports, release, nil
 }
 
 // UseExclusive acquires an exclusive lock for using the container explicitly and returns its endpoint.
 func (c *Container) UseExclusive(ctx context.Context, opts ...UseOption) (Ports, ReleaseFunc, error) {
-	return c.Use(ctx, true, opts...)
+	return use(ctx, c, true, opts...)
 }
 
 // UseShared acquires a shared lock for using the container explicitly and returns its endpoint.
 func (c *Container) UseShared(ctx context.Context, opts ...UseOption) (Ports, ReleaseFunc, error) {
-	return c.Use(ctx, false, opts...)
+	return use(ctx, c, false, opts...)
 }
 
 // Network returns docker network representation associated with Confort.
@@ -726,7 +756,7 @@ func (cft *Confort) Network() *types.NetworkResource {
 }
 
 type Acquirer struct {
-	targets []*Container
+	targets []AcquisitionTarget
 	params  map[string]exclusion.ContainerUseParam
 }
 
@@ -756,7 +786,12 @@ func Acquire() *Acquirer {
 }
 
 // Use registers a container as the target of acquiring lock.
-func (a *Acquirer) Use(c *Container, exclusive bool, opts ...UseOption) *Acquirer {
+func (a *Acquirer) Use(t AcquisitionTarget, exclusive bool, opts ...UseOption) *Acquirer {
+	var (
+		name  = t.containerIdent()
+		ports = t.containerPorts()
+	)
+
 	var initFunc InitFunc
 	for _, opt := range opts {
 		switch opt.Ident() {
@@ -768,14 +803,14 @@ func (a *Acquirer) Use(c *Container, exclusive bool, opts ...UseOption) *Acquire
 	var init func(ctx context.Context) error
 	if initFunc != nil {
 		init = func(ctx context.Context) error {
-			logging.Debugf("call InitFunc: %s", c.name)
-			return initFunc(ctx, c.ports)
+			logging.Debugf("call InitFunc: %s", name)
+			return initFunc(ctx, ports)
 		}
 	}
 
-	logging.Debugf("register target for LockForContainerUse: %s(exclusive=%t) to %p", c.name, exclusive, a)
-	a.targets = append(a.targets, c)
-	a.params[c.name] = exclusion.ContainerUseParam{
+	logging.Debugf("register target for LockForContainerUse: %s(exclusive=%t) to %p", name, exclusive, a)
+	a.targets = append(a.targets, t)
+	a.params[name] = exclusion.ContainerUseParam{
 		Exclusive: exclusive,
 		Init:      init,
 	}
@@ -783,21 +818,21 @@ func (a *Acquirer) Use(c *Container, exclusive bool, opts ...UseOption) *Acquire
 }
 
 // UseExclusive registers a container as the target of acquiring exclusive lock.
-func (a *Acquirer) UseExclusive(c *Container, opts ...UseOption) *Acquirer {
-	return a.Use(c, true, opts...)
+func (a *Acquirer) UseExclusive(t AcquisitionTarget, opts ...UseOption) *Acquirer {
+	return a.Use(t, true, opts...)
 }
 
 // UseShared registers a container as the target of acquiring shared lock.
-func (a *Acquirer) UseShared(c *Container, opts ...UseOption) *Acquirer {
-	return a.Use(c, false, opts...)
+func (a *Acquirer) UseShared(t AcquisitionTarget, opts ...UseOption) *Acquirer {
+	return a.Use(t, false, opts...)
 }
 
 // Do acquisition of locks.
-func (a *Acquirer) Do(ctx context.Context) (map[*Container]Ports, ReleaseFunc, error) {
+func (a *Acquirer) Do(ctx context.Context) (map[AcquisitionTarget]Ports, ReleaseFunc, error) {
 	if len(a.targets) == 0 {
 		return nil, nil, errors.New("no targets")
 	}
-	ex := a.targets[0].cft.ex
+	ex := a.targets[0].exclusionControl()
 
 	logging.Debugf("acquire LockForContainerUse: %p", a)
 	release, err := ex.LockForContainerUse(ctx, a.params)
@@ -805,9 +840,9 @@ func (a *Acquirer) Do(ctx context.Context) (map[*Container]Ports, ReleaseFunc, e
 		return nil, nil, err
 	}
 
-	ports := map[*Container]Ports{}
+	ports := map[AcquisitionTarget]Ports{}
 	for _, c := range a.targets {
-		ports[c] = c.ports
+		ports[c] = c.containerPorts()
 	}
 
 	logging.Debugf("release LockForContainerUse: %p", a)

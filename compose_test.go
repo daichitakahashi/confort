@@ -171,8 +171,16 @@ func TestComposeUp(t *testing.T) {
 		_ = compose.Close()
 	}()
 
-	_, err = compose.Up(ctx, "default")
+	service, err := compose.Up(ctx, "default")
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	ports, release, err := service.UseExclusive(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+
+	t.Logf("%#v", ports)
 }

@@ -239,6 +239,7 @@ func resolveConfigFilePath(base string, configFiles []string) (r []string, err e
 type Service struct {
 	c     *ComposeProject
 	s     composetypes.ServiceConfig
+	name  string
 	ports Ports
 }
 
@@ -252,7 +253,8 @@ func (c *ComposeProject) Up(ctx context.Context, service string) (*Service, erro
 	ctx, cancel := applyTimeout(ctx, c.defaultTimeout)
 	defer cancel()
 
-	unlock, err := c.ex.LockForContainerSetup(ctx, fmt.Sprintf("%s-%s", c.proj.Name, service))
+	name := fmt.Sprintf("%s-%s", c.proj.Name, service)
+	unlock, err := c.ex.LockForContainerSetup(ctx, name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire lock of %q: %w", service, err)
 	}
@@ -319,6 +321,33 @@ func (c *ComposeProject) Up(ctx context.Context, service string) (*Service, erro
 	return &Service{
 		c:     c,
 		s:     serviceConfig,
+		name:  name,
 		ports: Ports(info.NetworkSettings.Ports),
 	}, nil
+}
+
+func (s *Service) Use(ctx context.Context, exclusive bool, opts ...UseOption) (Ports, ReleaseFunc, error) {
+	return use(ctx, s, exclusive, opts...)
+}
+
+func (s *Service) containerIdent() string {
+	return s.name
+}
+
+func (s *Service) containerPorts() Ports {
+	return s.ports
+}
+
+func (s *Service) exclusionControl() exclusion.Control {
+	return s.c.ex
+}
+
+// UseExclusive acquires an exclusive lock for using the container explicitly and returns its endpoint.
+func (s *Service) UseExclusive(ctx context.Context, opts ...UseOption) (Ports, ReleaseFunc, error) {
+	return use(ctx, s, true, opts...)
+}
+
+// UseShared acquires a shared lock for using the container explicitly and returns its endpoint.
+func (s *Service) UseShared(ctx context.Context, opts ...UseOption) (Ports, ReleaseFunc, error) {
+	return use(ctx, s, false, opts...)
 }
