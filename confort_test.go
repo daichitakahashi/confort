@@ -65,6 +65,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		log.Panic(err)
 	}
+	cli.NegotiateAPIVersion(ctx)
 
 	defer func() {
 		_, err := cli.ImagesPrune(ctx, filters.NewArgs(
@@ -493,6 +494,7 @@ func TestWithClientOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	c.NegotiateAPIVersion(ctx)
 
 	// wrap transport
 	logOut := bytes.NewBuffer(nil)
@@ -735,6 +737,7 @@ func TestWithResourcePolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cli.NegotiateAPIVersion(ctx)
 
 	// define assertions
 
@@ -942,6 +945,7 @@ func TestWithResourcePolicy_reusable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cli.NegotiateAPIVersion(ctx)
 
 	cft, err := confort.New(ctx,
 		confort.WithNamespace(t.Name(), true),
@@ -1072,6 +1076,7 @@ func TestWithBeacon(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		cli.NegotiateAPIVersion(ctx)
 
 		containerName := namespace + "-tester"
 		containers, err := cli.ContainerList(ctx, types.ContainerListOptions{
@@ -1154,6 +1159,7 @@ func TestWithImageBuildOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cli.NegotiateAPIVersion(ctx)
 
 	tag := "label"
 	build := &confort.BuildParams{
@@ -1220,6 +1226,7 @@ func TestWithForceBuild_WithBuildOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cli.NegotiateAPIVersion(ctx)
 
 	tag := "force"
 	build := &confort.BuildParams{
@@ -1279,6 +1286,7 @@ func TestWithContainerConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cli.NegotiateAPIVersion(ctx)
 
 	cft, err := confort.New(ctx,
 		confort.WithNamespace(t.Name(), true),
@@ -1547,6 +1555,7 @@ func TestWithPullOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cli.NegotiateAPIVersion(ctx)
 
 	// remove target image if already exists
 	_ = removeImageIfExists(t, cli, pullImage)
@@ -1722,6 +1731,7 @@ func TestConfort_Run_UnsupportedStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cli.NegotiateAPIVersion(ctx)
 	created, err := cli.ContainerCreate(ctx, &container.Config{
 		Image: imageEcho,
 	}, &container.HostConfig{}, &network.NetworkingConfig{}, nil, containerName)

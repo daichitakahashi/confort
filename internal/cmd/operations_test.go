@@ -81,6 +81,7 @@ func TestOperation_CleanupResources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cli.NegotiateAPIVersion(ctx)
 
 	/*
 			image := uuid.NewString() + ":latest"
