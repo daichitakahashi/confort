@@ -1,5 +1,20 @@
 # Changelog
 
+## [v1.2.2](https://github.com/daichitakahashi/confort/compare/v1.2.1...v1.2.2) - 2023-01-27
+- Bump go.uber.org/multierr from 1.8.0 to 1.9.0 by @dependabot in https://github.com/daichitakahashi/confort/pull/67
+- Bump github.com/lestrrat-go/option from 1.0.0 to 1.0.1 by @dependabot in https://github.com/daichitakahashi/confort/pull/69
+- Bump github.com/docker/docker from 20.10.21+incompatible to 20.10.22+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/71
+- Bump github.com/docker/cli from 20.10.21+incompatible to 20.10.22+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/70
+- Bump github.com/daichitakahashi/gocmd from 1.0.4 to 1.0.5 by @dependabot in https://github.com/daichitakahashi/confort/pull/72
+- Bump google.golang.org/grpc from 1.51.0 to 1.52.0 by @dependabot in https://github.com/daichitakahashi/confort/pull/73
+- Bump github.com/daichitakahashi/gocmd from 1.0.5 to 1.0.6 by @dependabot in https://github.com/daichitakahashi/confort/pull/74
+- Bump github.com/daichitakahashi/gocmd from 1.0.6 to 1.0.7 by @dependabot in https://github.com/daichitakahashi/confort/pull/75
+- Bump github.com/opencontainers/runc from 1.1.1 to 1.1.2 by @dependabot in https://github.com/daichitakahashi/confort/pull/76
+- Bump github.com/docker/docker from 20.10.22+incompatible to 20.10.23+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/78
+- Bump github.com/docker/cli from 20.10.22+incompatible to 20.10.23+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/79
+- Bump google.golang.org/grpc from 1.52.0 to 1.52.3 by @dependabot in https://github.com/daichitakahashi/confort/pull/81
+- Update: add Docker API version negotiation by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/82
+
 ## [v1.2.1](https://github.com/daichitakahashi/confort/compare/v1.2.0...v1.2.1) - 2022-12-12
 - Bump github.com/daichitakahashi/testingc from 0.0.1 to 0.0.2 by @dependabot in https://github.com/daichitakahashi/confort/pull/63
 - Bump google.golang.org/grpc from 1.50.1 to 1.51.0 by @dependabot in https://github.com/daichitakahashi/confort/pull/65
