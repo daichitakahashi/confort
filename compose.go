@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/daichitakahashi/confort/wait"
+	"github.com/docker/go-connections/nat"
 )
 
 // projectDir
@@ -13,18 +14,41 @@ import (
 
 // 最初に、上記の設定を元にサービスの情報を取得した方が良い
 // 取得したい情報
-//  * サービスの情報
-//  * サービスのポート情報
+//   - サービスの情報
+//   - サービスのポート情報
+//
 // 取得方法
-//  * `docker compose convert --format json --profile PROFILE`
-//  * あるいはパースした types.Project
+//   - `docker compose convert --format json --profile PROFILE`
+//   - あるいはパースした types.Project
+type ProjectConfig struct {
+	Name        string
+	ConfigFiles []string
+	Services    []struct {
+		// services that has been enabled by profiles
+		Name         string
+		ExposedPorts nat.PortMap
+	}
+}
 
 type ComposeBackend interface {
+	Load(ctx context.Context, workingDir string, configFiles []string, envFile *string, profiles []string) (Composer, error)
+}
+
+type LoadOptions struct {
+	// WorkingDir  string
+	ConfigFiles []string
+	EnvFile     *string
+	Profiles    []string
+}
+
+type Composer interface {
 	// Up
 	// *
 	Up(ctx context.Context, service string, opts UpOptions) (Ports, error)
 	Down(ctx context.Context, services []string) error
 }
+
+func WithComposeBackend(b ComposeBackend) {}
 
 // TODO
 //  * scaleオプションがあるのが`docker compose up`だけであるため、`create & start`では代替にならない。
