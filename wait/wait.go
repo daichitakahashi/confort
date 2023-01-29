@@ -178,7 +178,7 @@ type ready struct {
 }
 
 func (w *Waiter) ready(ctx context.Context, n int) *ready {
-	if w.minSuccess <= 0 {
+	if w.minSuccess <= 0 || n <= 1 {
 		return &ready{}
 	}
 
