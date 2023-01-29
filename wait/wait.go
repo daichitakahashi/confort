@@ -9,12 +9,14 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/go-connections/nat"
 	"github.com/lestrrat-go/option"
+	"golang.org/x/sync/errgroup"
 )
 
 type Waiter struct {
-	interval time.Duration
-	timeout  time.Duration
-	check    CheckFunc
+	interval   time.Duration
+	timeout    time.Duration
+	minSuccess int
+	check      Checker
 }
 
 // Fetcher provides several ways to access the state of the container.
@@ -31,9 +33,10 @@ type (
 		option.Interface
 		wait() Option
 	}
-	identOptionInterval struct{}
-	identOptionTimeout  struct{}
-	waitOption          struct{ option.Interface }
+	identOptionInterval   struct{}
+	identOptionTimeout    struct{}
+	identOptionMinSuccess struct{}
+	waitOption            struct{ option.Interface }
 )
 
 func (o waitOption) wait() Option { return o }
@@ -52,12 +55,32 @@ func WithTimeout(d time.Duration) Option {
 	}.wait()
 }
 
+func WithMinSuccess(n int) Option {
+	return waitOption{
+		Interface: option.New(identOptionMinSuccess{}, n),
+	}.wait()
+}
+
 const (
 	defaultInterval = 500 * time.Millisecond
 	defaultTimeout  = 30 * time.Second
 )
 
-type CheckFunc func(ctx context.Context, f Fetcher) (bool, error)
+type (
+	Checker interface {
+		Check(ctx context.Context, f Fetcher) (bool, error)
+	}
+
+	Cloner interface {
+		Clone() Checker
+	}
+
+	CheckFunc func(ctx context.Context, f Fetcher) (bool, error)
+)
+
+func (fn CheckFunc) Check(ctx context.Context, f Fetcher) (bool, error) {
+	return fn(ctx, f)
+}
 
 // New creates a Waiter that waits for the container to be ready.
 // CheckFunc is the criteria for evaluating readiness. Use Fetcher to obtain
@@ -67,21 +90,25 @@ type CheckFunc func(ctx context.Context, f Fetcher) (bool, error)
 // interval and timeout by WithInterval and WithTimeout. The default value for
 // the interval is 500ms and for the timeout is 30sec.
 func New(check CheckFunc, opts ...Option) *Waiter {
+	return NewWaiter(check, opts...)
+}
+
+func NewWaiter(c Checker, opts ...Option) *Waiter {
 	w := &Waiter{
 		interval: defaultInterval,
 		timeout:  defaultTimeout,
-		check:    check,
+		check:    c,
 	}
-
 	for _, opt := range opts {
 		switch opt.Ident() {
 		case identOptionInterval{}:
 			w.interval = opt.Value().(time.Duration)
 		case identOptionTimeout{}:
 			w.timeout = opt.Value().(time.Duration)
+		case identOptionMinSuccess{}:
+			w.minSuccess = opt.Value().(int)
 		}
 	}
-
 	return w
 }
 
@@ -140,22 +167,85 @@ func CheckCommandSucceeds(cmd []string) CheckFunc {
 }
 
 // Wait calls CheckFunc with given Fetcher repeatedly until the first success.
+// Deprecated: Wait calls CheckFunc with given Fetcher repeatedly until the first success.
 func (w *Waiter) Wait(ctx context.Context, f Fetcher) error {
+	return w.WaitForReady(ctx, []Fetcher{f})
+}
+
+type ready struct {
+	sem   chan struct{}
+	ready chan struct{}
+}
+
+func (w *Waiter) ready(ctx context.Context, n int) *ready {
+	if w.minSuccess <= 0 {
+		return &ready{}
+	}
+
+	r := &ready{
+		sem:   make(chan struct{}, n),
+		ready: make(chan struct{}, 1),
+	}
+	go func() {
+		var c int
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-r.sem:
+				c++
+				if w.minSuccess <= c {
+					close(r.ready)
+					return
+				}
+			}
+		}
+	}()
+	return r
+}
+
+func (r *ready) add(ctx context.Context) {
+	go func() {
+		select {
+		case <-ctx.Done():
+		case r.sem <- struct{}{}:
+		default:
+		}
+	}()
+}
+
+func (w *Waiter) WaitForReady(ctx context.Context, f []Fetcher) error {
 	ctx, cancel := context.WithTimeout(ctx, w.timeout)
 	defer cancel()
 
-	for {
-		ok, err := w.check(ctx, f)
-		if err != nil {
-			return err
-		} else if ok {
-			return nil
-		}
+	r := w.ready(ctx, len(f))
+	cc, _ := w.check.(Cloner)
+	eg, ctx := errgroup.WithContext(ctx)
 
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(w.interval):
+	for i := range f {
+		c := w.check
+		if i > 0 && cc != nil {
+			c = cc.Clone()
 		}
+		eg.Go(func() error {
+			for {
+				ok, err := c.Check(ctx, f[i])
+				if err != nil {
+					return err
+				} else if ok {
+					r.add(ctx)
+					return nil
+				}
+
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-r.ready:
+					return nil
+				case <-time.After(w.interval):
+				}
+			}
+		})
 	}
+	return eg.Wait()
 }
