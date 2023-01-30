@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/daichitakahashi/confort/compose"
+	"github.com/daichitakahashi/confort/internal/exclusion"
 	"github.com/daichitakahashi/confort/wait"
 	"github.com/docker/docker/client"
 	"github.com/lestrrat-go/option"
@@ -13,6 +14,7 @@ import (
 type ComposeProject struct {
 	composer compose.Composer
 	cli      *client.Client
+	ex       exclusion.Control
 }
 
 type (
@@ -93,6 +95,7 @@ func WithWaiter(w *wait.Waiter) UpOption {
 }
 
 type Service struct {
+	c            *ComposeProject
 	name         string
 	image        string
 	containerIDs []string
@@ -129,13 +132,25 @@ func (c *ComposeProject) Up(ctx context.Context, service string, opts ...UpOptio
 }
 
 func (s *Service) Use(ctx context.Context, exclusive bool, opts ...UseOption) (Ports, ReleaseFunc, error) {
-	return nil, nil, nil
+	return use(ctx, s, exclusive, opts...)
+}
+
+func (s *Service) containerIdent() string {
+	return s.name
+}
+
+func (s *Service) containerPorts() Ports {
+	return s.ports
+}
+
+func (s *Service) exclusionControl() exclusion.Control {
+	return s.c.ex
 }
 
 func (s *Service) UseExclusive(ctx context.Context, opts ...UseOption) (Ports, ReleaseFunc, error) {
-	return nil, nil, nil
+	return use(ctx, s, true, opts...)
 }
 
 func (s *Service) UseShared(ctx context.Context, opts ...UseOption) (Ports, ReleaseFunc, error) {
-	return nil, nil, nil
+	return use(ctx, s, false, opts...)
 }
