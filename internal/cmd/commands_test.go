@@ -75,8 +75,6 @@ func TestStopCommand_IntegrationDisabled(t *testing.T) {
 }
 
 func TestTestCommand_determineGoCommand(t *testing.T) {
-	t.Parallel()
-
 	curVer, err := gocmd.CurrentVersion()
 	if err != nil {
 		t.Fatal(err)
@@ -129,8 +127,6 @@ func TestTestCommand_determineGoCommand(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
-			t.Parallel()
-
 			mode := gocmd.ModeFallback
 			if tc.goMode != 0 {
 				mode = tc.goMode
