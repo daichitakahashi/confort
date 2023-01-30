@@ -53,9 +53,10 @@ type Confort struct {
 }
 
 type (
+	newIdent  interface{ new() }
 	NewOption interface {
 		option.Interface
-		new() NewOption
+		newIdent
 	}
 	identOptionClientOptions struct{}
 	identOptionNamespace     struct{}
@@ -66,18 +67,30 @@ type (
 	identOptionDefaultTimeout struct{}
 	identOptionResourcePolicy struct{}
 	identOptionBeacon         struct{}
-	newOption                 struct{ option.Interface }
-)
+	newOption                 struct {
+		option.Interface
+		newIdent
+	}
 
-func (o newOption) new() NewOption { return o }
+	NewComposeOption interface {
+		option.Interface
+		newIdent
+		composeIdent
+	}
+	newComposeOption struct {
+		option.Interface
+		newIdent
+		composeIdent
+	}
+)
 
 // WithClientOptions sets options for Docker API client.
 // Default option is client.FromEnv.
 // For detail, see client.NewClientWithOpts.
-func WithClientOptions(opts ...client.Opt) NewOption {
-	return newOption{
+func WithClientOptions(opts ...client.Opt) NewComposeOption {
+	return newComposeOption{
 		Interface: option.New(identOptionClientOptions{}, opts),
-	}.new()
+	}
 }
 
 // WithNamespace specifies namespace of Confort.
@@ -92,31 +105,31 @@ func WithNamespace(namespace string, force bool) NewOption {
 			namespace: namespace,
 			force:     force,
 		}),
-	}.new()
+	}
 }
 
 // WithDefaultTimeout sets the default timeout for each request to the Docker API and beacon server.
 // The default value of the "default timeout" is 1 min.
-// If default timeout is 0, Confort doesn't apply any timeout for ctx.
+// If default timeout is 0, Confort or ComposeProject doesn't apply any timeout for ctx.
 //
 // If a timeout has already been set to ctx, the default timeout is not applied.
-func WithDefaultTimeout(d time.Duration) NewOption {
-	return newOption{
+func WithDefaultTimeout(d time.Duration) NewComposeOption {
+	return newComposeOption{
 		Interface: option.New(identOptionDefaultTimeout{}, d),
-	}.new()
+	}
 }
 
 // WithResourcePolicy overrides the policy for handling Docker resources that already exist,
 // such as containers and networks.
 // By default, ResourcePolicyReuse or the value of the CFT_RESOURCE_POLICY environment variable, if set, is used.
 // The "confort test" command has "-policy" option that overrides the variable.
-func WithResourcePolicy(s ResourcePolicy) NewOption {
-	return newOption{
+func WithResourcePolicy(s ResourcePolicy) NewComposeOption {
+	return newComposeOption{
 		Interface: option.New(identOptionResourcePolicy{}, s),
-	}.new()
+	}
 }
 
-// WithBeacon configures Confort to integrate with a starting beacon server.
+// WithBeacon configures Confort or ComposeProject to integrate with a starting beacon server.
 // The beacon server is started by the "confort" command.
 // The address of server will be read from CFT_BEACON_ADDR or lock file specified as CFT_LOCKFILE.
 //
@@ -130,10 +143,10 @@ func WithResourcePolicy(s ResourcePolicy) NewOption {
 // The default filename is ".confort.lock" and you don't need to set the file name as CFT_LOCKFILE.
 // If you set a custom filename with "-lock-file" option, also you have to set the file name as CFT_LOCKFILE,
 // or you can set address that read from lock file as CFT_BEACON_ADDR.
-func WithBeacon() NewOption {
-	return newOption{
+func WithBeacon() NewComposeOption {
+	return newComposeOption{
 		Interface: option.New(identOptionBeacon{}, true),
-	}.new()
+	}
 }
 
 // New creates Confort instance which is an interface of controlling containers.
@@ -151,7 +164,7 @@ func New(ctx context.Context, opts ...NewOption) (cft *Confort, err error) {
 		beaconConn   *beacon.Connection
 		ex           = exclusion.NewControl()
 
-		clientOps = []client.Opt{
+		clientOpts = []client.Opt{
 			client.FromEnv,
 		}
 		namespace = os.Getenv(beacon.NamespaceEnv)
@@ -165,7 +178,7 @@ func New(ctx context.Context, opts ...NewOption) (cft *Confort, err error) {
 	for _, opt := range opts {
 		switch opt.Ident() {
 		case identOptionClientOptions{}:
-			clientOps = opt.Value().([]client.Opt)
+			clientOpts = opt.Value().([]client.Opt)
 		case identOptionNamespace{}:
 			o := opt.Value().(namespaceOption)
 			if namespace == "" || o.force {
@@ -219,7 +232,7 @@ func New(ctx context.Context, opts ...NewOption) (cft *Confort, err error) {
 
 	ctx, cancel := applyTimeout(ctx, timeout)
 	defer cancel()
-	cli, err := client.NewClientWithOpts(clientOps...)
+	cli, err := client.NewClientWithOpts(clientOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("confort: %w", err)
 	}
@@ -304,38 +317,40 @@ func (cft *Confort) Namespace() string {
 }
 
 type (
+	buildIdent  interface{ build() }
 	BuildOption interface {
 		option.Interface
-		build() BuildOption
+		buildIdent
 	}
 	identOptionImageBuildOptions struct{}
 	identOptionForceBuild        struct{}
 	identOptionBuildOutput       struct{}
-	buildOption                  struct{ option.Interface }
+	buildOption                  struct {
+		option.Interface
+		buildIdent
+	}
 )
-
-func (o buildOption) build() BuildOption { return o }
 
 // WithImageBuildOptions modifies the configuration of build.
 // The argument `option` already contains required values, according to Build.
 func WithImageBuildOptions(f func(option *types.ImageBuildOptions)) BuildOption {
 	return buildOption{
 		Interface: option.New(identOptionImageBuildOptions{}, f),
-	}.build()
+	}
 }
 
 // WithForceBuild forces to build an image even if it already exists.
 func WithForceBuild() BuildOption {
 	return buildOption{
 		Interface: option.New(identOptionForceBuild{}, true),
-	}.build()
+	}
 }
 
 // WithBuildOutput sets dst that the output during build will be written.
 func WithBuildOutput(dst io.Writer) BuildOption {
 	return buildOption{
 		Interface: option.New(identOptionBuildOutput{}, dst),
-	}.build()
+	}
 }
 
 type BuildParams struct {
@@ -517,9 +532,10 @@ func (cft *Confort) createContainer(ctx context.Context, name, alias string, c *
 }
 
 type (
+	runIdent  interface{ run() }
 	RunOption interface {
 		option.Interface
-		run() RunOption
+		runIdent
 	}
 	identOptionContainerConfig   struct{}
 	identOptionHostConfig        struct{}
@@ -530,10 +546,11 @@ type (
 		pullOption *types.ImagePullOptions
 		pullOut    io.Writer
 	}
-	runOption struct{ option.Interface }
+	runOption struct {
+		option.Interface
+		runIdent
+	}
 )
-
-func (o runOption) run() RunOption { return o }
 
 // WithContainerConfig modifies the configuration of container.
 // The argument `config` already contains required values to create container,
@@ -541,7 +558,7 @@ func (o runOption) run() RunOption { return o }
 func WithContainerConfig(f func(config *container.Config)) RunOption {
 	return runOption{
 		Interface: option.New(identOptionContainerConfig{}, f),
-	}.run()
+	}
 }
 
 // WithHostConfig modifies the configuration of container from host side.
@@ -550,7 +567,7 @@ func WithContainerConfig(f func(config *container.Config)) RunOption {
 func WithHostConfig(f func(config *container.HostConfig)) RunOption {
 	return runOption{
 		Interface: option.New(identOptionHostConfig{}, f),
-	}.run()
+	}
 }
 
 // WithNetworkingConfig modifies the configuration of network.
@@ -559,7 +576,7 @@ func WithHostConfig(f func(config *container.HostConfig)) RunOption {
 func WithNetworkingConfig(f func(config *network.NetworkingConfig)) RunOption {
 	return runOption{
 		Interface: option.New(identOptionNetworkingConfig{}, f),
-	}.run()
+	}
 }
 
 // WithConfigConsistency enables/disables the test checking consistency of configurations.
@@ -568,7 +585,7 @@ func WithNetworkingConfig(f func(config *network.NetworkingConfig)) RunOption {
 func WithConfigConsistency(check bool) RunOption {
 	return runOption{
 		Interface: option.New(identOptionConfigConsistency{}, check),
-	}.run()
+	}
 }
 
 // WithPullOptions enables to pull image that not exists.
@@ -582,7 +599,7 @@ func WithPullOptions(opts *types.ImagePullOptions, out io.Writer) RunOption {
 			pullOption: opts,
 			pullOut:    out,
 		}),
-	}.run()
+	}
 }
 
 // Container represents a created container and its controller.
@@ -651,17 +668,17 @@ func (cft *Confort) Run(ctx context.Context, c *ContainerParams, opts ...RunOpti
 }
 
 type (
+	useIdent  interface{ use() }
 	UseOption interface {
 		option.Interface
-		use() UseOption
+		useIdent
 	}
 	identOptionInitFunc struct{}
 	useOption           struct {
 		option.Interface
+		useIdent
 	}
 )
-
-func (o useOption) use() UseOption { return o }
 
 type (
 	ReleaseFunc func()
@@ -677,7 +694,7 @@ type (
 func WithInitFunc(init InitFunc) UseOption {
 	return useOption{
 		Interface: option.New(identOptionInitFunc{}, init),
-	}.use()
+	}
 }
 
 // Use acquires a lock for using the container and returns its endpoint. If exclusive is true, it requires to
