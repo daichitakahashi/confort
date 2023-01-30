@@ -3,47 +3,68 @@ package confort
 import (
 	"context"
 
-	"github.com/daichitakahashi/confort/wait"
+	"github.com/daichitakahashi/confort/compose"
 	"github.com/docker/go-connections/nat"
 )
 
 type (
-	ComposeBackend interface {
-		Load(ctx context.Context, projectDir string, configFiles []string, envFile *string, profiles []string) (Composer, error)
-	}
-	Composer interface {
-		// Up
-		// *
-		Up(ctx context.Context, service string, opts UpOptions) (Ports, error)
-		Down(ctx context.Context, services []string) error
-	}
-
-	// UpOptions
-	// --always-recreate-deps		Recreate dependent containers. Incompatible with --no-recreate.
-	// --build		Build images before starting containers.
-	// --force-recreate		Recreate containers even if their configuration and image haven't changed.
-	// --no-deps		Don't start linked services.s
-	// --no-recreate		If containers already exist, don't recreate them. Incompatible with --force-recreate.
-	// --pull	missing	Pull image before running ("always"|"missing"|"never")
-	// --remove-orphans		Remove containers for services not defined in the Compose file.
-	// --renew-anon-volumes , -V		Recreate anonymous volumes instead of retrieving data from the previous containers.
-	// --timeout , -t	10	Use this timeout in seconds for container shutdown when attached or when containers are already running.
-	// --timestamps		Show timestamps.
-	// --wait		Wait for services to be running|healthy. Implies detached mode.
-	UpOptions struct {
-		Scale  int
-		Waiter *wait.Waiter
-	}
-)
-
-type (
-	// ComposeBackend implementation using Docker Compose CLI.
+	// Backend implementation using Docker Compose CLI.
 	composeBackend struct{}
 
 	composer struct {
 		proj projectConfig
 	}
 
+	/*
+		{
+		  "name": "compose-scale",
+		  "services": {
+		    "observer": {
+		      "command": [
+		        "sleep",
+		        "infinity"
+		      ],
+		      "entrypoint": null,
+		      "image": "alpine:3.16.2",
+		      "networks": {
+		        "default": null
+		      }
+		    },
+		    "server": {
+		      "command": null,
+		      "deploy": {
+		        "mode": "replicated",
+		        "replicas": 3,
+		        "resources": {},
+		        "placement": {},
+		        "endpoint_mode": "vip"
+		      },
+		      "entrypoint": null,
+		      "environment": {
+		        "HOGE": "VALUE"
+		      },
+		      "image": "nginx:1.23.2",
+		      "networks": {
+		        "default": null
+		      },
+		      "ports": [
+		        {
+		          "mode": "ingress",
+		          "target": 80,
+		          "protocol": "tcp"
+		        }
+		      ]
+		    }
+		  },
+		  "networks": {
+		    "default": {
+		      "name": "compose-scale_default",
+		      "ipam": {},
+		      "external": false
+		    }
+		  }
+		}
+	*/
 	projectConfig struct {
 		Name        string
 		ConfigFiles []string
@@ -55,13 +76,13 @@ type (
 	}
 )
 
-func (composeBackend) Load(ctx context.Context, projectDir string, configFiles []string, envFile *string, profiles []string) (Composer, error) {
+func (composeBackend) Load(ctx context.Context, projectDir string, configFiles []string, envFile *string, profiles []string) (compose.Composer, error) {
 	return &composer{}, nil
 }
 
-var _ ComposeBackend = (*composeBackend)(nil)
+var _ compose.Backend = (*composeBackend)(nil)
 
-func (c composer) Up(ctx context.Context, service string, opts UpOptions) (Ports, error) {
+func (c composer) Up(ctx context.Context, service string, opts compose.UpOptions) (*compose.Service, error) {
 	//TODO implement me
 	panic("implement me")
 }
@@ -71,4 +92,4 @@ func (c composer) Down(ctx context.Context, services []string) error {
 	panic("implement me")
 }
 
-var _ Composer = (*composer)(nil)
+var _ compose.Composer = (*composer)(nil)
