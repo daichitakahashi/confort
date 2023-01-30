@@ -158,8 +158,6 @@ func TestOperation_CleanupResources(t *testing.T) {
 }
 
 func TestExecuteProcess(t *testing.T) {
-	t.Parallel()
-
 	expect := os.Getenv("BEACON_INTEGRATION_EXECUTE_TEST")
 	switch expect {
 	case "success":
@@ -172,8 +170,6 @@ func TestExecuteProcess(t *testing.T) {
 }
 
 func TestOperation_ExecuteTest(t *testing.T) {
-	t.Parallel()
-
 	ctx := context.Background()
 	op := NewOperation()
 	args := []string{"-run", "TestExecuteProcess", "-v"}
