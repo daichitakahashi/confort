@@ -60,7 +60,7 @@ func Compose(ctx context.Context, configFiles []string, opts ...ComposeOption) (
 	}
 	apiClient.NegotiateAPIVersion(ctx)
 
-	composer, err := be.Load(ctx, "", configFiles, nil, nil)
+	composer, err := be.Load(ctx, "", configFiles, nil, "")
 	if err != nil {
 		return nil, fmt.Errorf("compose: %w", err)
 	}
@@ -106,8 +106,8 @@ type Service struct {
 
 func (c *ComposeProject) Up(ctx context.Context, service string, opts ...UpOption) (*Service, error) {
 	svc, err := c.composer.Up(ctx, service, compose.UpOptions{
-		Scale:  0,
-		Waiter: nil,
+		Scale:           0,
+		ScalingStrategy: compose.ScalingStrategyScaleOut,
 	})
 	if err != nil {
 		return nil, err

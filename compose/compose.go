@@ -2,19 +2,19 @@ package compose
 
 import (
 	"context"
-
-	"github.com/daichitakahashi/confort/wait"
 )
 
 type (
 	Backend interface {
-		Load(ctx context.Context, projectDir string, configFiles []string, envFile *string, profiles []string) (Composer, error)
+		// TODO: ResourcePolicy
+		Load(ctx context.Context, projectDir string, configFiles, profiles []string, envFile string) (Composer, error)
 	}
+
 	Composer interface {
-		// Up
-		// *
+		ProjectName() string
 		Up(ctx context.Context, service string, opts UpOptions) (*Service, error)
-		Down(ctx context.Context, services []string) error
+		RemoveCreated(ctx context.Context, opts RemoveOptions) error
+		Down(ctx context.Context, opts DownOptions) error
 	}
 
 	// UpOptions
@@ -27,17 +27,30 @@ type (
 	// --remove-orphans		Remove containers for services not defined in the Compose file.
 	// --renew-anon-volumes , -V		Recreate anonymous volumes instead of retrieving data from the previous containers.
 	// --timeout , -t	10	Use this timeout in seconds for container shutdown when attached or when containers are already running.
-	// --timestamps		Show timestamps.
-	// --wait		Wait for services to be running|healthy. Implies detached mode.
 	UpOptions struct {
-		Scale  int
-		Waiter *wait.Waiter
+		Scale           int
+		ScalingStrategy ScalingStrategy
+	}
+
+	RemoveOptions struct {
+		RemoveAnonymousVolumes bool
+	}
+
+	DownOptions struct {
+		RemoveOrphans bool
+		RemoveVolumes bool
 	}
 
 	Service struct {
 		Name         string
-		Image        string
 		ContainerIDs []string
 		Env          map[string]string
 	}
+)
+
+type ScalingStrategy int
+
+const (
+	ScalingStrategyScaleOut ScalingStrategy = iota
+	ScalingStrategyConsistent
 )
