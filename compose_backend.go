@@ -24,6 +24,7 @@ type (
 		cli           *client.Client
 		dockerCompose func(ctx context.Context, args ...string) *exec.Cmd
 		proj          projectConfig
+		policy        compose.ResourcePolicy
 
 		m        sync.Mutex
 		services map[string]bool // services launched
@@ -42,21 +43,21 @@ type (
 	}
 )
 
-func (b *composeBackend) Load(ctx context.Context, projectDir string, configFiles, profiles []string, envFile string) (compose.Composer, error) {
+func (b *composeBackend) Load(ctx context.Context, opts compose.LoadOptions) (compose.Composer, error) {
 	args := []string{
 		"compose",
 	}
-	if projectDir != "" {
-		args = append(args, []string{"--project-dir", projectDir}...)
+	if opts.ProjectDir != "" {
+		args = append(args, []string{"--project-dir", opts.ProjectDir}...)
 	}
-	for _, f := range configFiles {
+	for _, f := range opts.ConfigFiles {
 		args = append(args, []string{"--file", f}...)
 	}
-	for _, p := range profiles {
+	for _, p := range opts.Profiles {
 		args = append(args, []string{"--profile", p}...)
 	}
-	if envFile != "" {
-		args = append(args, []string{"--env-file", envFile}...)
+	if opts.EnvFile != "" {
+		args = append(args, []string{"--env-file", opts.EnvFile}...)
 	}
 	dockerCompose := func(ctx context.Context, commandArgs ...string) *exec.Cmd {
 		return exec.CommandContext(ctx, "docker", append(args, commandArgs...)...)
@@ -77,6 +78,8 @@ func (b *composeBackend) Load(ctx context.Context, projectDir string, configFile
 		cli:           b.cli,
 		dockerCompose: dockerCompose,
 		proj:          config,
+		policy:        opts.Policy,
+		services:      map[string]bool{},
 	}, nil
 }
 
@@ -103,20 +106,27 @@ func (c *composer) Up(ctx context.Context, service string, opts compose.UpOption
 	}
 
 	// Get existing containers of the service
-	list, err := c.cli.ContainerList(ctx, types.ContainerListOptions{
+	filter := types.ContainerListOptions{
 		Filters: filters.NewArgs(
 			filters.Arg("com.docker.compose.project", c.proj.Name),
 			filters.Arg("com.docker.compose.service", service),
 		),
-	})
+	}
+	list, err := c.cli.ContainerList(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
 
-	// Check consistence of container num, if required.
-	if opts.ScalingStrategy == compose.ScalingStrategyConsistent &&
-		0 < len(list) && len(list) != requiredContainerN {
-		return nil, errors.New("containers already exist, but its number is inconsistent with the request")
+	initiate := len(list) == 0
+
+	if !initiate {
+		if !c.policy.AllowReuse {
+			return nil, fmt.Errorf("service conainter %q already exist", service)
+		}
+		// Check consistence of container num, if required.
+		if opts.ScalingStrategy == compose.ScalingStrategyConsistent && len(list) != requiredContainerN {
+			return nil, errors.New("containers already exist, but its number is inconsistent with the request")
+		}
 	}
 
 	if len(list) < requiredContainerN { // More containers are required.
@@ -135,23 +145,17 @@ func (c *composer) Up(ctx context.Context, service string, opts compose.UpOption
 			return nil, err
 		}
 
-		// Service is initiated by this op.
-		if len(list) == 0 {
-			c.m.Lock()
-			c.services[service] = true
-			c.m.Unlock()
-		}
-
-		list, err = c.cli.ContainerList(ctx, types.ContainerListOptions{
-			All: true,
-			Filters: filters.NewArgs(
-				filters.Arg("com.docker.compose.project", c.proj.Name),
-				filters.Arg("com.docker.compose.service", service),
-			),
-		})
+		list, err = c.cli.ContainerList(ctx, filter)
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	// Set service as a target of cleanup.
+	if c.policy.Remove && (initiate || c.policy.Takeover) {
+		c.m.Lock()
+		c.services[service] = true
+		c.m.Unlock()
 	}
 
 	// Sort containers according to container number.

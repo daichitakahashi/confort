@@ -60,7 +60,13 @@ func Compose(ctx context.Context, configFiles []string, opts ...ComposeOption) (
 	}
 	apiClient.NegotiateAPIVersion(ctx)
 
-	composer, err := be.Load(ctx, "", configFiles, nil, "")
+	composer, err := be.Load(ctx, compose.LoadOptions{
+		ProjectDir:  "",
+		ConfigFiles: nil,
+		Profiles:    nil,
+		EnvFile:     "",
+		Policy:      compose.ResourcePolicy{},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("compose: %w", err)
 	}

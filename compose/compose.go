@@ -6,8 +6,20 @@ import (
 
 type (
 	Backend interface {
-		// TODO: ResourcePolicy
-		Load(ctx context.Context, projectDir string, configFiles, profiles []string, envFile string) (Composer, error)
+		Load(ctx context.Context, opts LoadOptions) (Composer, error)
+	}
+
+	ResourcePolicy struct {
+		AllowReuse bool
+		Remove     bool
+		Takeover   bool
+	}
+	LoadOptions struct {
+		ProjectDir  string
+		ConfigFiles []string
+		Profiles    []string
+		EnvFile     string
+		Policy      ResourcePolicy
 	}
 
 	Composer interface {
