@@ -6,7 +6,7 @@ require (
 	github.com/daichitakahashi/gocmd v1.0.7
 	github.com/daichitakahashi/oncewait v1.0.0
 	github.com/daichitakahashi/testingc v0.0.2
-	github.com/docker/cli v20.10.23+incompatible
+	github.com/docker/cli v23.0.0+incompatible
 	github.com/docker/docker v20.10.23+incompatible
 	github.com/docker/go-connections v0.4.0
 	github.com/goccy/go-reflect v1.2.0
@@ -42,6 +42,7 @@ require (
 	github.com/jackc/pgtype v1.12.0 // indirect
 	github.com/jackc/puddle v1.3.0 // indirect
 	github.com/moby/buildkit v0.10.3 // indirect
+	github.com/moby/patternmatcher v0.5.0 // indirect
 	github.com/moby/sys/mount v0.3.2 // indirect
 	github.com/moby/sys/mountinfo v0.6.1 // indirect
 	github.com/moby/sys/symlink v0.2.0 // indirect
