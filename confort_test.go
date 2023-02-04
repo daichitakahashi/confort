@@ -1768,7 +1768,7 @@ func TestConfort_Run_UnsupportedStatus(t *testing.T) {
 	}
 
 	// unsupported container status "exited"
-	err = cli.ContainerStop(ctx, created.ID, nil)
+	err = cli.ContainerStop(ctx, created.ID, container.StopOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
