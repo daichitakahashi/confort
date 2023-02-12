@@ -1,8 +1,8 @@
 package confort
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -13,10 +13,12 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
+	"github.com/goccy/go-yaml"
+	"go.uber.org/multierr"
 )
 
 type (
-	// Backend implementation using Docker Compose CLI.
+	// compose.ComposeBackend implementation using Docker Compose CLI.
 	composeBackend struct {
 		cli *client.Client
 	}
@@ -26,61 +28,120 @@ type (
 		proj          projectConfig
 		policy        compose.ResourcePolicy
 
-		m        sync.Mutex
-		services map[string]bool // services launched
+		m                  sync.Mutex
+		services           map[string]*upService // services launched
+		resourceLabel      string
+		resourceLabelValue string
 	}
 
+	// configuration models
 	projectConfig struct {
-		Name     string                    `json:"name"`
-		Services map[string]projectService `json:"services"`
+		Name     string                    `yaml:"name"`
+		Services map[string]projectService `yaml:"services"`
 	}
 	projectService struct {
-		Environment map[string]string `json:"environment"`
-		Deploy      serviceDeploy     `json:"deploy"`
+		Environment map[string]string `yaml:"environment"`
+		Deploy      serviceDeploy     `yaml:"deploy"`
 	}
 	serviceDeploy struct {
-		Replicas int `json:"replicas"`
+		Replicas int `yaml:"replicas"`
+	}
+
+	upService struct {
+		remove  bool
+		service *compose.Service
 	}
 )
 
-func (b *composeBackend) Load(ctx context.Context, opts compose.LoadOptions) (compose.Composer, error) {
+func (b *composeBackend) Load(ctx context.Context, configFile string, opts compose.LoadOptions) (compose.Composer, error) {
 	args := []string{
 		"compose",
 	}
 	if opts.ProjectDir != "" {
-		args = append(args, []string{"--project-dir", opts.ProjectDir}...)
+		args = append(args, "--project-directory", opts.ProjectDir)
 	}
-	for _, f := range opts.ConfigFiles {
-		args = append(args, []string{"--file", f}...)
+	if opts.ProjectName != "" {
+		args = append(args, "--project-name", opts.ProjectName)
+	}
+	args = append(args, "--file", configFile)
+	for _, f := range opts.OverrideConfigFiles {
+		args = append(args, "--file", f)
 	}
 	for _, p := range opts.Profiles {
-		args = append(args, []string{"--profile", p}...)
+		args = append(args, "--profile", p)
 	}
 	if opts.EnvFile != "" {
-		args = append(args, []string{"--env-file", opts.EnvFile}...)
+		args = append(args, "--env-file", opts.EnvFile)
 	}
-	dockerCompose := func(ctx context.Context, commandArgs ...string) *exec.Cmd {
-		return exec.CommandContext(ctx, "docker", append(args, commandArgs...)...)
-	}
+	args = append(args, "config")
 
-	// Load unified config as json.
-	raw, err := dockerCompose(ctx, "convert", "--format", "json").Output()
+	// Load canonical config.
+	canonicalConfig, err := exec.CommandContext(ctx, "docker", args...).Output()
 	if err != nil {
 		return nil, err
 	}
-	var config projectConfig
-	err = json.Unmarshal(raw, &config)
+
+	v := map[string]any{}
+	err = yaml.Unmarshal(canonicalConfig, &v)
+	if err != nil {
+		return nil, err
+	}
+	injectResourceLabel(v, "services", opts.ResourceIdentifierLabel, opts.ResourceIdentifier)
+	injectResourceLabel(v, "volumes", opts.ResourceIdentifierLabel, opts.ResourceIdentifier)
+	injectResourceLabel(v, "networks", opts.ResourceIdentifierLabel, opts.ResourceIdentifier)
+	modifiedConfig, err := yaml.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+
+	dockerCompose := func(ctx context.Context, commandArgs ...string) *exec.Cmd {
+		args := []string{"compose", "--file", "-"}
+		if opts.ProjectDir != "" {
+			args = append(args, "--project-directory", opts.ProjectDir)
+		}
+		cmd := exec.CommandContext(ctx, "docker", append(args, commandArgs...)...)
+		cmd.Stdin = bytes.NewReader(modifiedConfig)
+		return cmd
+	}
+
+	var proj projectConfig
+	err = yaml.Unmarshal(modifiedConfig, &proj)
 	if err != nil {
 		return nil, err
 	}
 
 	return &composer{
-		cli:           b.cli,
-		dockerCompose: dockerCompose,
-		proj:          config,
-		policy:        opts.Policy,
-		services:      map[string]bool{},
+		cli:                b.cli,
+		dockerCompose:      dockerCompose,
+		proj:               proj,
+		policy:             opts.Policy,
+		services:           map[string]*upService{},
+		resourceLabel:      opts.ResourceIdentifierLabel,
+		resourceLabelValue: opts.ResourceIdentifier,
 	}, nil
+}
+
+func injectResourceLabel(v map[string]any, topLevel, labelName, labelValue string) {
+	resources, ok := v[topLevel].(map[string]any)
+	if !ok {
+		return
+	}
+	for _, r := range resources {
+		resource, ok := r.(map[string]any)
+		if !ok {
+			continue
+		}
+		if external, _ := resource["external"].(bool); external {
+			// skip external resource
+			continue
+		}
+		labels, ok := resource["labels"].(map[string]string)
+		if !ok {
+			labels = map[string]string{}
+			resource["labels"] = labels
+		}
+		labels[labelName] = labelValue
+	}
 }
 
 var _ compose.Backend = (*composeBackend)(nil)
@@ -108,8 +169,8 @@ func (c *composer) Up(ctx context.Context, service string, opts compose.UpOption
 	// Get existing containers of the service
 	filter := types.ContainerListOptions{
 		Filters: filters.NewArgs(
-			filters.Arg("com.docker.compose.project", c.proj.Name),
-			filters.Arg("com.docker.compose.service", service),
+			filters.Arg("label", fmt.Sprintf("com.docker.compose.project=%s", c.proj.Name)),
+			filters.Arg("label", fmt.Sprintf("com.docker.compose.service=%s", service)),
 		),
 	}
 	list, err := c.cli.ContainerList(ctx, filter)
@@ -118,13 +179,16 @@ func (c *composer) Up(ctx context.Context, service string, opts compose.UpOption
 	}
 
 	initiate := len(list) == 0
+	c.m.Lock()
+	_, using := c.services[service]
+	c.m.Unlock()
 
 	if !initiate {
-		if !c.policy.AllowReuse {
+		if !using && !c.policy.AllowReuse {
 			return nil, fmt.Errorf("service conainter %q already exist", service)
 		}
 		// Check consistence of container num, if required.
-		if opts.ScalingStrategy == compose.ScalingStrategyConsistent && len(list) != requiredContainerN {
+		if opts.ScalingPolicy == compose.ScalingPolicyConsistent && len(list) != requiredContainerN {
 			return nil, errors.New("containers already exist, but its number is inconsistent with the request")
 		}
 	}
@@ -151,13 +215,6 @@ func (c *composer) Up(ctx context.Context, service string, opts compose.UpOption
 		}
 	}
 
-	// Set service as a target of cleanup.
-	if c.policy.Remove && (initiate || c.policy.Takeover) {
-		c.m.Lock()
-		c.services[service] = true
-		c.m.Unlock()
-	}
-
 	// Sort containers according to container number.
 	sort.Slice(list, func(i, j int) bool {
 		return list[i].Names[0] < list[j].Names[0]
@@ -167,6 +224,22 @@ func (c *composer) Up(ctx context.Context, service string, opts compose.UpOption
 		containerIDs = append(containerIDs, c.ID)
 	}
 
+	// Save service info
+	c.m.Lock()
+	if using {
+		c.services[service].service.ContainerIDs = containerIDs // Update IDs of scaled container
+	} else {
+		c.services[service] = &upService{
+			remove: c.policy.Remove && (initiate || c.policy.Takeover), // Remove or not
+			service: &compose.Service{
+				Name:         service,
+				ContainerIDs: containerIDs,
+				Env:          s.Environment,
+			},
+		}
+	}
+	c.m.Unlock()
+
 	return &compose.Service{
 		Name:         service,
 		ContainerIDs: containerIDs,
@@ -175,6 +248,7 @@ func (c *composer) Up(ctx context.Context, service string, opts compose.UpOption
 }
 
 func (c *composer) RemoveCreated(ctx context.Context, opts compose.RemoveOptions) error {
+	// Remove containers.
 	args := []string{
 		"rm", "--force", "--stop",
 	}
@@ -182,24 +256,43 @@ func (c *composer) RemoveCreated(ctx context.Context, opts compose.RemoveOptions
 		args = append(args, "--volumes")
 	}
 	c.m.Lock()
-	for service := range c.services { // Select created services
-		args = append(args, service)
+	for name, service := range c.services { // Select created services
+		if service.remove {
+			args = append(args, name)
+		}
 	}
 	c.m.Unlock()
-	return c.dockerCompose(ctx, args...).Run()
-}
+	err := multierr.Append(
+		nil,
+		c.dockerCompose(ctx, args...).Run(),
+	)
 
-func (c *composer) Down(ctx context.Context, opts compose.DownOptions) error {
-	args := []string{
-		"down",
+	// Remove volumes.
+	f := filters.NewArgs(
+		filters.Arg("label", fmt.Sprintf("com.docker.compose.project=%s", c.proj.Name)),
+		filters.Arg("label", fmt.Sprintf("%s=%s", c.resourceLabel, c.resourceLabelValue)),
+	)
+	volumes, e := c.cli.VolumeList(ctx, f)
+	err = multierr.Append(err, e)
+	for _, v := range volumes.Volumes {
+		err = multierr.Append(
+			err,
+			c.cli.VolumeRemove(ctx, v.Name, false),
+		)
 	}
-	if opts.RemoveOrphans {
-		args = append(args, "--remove--orphans")
+
+	// Remove networks
+	networks, e := c.cli.NetworkList(ctx, types.NetworkListOptions{
+		Filters: f,
+	})
+	err = multierr.Append(err, e)
+	for _, n := range networks {
+		err = multierr.Append(
+			err,
+			c.cli.NetworkRemove(ctx, n.ID),
+		)
 	}
-	if opts.RemoveVolumes {
-		args = append(args, "--volumes")
-	}
-	return c.dockerCompose(ctx, args...).Run()
+	return err
 }
 
 var _ compose.Composer = (*composer)(nil)

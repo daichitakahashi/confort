@@ -6,7 +6,7 @@ import (
 
 type (
 	Backend interface {
-		Load(ctx context.Context, opts LoadOptions) (Composer, error)
+		Load(ctx context.Context, config string, opts LoadOptions) (Composer, error)
 	}
 
 	ResourcePolicy struct {
@@ -15,18 +15,20 @@ type (
 		Takeover   bool
 	}
 	LoadOptions struct {
-		ProjectDir  string
-		ConfigFiles []string
-		Profiles    []string
-		EnvFile     string
-		Policy      ResourcePolicy
+		ProjectDir              string
+		ProjectName             string
+		OverrideConfigFiles     []string
+		Profiles                []string
+		EnvFile                 string
+		Policy                  ResourcePolicy
+		ResourceIdentifierLabel string
+		ResourceIdentifier      string
 	}
 
 	Composer interface {
 		ProjectName() string
 		Up(ctx context.Context, service string, opts UpOptions) (*Service, error)
 		RemoveCreated(ctx context.Context, opts RemoveOptions) error
-		Down(ctx context.Context, opts DownOptions) error
 	}
 
 	// UpOptions
@@ -40,17 +42,12 @@ type (
 	// --renew-anon-volumes , -V		Recreate anonymous volumes instead of retrieving data from the previous containers.
 	// --timeout , -t	10	Use this timeout in seconds for container shutdown when attached or when containers are already running.
 	UpOptions struct {
-		Scale           int
-		ScalingStrategy ScalingStrategy
+		Scale         int
+		ScalingPolicy ScalingPolicy
 	}
 
 	RemoveOptions struct {
 		RemoveAnonymousVolumes bool
-	}
-
-	DownOptions struct {
-		RemoveOrphans bool
-		RemoveVolumes bool
 	}
 
 	Service struct {
@@ -60,9 +57,9 @@ type (
 	}
 )
 
-type ScalingStrategy int
+type ScalingPolicy int
 
 const (
-	ScalingStrategyScaleOut ScalingStrategy = iota
-	ScalingStrategyConsistent
+	ScalingPolicyScaleOut ScalingPolicy = iota
+	ScalingPolicyConsistent
 )
