@@ -1,5 +1,12 @@
 # Changelog
 
+## [v1.2.4](https://github.com/daichitakahashi/confort/compare/v1.2.3...v1.2.4) - 2023-02-15
+- Upgrade: Bump google.golang.org/grpc from 1.52.3 to 1.53.0 by @dependabot in https://github.com/daichitakahashi/confort/pull/88
+- Upgrade: Bump github.com/docker/cli from 23.0.0+incompatible to 23.0.1+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/89
+- Upgrade: Bump github.com/docker/docker from 23.0.0+incompatible to 23.0.1+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/90
+- Upgrade: Bump github.com/jackc/pgx/v4 from 4.17.2 to 4.18.0 by @dependabot in https://github.com/daichitakahashi/confort/pull/92
+- Upgrade: Bump github.com/daichitakahashi/gocmd from 1.0.8 to 1.0.9 by @dependabot in https://github.com/daichitakahashi/confort/pull/94
+
 ## [v1.2.3](https://github.com/daichitakahashi/confort/compare/v1.2.2...v1.2.3) - 2023-02-04
 - Upgrade: Bump github.com/docker/cli from 20.10.23+incompatible to 23.0.0+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/85
 - Upgrade: Bump github.com/docker/docker from 20.10.23+incompatible to 23.0.0+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/84
