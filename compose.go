@@ -40,6 +40,7 @@ type (
 	identOptionOverrideConfigFiles struct{}
 	identOptionProfiles            struct{}
 	identOptionEnvFile             struct{}
+	identOptionScalingPolicies     struct{}
 	identOptionComposeBackend      struct{}
 	composeOption                  struct {
 		option.Interface
@@ -81,6 +82,18 @@ func WithEnvFile(filename string) ComposeOption {
 	}
 }
 
+// WithScalingPolicies declares scaling policies of every service. It works as a constraint in a ComposeProject.
+//
+//	WithScalingPolicies(map[string)compose.ScalingPolicy{
+//	    "serviceA": compose.ScalingPolicyScalable, // It's default value, allows service to scale out.
+//	    "serviceB": compose.ScalingPolicyConsistent, // Prohibit service from scaling out.
+//	})
+func WithScalingPolicies(p map[string]compose.ScalingPolicy) ComposeOption {
+	return composeOption{
+		Interface: option.New(identOptionScalingPolicies{}, p),
+	}
+}
+
 func WithComposeBackend(b compose.Backend) ComposeOption {
 	return composeOption{
 		Interface: option.New(identOptionComposeBackend{}, b),
@@ -95,6 +108,7 @@ func Compose(ctx context.Context, configFile string, opts ...ComposeOption) (*Co
 		profiles            []string
 		envFile             string
 		policy                              = ResourcePolicyReuse
+		scalingPolicies                     = map[string]compose.ScalingPolicy{}
 		be                  compose.Backend = &composeBackend{}
 		clientOpts                          = []client.Opt{
 			client.FromEnv,
@@ -129,6 +143,8 @@ func Compose(ctx context.Context, configFile string, opts ...ComposeOption) (*Co
 			profiles = opt.Value().([]string)
 		case identOptionEnvFile{}:
 			envFile = opt.Value().(string)
+		case identOptionScalingPolicies{}:
+			scalingPolicies = opt.Value().(map[string]compose.ScalingPolicy)
 		case identOptionComposeBackend{}:
 			be = opt.Value().(compose.Backend)
 		case identOptionClientOptions{}:
@@ -181,7 +197,8 @@ func Compose(ctx context.Context, configFile string, opts ...ComposeOption) (*Co
 		OverrideConfigFiles:     overrideConfigFiles,
 		Profiles:                profiles,
 		EnvFile:                 envFile,
-		Policy:                  convertResourcePolicy(policy),
+		ResourcePolicy:          convertResourcePolicy(policy),
+		ScalingPolicies:         scalingPolicies,
 		ResourceIdentifierLabel: beacon.LabelIdentifier,
 		ResourceIdentifier:      identifier,
 	})
@@ -259,10 +276,9 @@ type (
 		option.Interface
 		upIdent
 	}
-	identOptionScale         struct{}
-	identOptionScalingPolicy struct{}
-	identOptionWaiter        struct{}
-	upOption                 struct {
+	identOptionScale  struct{}
+	identOptionWaiter struct{}
+	upOption          struct {
 		option.Interface
 		upIdent
 	}
@@ -271,12 +287,6 @@ type (
 func WithScale(n int) UpOption {
 	return upOption{
 		Interface: option.New(identOptionScale{}, n),
-	}
-}
-
-func WithScalingPolicy(p compose.ScalingPolicy) UpOption {
-	return upOption{
-		Interface: option.New(identOptionScalingPolicy{}, p),
 	}
 }
 
@@ -298,24 +308,20 @@ func (c *ComposeProject) Up(ctx context.Context, service string, opts ...UpOptio
 	defer cancel()
 
 	var (
-		scale         int
-		scalingPolicy compose.ScalingPolicy
-		waiter        *wait.Waiter
+		scale  int
+		waiter *wait.Waiter
 	)
 	for _, opt := range opts {
 		switch opt.Ident() {
 		case identOptionScale{}:
 			scale = opt.Value().(int)
-		case identOptionScalingPolicy{}:
-			scalingPolicy = opt.Value().(compose.ScalingPolicy)
 		case identOptionWaiter{}:
 			waiter = opt.Value().(*wait.Waiter)
 		}
 	}
 
 	svc, err := c.composer.Up(ctx, service, compose.UpOptions{
-		Scale:         scale,
-		ScalingPolicy: scalingPolicy,
+		Scale: scale,
 	})
 	if err != nil {
 		return nil, err

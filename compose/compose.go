@@ -20,7 +20,8 @@ type (
 		OverrideConfigFiles     []string
 		Profiles                []string
 		EnvFile                 string
-		Policy                  ResourcePolicy
+		ResourcePolicy          ResourcePolicy
+		ScalingPolicies         map[string]ScalingPolicy
 		ResourceIdentifierLabel string
 		ResourceIdentifier      string
 	}
@@ -42,8 +43,7 @@ type (
 	// --renew-anon-volumes , -V		Recreate anonymous volumes instead of retrieving data from the previous containers.
 	// --timeout , -t	10	Use this timeout in seconds for container shutdown when attached or when containers are already running.
 	UpOptions struct {
-		Scale         int
-		ScalingPolicy ScalingPolicy
+		Scale int
 	}
 
 	RemoveOptions struct {
@@ -60,6 +60,8 @@ type (
 type ScalingPolicy int
 
 const (
-	ScalingPolicyScaleOut ScalingPolicy = iota
+	// ScalingPolicyScalable allows service to scale out.
+	ScalingPolicyScalable ScalingPolicy = iota
+	// ScalingPolicyConsistent prohibits service from scaling out.
 	ScalingPolicyConsistent
 )

@@ -28,7 +28,7 @@ func TestComposeBackend_Load(t *testing.T) {
 		OverrideConfigFiles: nil,
 		Profiles:            nil,
 		EnvFile:             "", // env of process
-		Policy:              compose.ResourcePolicy{},
+		ResourcePolicy:      compose.ResourcePolicy{},
 	})
 }
 

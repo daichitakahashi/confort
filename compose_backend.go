@@ -23,10 +23,11 @@ type (
 		cli *client.Client
 	}
 	composer struct {
-		cli           *client.Client
-		dockerCompose func(ctx context.Context, args ...string) *exec.Cmd
-		proj          projectConfig
-		policy        compose.ResourcePolicy
+		cli             *client.Client
+		dockerCompose   func(ctx context.Context, args ...string) *exec.Cmd
+		proj            projectConfig
+		resourcePolicy  compose.ResourcePolicy
+		scalingPolicies map[string]compose.ScalingPolicy
 
 		m                  sync.Mutex
 		services           map[string]*upService // services launched
@@ -110,11 +111,17 @@ func (b *composeBackend) Load(ctx context.Context, configFile string, opts compo
 		return nil, err
 	}
 
+	scalingPolicies := opts.ScalingPolicies
+	if scalingPolicies == nil {
+		scalingPolicies = map[string]compose.ScalingPolicy{}
+	}
+
 	return &composer{
 		cli:                b.cli,
 		dockerCompose:      dockerCompose,
 		proj:               proj,
-		policy:             opts.Policy,
+		resourcePolicy:     opts.ResourcePolicy,
+		scalingPolicies:    scalingPolicies,
 		services:           map[string]*upService{},
 		resourceLabel:      opts.ResourceIdentifierLabel,
 		resourceLabelValue: opts.ResourceIdentifier,
@@ -184,11 +191,11 @@ func (c *composer) Up(ctx context.Context, service string, opts compose.UpOption
 	c.m.Unlock()
 
 	if !initiate {
-		if !using && !c.policy.AllowReuse {
+		if !using && !c.resourcePolicy.AllowReuse {
 			return nil, fmt.Errorf("service conainter %q already exist", service)
 		}
 		// Check consistence of container num, if required.
-		if opts.ScalingPolicy == compose.ScalingPolicyConsistent && len(list) != requiredContainerN {
+		if c.scalingPolicies[service] == compose.ScalingPolicyConsistent && len(list) != requiredContainerN {
 			return nil, errors.New("containers already exist, but its number is inconsistent with the request")
 		}
 	}
@@ -230,7 +237,7 @@ func (c *composer) Up(ctx context.Context, service string, opts compose.UpOption
 		c.services[service].service.ContainerIDs = containerIDs // Update IDs of scaled container
 	} else {
 		c.services[service] = &upService{
-			remove: c.policy.Remove && (initiate || c.policy.Takeover), // Remove or not
+			remove: c.resourcePolicy.Remove && (initiate || c.resourcePolicy.Takeover), // Remove or not
 			service: &compose.Service{
 				Name:         service,
 				ContainerIDs: containerIDs,
