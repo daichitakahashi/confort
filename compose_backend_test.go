@@ -9,6 +9,7 @@ import (
 	"github.com/daichitakahashi/confort/compose"
 	"github.com/daichitakahashi/confort/internal/beacon"
 	"github.com/docker/docker/client"
+	"gotest.tools/v3/assert"
 	"gotest.tools/v3/golden"
 )
 
@@ -27,15 +28,18 @@ func TestComposeBackend_Load(t *testing.T) {
 	}
 
 	type testCase struct {
-		configFile string
-		opts       compose.LoadOptions
-		goldenFile string
+		configFile  string
+		opts        compose.LoadOptions
+		projectName string
+		goldenFile  string
 	}
 	runTest := func(t *testing.T, tc testCase) {
 		c, err := be.Load(ctx, tc.configFile, tc.opts)
 		if err != nil {
 			t.Fatal(err)
 		}
+		assert.Equal(t, tc.projectName, c.ProjectName())
+
 		tc.goldenFile = strings.TrimPrefix(
 			filepath.Clean(tc.goldenFile), "testdata/")
 		golden.Assert(t, string(c.(*composer).modifiedConfig), tc.goldenFile)
@@ -49,7 +53,8 @@ func TestComposeBackend_Load(t *testing.T) {
 				ResourceIdentifierLabel: beacon.LabelIdentifier,
 				ResourceIdentifier:      beacon.Identifier("VALUE"),
 			},
-			goldenFile: "./testdata/compose/simple/modified.yaml",
+			projectName: "simple",
+			goldenFile:  "./testdata/compose/simple/modified.yaml",
 		},
 		"override-name": {
 			configFile: "./testdata/compose/simple/compose.yaml",
@@ -59,7 +64,8 @@ func TestComposeBackend_Load(t *testing.T) {
 				ResourceIdentifierLabel: beacon.LabelIdentifier,
 				ResourceIdentifier:      beacon.Identifier("VALUE"),
 			},
-			goldenFile: "./testdata/compose/simple/modified-override-name.yaml",
+			projectName: "new-name",
+			goldenFile:  "./testdata/compose/simple/modified-override-name.yaml",
 		},
 		"override": {
 			configFile: "./testdata/compose/override/compose.yaml",
@@ -69,7 +75,8 @@ func TestComposeBackend_Load(t *testing.T) {
 				ResourceIdentifierLabel: beacon.LabelIdentifier,
 				ResourceIdentifier:      beacon.Identifier("VALUE"),
 			},
-			goldenFile: "./testdata/compose/override/modified.yaml",
+			projectName: "override",
+			goldenFile:  "./testdata/compose/override/modified.yaml",
 		},
 		"profile-none": {
 			configFile: "./testdata/compose/profile/compose.yaml",
@@ -79,7 +86,8 @@ func TestComposeBackend_Load(t *testing.T) {
 				ResourceIdentifierLabel: beacon.LabelIdentifier,
 				ResourceIdentifier:      beacon.Identifier("VALUE"),
 			},
-			goldenFile: "./testdata/compose/profile/modified.yaml",
+			projectName: "profile",
+			goldenFile:  "./testdata/compose/profile/modified.yaml",
 		},
 		"profile-webapp": {
 			configFile: "./testdata/compose/profile/compose.yaml",
@@ -89,7 +97,8 @@ func TestComposeBackend_Load(t *testing.T) {
 				ResourceIdentifierLabel: beacon.LabelIdentifier,
 				ResourceIdentifier:      beacon.Identifier("VALUE"),
 			},
-			goldenFile: "./testdata/compose/profile/modified-webapp.yaml",
+			projectName: "profile",
+			goldenFile:  "./testdata/compose/profile/modified-webapp.yaml",
 		},
 		"profile-all": {
 			configFile: "./testdata/compose/profile/compose.yaml",
@@ -99,7 +108,8 @@ func TestComposeBackend_Load(t *testing.T) {
 				ResourceIdentifierLabel: beacon.LabelIdentifier,
 				ResourceIdentifier:      beacon.Identifier("VALUE"),
 			},
-			goldenFile: "./testdata/compose/profile/modified-all.yaml",
+			projectName: "profile",
+			goldenFile:  "./testdata/compose/profile/modified-all.yaml",
 		},
 		"env-default": {
 			configFile: "./testdata/compose/env/compose.yaml",
@@ -109,7 +119,8 @@ func TestComposeBackend_Load(t *testing.T) {
 				ResourceIdentifierLabel: beacon.LabelIdentifier,
 				ResourceIdentifier:      beacon.Identifier("VALUE"),
 			},
-			goldenFile: "./testdata/compose/env/modified.yaml",
+			projectName: "env",
+			goldenFile:  "./testdata/compose/env/modified.yaml",
 		},
 		"env-prod": {
 			configFile: "./testdata/compose/env/compose.yaml",
@@ -119,7 +130,8 @@ func TestComposeBackend_Load(t *testing.T) {
 				ResourceIdentifierLabel: beacon.LabelIdentifier,
 				ResourceIdentifier:      beacon.Identifier("VALUE"),
 			},
-			goldenFile: "./testdata/compose/env/modified-prod.yaml",
+			projectName: "env",
+			goldenFile:  "./testdata/compose/env/modified-prod.yaml",
 		},
 		"project-dir": {
 			configFile: "./testdata/compose/simple/compose.yaml",
@@ -128,7 +140,8 @@ func TestComposeBackend_Load(t *testing.T) {
 				ResourceIdentifierLabel: beacon.LabelIdentifier,
 				ResourceIdentifier:      beacon.Identifier("VALUE"),
 			},
-			goldenFile: "./testdata/compose/project-dir/modified.yaml",
+			projectName: "project-dir",
+			goldenFile:  "./testdata/compose/project-dir/modified.yaml",
 		},
 	}
 	for name, tc := range testCases {
