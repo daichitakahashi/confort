@@ -101,8 +101,13 @@ func WithComposeBackend(b compose.Backend) ComposeOption {
 }
 
 func Compose(ctx context.Context, configFile string, opts ...ComposeOption) (*ComposeProject, error) {
+	absConfigFile, err := filepath.Abs(configFile)
+	if err != nil {
+		return nil, err
+	}
+	configFile = filepath.Base(configFile)
 	var (
-		projectDir          string
+		projectDir          = filepath.Dir(absConfigFile)
 		projectName         string
 		overrideConfigFiles []string
 		profiles            []string
@@ -171,6 +176,11 @@ func Compose(ctx context.Context, configFile string, opts ...ComposeOption) (*Co
 			}
 		}
 	}
+	// Make all configuration file paths relative from projectDir.
+	overrideConfigFiles = resolveConfigFilePaths(projectDir, overrideConfigFiles)
+	if envFile != "" {
+		envFile = resolveFilePath(projectDir, envFile)
+	}
 
 	ctx, cancel := applyTimeout(ctx, timeout)
 	defer cancel()
@@ -222,6 +232,27 @@ func (c *ComposeProject) Close() error {
 	return c.composer.RemoveCreated(context.Background(), compose.RemoveOptions{
 		RemoveAnonymousVolumes: true,
 	})
+}
+
+func resolveFilePath(base, file string) string {
+	if !filepath.IsAbs(file) {
+		// Adjust config file path based on specified directory.
+		// It is required because Compose CLI resolves file paths based on
+		// working directory of its process.
+		file = filepath.Join(base, file)
+	}
+	return file
+}
+
+func resolveConfigFilePaths(base string, configFiles []string) []string {
+	r := make([]string, 0, len(configFiles))
+	for _, f := range configFiles {
+		if f == "" || f == "-" {
+			continue // Ignore empty value and stdin.
+		}
+		r = append(r, resolveFilePath(base, f))
+	}
+	return r
 }
 
 func resolveGoModDir(ctx context.Context) (string, error) {

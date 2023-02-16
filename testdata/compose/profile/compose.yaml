@@ -1,0 +1,19 @@
+services:
+  webproxy:
+    image: nginx:latest
+    profiles:
+      - proxy
+  controller:
+    image: alpine:3.16.2
+  server1:
+    image: alpine:3.16.2
+    profiles:
+      - webapp
+    ports:
+      - 80/tcp
+  server2:
+    image: alpine:3.16.2
+    profiles:
+      - webapp
+    ports:
+      - 80/tcp

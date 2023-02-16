@@ -1,0 +1,13 @@
+name: env
+networks:
+  default:
+    labels:
+      daichitakahashi.confort.beacon.identifier: 8ec121c93e4a0de65f26e1500cb501e383531efb2c2ca9ec1d457478d6d3627b
+    name: env_default
+services:
+  server:
+    image: nginx:1.23.3-alpine
+    labels:
+      daichitakahashi.confort.beacon.identifier: 8ec121c93e4a0de65f26e1500cb501e383531efb2c2ca9ec1d457478d6d3627b
+    networks:
+      default: null

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os/exec"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/daichitakahashi/confort/compose"
@@ -25,6 +26,7 @@ type (
 	composer struct {
 		cli             *client.Client
 		dockerCompose   func(ctx context.Context, args ...string) *exec.Cmd
+		modifiedConfig  []byte
 		proj            projectConfig
 		resourcePolicy  compose.ResourcePolicy
 		scalingPolicies map[string]compose.ScalingPolicy
@@ -77,10 +79,21 @@ func (b *composeBackend) Load(ctx context.Context, configFile string, opts compo
 	args = append(args, "config")
 
 	// Load canonical config.
-	canonicalConfig, err := exec.CommandContext(ctx, "docker", args...).Output()
+	var (
+		stdout bytes.Buffer
+		stderr strings.Builder
+	)
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
 	if err != nil {
+		if errors.As(err, new(*exec.ExitError)) {
+			return nil, errors.New(stderr.String())
+		}
 		return nil, err
 	}
+	canonicalConfig := stdout.Bytes()
 
 	v := map[string]any{}
 	err = yaml.Unmarshal(canonicalConfig, &v)
@@ -119,6 +132,7 @@ func (b *composeBackend) Load(ctx context.Context, configFile string, opts compo
 	return &composer{
 		cli:                b.cli,
 		dockerCompose:      dockerCompose,
+		modifiedConfig:     modifiedConfig,
 		proj:               proj,
 		resourcePolicy:     opts.ResourcePolicy,
 		scalingPolicies:    scalingPolicies,
