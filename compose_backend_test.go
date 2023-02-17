@@ -166,3 +166,41 @@ func TestComposeBackend_Load(t *testing.T) {
 		})
 	}
 }
+
+func TestComposer_Up(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	be := newBackend(t)
+	_, _ = ctx, be
+
+	// docker composeのテストはしない
+	// 意図通りに指示できているかどうかをテストする
+
+	// ラベルを使用して、サービスを検索し、必要なコンテナが出来上がっているかどうかを確認する
+	// =>これでラベルのテストはOK
+
+	// 観点
+	// スケール
+	// 再利用
+	// 再利用（別プロセス）
+
+	// compose up
+	// compose up
+	// ...
+	// compose down
+
+	// service not found
+
+	// replicas with smaller scale
+
+	// replicas with larger scale
+
+	// requiring consistent but inconsistent scale
+
+	// up and reuse
+
+	// up and another up
+
+	// up and another up(scaling)
+}

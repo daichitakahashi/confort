@@ -226,8 +226,14 @@ func (c *composer) Up(ctx context.Context, service string, opts compose.UpOption
 				requiredContainerN = opts.Scale
 			}
 		}
-		_, err = c.dockerCompose(ctx, args...).Output() // TODO: log output to stdout?
+		var stderr strings.Builder
+		cmd := c.dockerCompose(ctx, args...)
+		cmd.Stderr = &stderr
+		err = cmd.Run() // TODO: log output to stdout?
 		if err != nil {
+			if errors.As(err, new(*exec.ExitError)) {
+				return nil, errors.New(stderr.String())
+			}
 			return nil, err
 		}
 
