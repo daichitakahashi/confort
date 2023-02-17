@@ -45,6 +45,7 @@ func lazyInit() {
 type Confort struct {
 	backend        Backend
 	namespace      Namespace
+	cli            *client.Client
 	defaultTimeout time.Duration
 	ex             exclusion.Control
 	term           func() error
@@ -268,6 +269,7 @@ func New(ctx context.Context, opts ...NewOption) (cft *Confort, err error) {
 	return &Confort{
 		backend:        backend,
 		namespace:      ns,
+		cli:            cli,
 		defaultTimeout: timeout,
 		ex:             ex,
 		term:           term,
@@ -288,6 +290,11 @@ func applyTimeout(ctx context.Context, defaultTimeout time.Duration) (context.Co
 		return ctx, func() {}
 	}
 	return context.WithTimeout(ctx, defaultTimeout)
+}
+
+// APIClient returns client.APIClient used by Confort.
+func (cft *Confort) APIClient() *client.Client {
+	return cft.cli
 }
 
 // Namespace returns namespace associated with cft.

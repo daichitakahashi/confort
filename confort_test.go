@@ -61,11 +61,7 @@ func TestMain(m *testing.M) {
 	defer func() {
 		_ = cft.Close()
 	}()
-	cli, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		log.Panic(err)
-	}
-	cli.NegotiateAPIVersion(ctx)
+	cli := cft.APIClient()
 
 	defer func() {
 		_, err := cli.ImagesPrune(ctx, filters.NewArgs(
@@ -941,12 +937,6 @@ func TestWithResourcePolicy_reusable(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	cli, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cli.NegotiateAPIVersion(ctx)
-
 	cft, err := confort.New(ctx,
 		confort.WithNamespace(t.Name(), true),
 		confort.WithResourcePolicy(confort.ResourcePolicyReusable),
@@ -954,6 +944,8 @@ func TestWithResourcePolicy_reusable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cli := cft.APIClient()
+
 	networkID := cft.Network().ID
 	echo, err := cft.Run(ctx, &confort.ContainerParams{
 		Name:  "echo",
@@ -1072,11 +1064,7 @@ func TestWithBeacon(t *testing.T) {
 		done = true
 
 		// when beacon server is enabled, network and container is not deleted after termination
-		cli, err := client.NewClientWithOpts(client.FromEnv)
-		if err != nil {
-			t.Fatal(err)
-		}
-		cli.NegotiateAPIVersion(ctx)
+		cli := cft.APIClient()
 
 		containerName := namespace + "-tester"
 		containers, err := cli.ContainerList(ctx, types.ContainerListOptions{
@@ -1155,11 +1143,7 @@ func TestWithImageBuildOptions(t *testing.T) {
 		_ = cft.Close()
 	})
 
-	cli, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cli.NegotiateAPIVersion(ctx)
+	cli := cft.APIClient()
 
 	tag := "label"
 	build := &confort.BuildParams{
@@ -1222,11 +1206,7 @@ func TestWithForceBuild_WithBuildOutput(t *testing.T) {
 		_ = cft.Close()
 	})
 
-	cli, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cli.NegotiateAPIVersion(ctx)
+	cli := cft.APIClient()
 
 	tag := "force"
 	build := &confort.BuildParams{
@@ -1282,12 +1262,6 @@ func TestWithContainerConfig(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	cli, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cli.NegotiateAPIVersion(ctx)
-
 	cft, err := confort.New(ctx,
 		confort.WithNamespace(t.Name(), true),
 	)
@@ -1297,6 +1271,8 @@ func TestWithContainerConfig(t *testing.T) {
 	t.Cleanup(func() {
 		_ = cft.Close()
 	})
+
+	cli := cft.APIClient()
 
 	var (
 		label      = "daichitakahashi.confort.test"
@@ -1551,11 +1527,7 @@ func TestWithPullOptions(t *testing.T) {
 		}
 	})
 
-	cli, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cli.NegotiateAPIVersion(ctx)
+	cli := cft.APIClient()
 
 	// remove target image if already exists
 	_ = removeImageIfExists(t, cli, pullImage)
@@ -1726,12 +1698,9 @@ func TestConfort_Run_UnsupportedStatus(t *testing.T) {
 		_ = cft.Close()
 	})
 
+	cli := cft.APIClient()
+
 	// start container
-	cli, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cli.NegotiateAPIVersion(ctx)
 	created, err := cli.ContainerCreate(ctx, &container.Config{
 		Image: imageEcho,
 	}, &container.HostConfig{}, &network.NetworkingConfig{}, nil, containerName)
