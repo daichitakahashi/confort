@@ -26,7 +26,6 @@ type (
 	composer struct {
 		cli             *client.Client
 		dockerCompose   func(ctx context.Context, args ...string) *exec.Cmd
-		modifiedConfig  []byte
 		proj            projectConfig
 		resourcePolicy  compose.ResourcePolicy
 		scalingPolicies map[string]compose.ScalingPolicy
@@ -70,30 +69,27 @@ func (b *composeBackend) Load(ctx context.Context, configFile string, opts compo
 	for _, f := range opts.OverrideConfigFiles {
 		args = append(args, "--file", f)
 	}
+	profileArgs := make([]string, 0, len(opts.Profiles)*2)
 	for _, p := range opts.Profiles {
-		args = append(args, "--profile", p)
+		profileArgs = append(profileArgs, "--profile", p)
 	}
+	args = append(args, profileArgs...)
 	if opts.EnvFile != "" {
 		args = append(args, "--env-file", opts.EnvFile)
 	}
 	args = append(args, "config")
 
 	// Load canonical config.
-	var (
-		stdout bytes.Buffer
-		stderr strings.Builder
-	)
+	var stderr strings.Builder
 	cmd := exec.CommandContext(ctx, "docker", args...)
-	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	err := cmd.Run()
+	canonicalConfig, err := cmd.Output()
 	if err != nil {
 		if errors.As(err, new(*exec.ExitError)) {
 			return nil, errors.New(stderr.String())
 		}
 		return nil, err
 	}
-	canonicalConfig := stdout.Bytes()
 
 	v := map[string]any{}
 	err = yaml.Unmarshal(canonicalConfig, &v)
@@ -108,12 +104,18 @@ func (b *composeBackend) Load(ctx context.Context, configFile string, opts compo
 		return nil, err
 	}
 
+	// Construct docker cli executor dedicated to the project.
+	projectArgs := make([]string, 0, 4+len(profileArgs))
+	projectArgs = append(projectArgs, "compose", "--file", "-")
+	if opts.ProjectDir != "" {
+		projectArgs = append(projectArgs, "--project-directory", opts.ProjectDir)
+	}
+	projectArgs = append(projectArgs, profileArgs...)
 	dockerCompose := func(ctx context.Context, commandArgs ...string) *exec.Cmd {
-		args := []string{"compose", "--file", "-"}
-		if opts.ProjectDir != "" {
-			args = append(args, "--project-directory", opts.ProjectDir)
-		}
-		cmd := exec.CommandContext(ctx, "docker", append(args, commandArgs...)...)
+		args := make([]string, 0, len(projectArgs)+len(commandArgs))
+		args = append(args, projectArgs...)
+		args = append(args, commandArgs...)
+		cmd := exec.CommandContext(ctx, "docker", args...)
 		cmd.Stdin = bytes.NewReader(modifiedConfig)
 		return cmd
 	}
@@ -132,7 +134,6 @@ func (b *composeBackend) Load(ctx context.Context, configFile string, opts compo
 	return &composer{
 		cli:                b.cli,
 		dockerCompose:      dockerCompose,
-		modifiedConfig:     modifiedConfig,
 		proj:               proj,
 		resourcePolicy:     opts.ResourcePolicy,
 		scalingPolicies:    scalingPolicies,

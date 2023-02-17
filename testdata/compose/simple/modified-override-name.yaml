@@ -1,9 +1,4 @@
 name: new-name
-networks:
-  default:
-    labels:
-      daichitakahashi.confort.beacon.identifier: 8ec121c93e4a0de65f26e1500cb501e383531efb2c2ca9ec1d457478d6d3627b
-    name: new-name_default
 services:
   alpine:
     image: alpine:3.16.2
@@ -11,3 +6,8 @@ services:
       daichitakahashi.confort.beacon.identifier: 8ec121c93e4a0de65f26e1500cb501e383531efb2c2ca9ec1d457478d6d3627b
     networks:
       default: null
+networks:
+  default:
+    name: new-name_default
+    labels:
+      daichitakahashi.confort.beacon.identifier: 8ec121c93e4a0de65f26e1500cb501e383531efb2c2ca9ec1d457478d6d3627b

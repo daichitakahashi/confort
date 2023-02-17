@@ -13,19 +13,25 @@ import (
 	"gotest.tools/v3/golden"
 )
 
+func newBackend(t *testing.T) *composeBackend {
+	t.Helper()
+
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cli.NegotiateAPIVersion(context.Background())
+	return &composeBackend{
+		cli: cli,
+	}
+}
+
 // test against unified & modified configuration
 func TestComposeBackend_Load(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	cli, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cli.NegotiateAPIVersion(ctx)
-	be := &composeBackend{
-		cli: cli,
-	}
+	be := newBackend(t)
 
 	type testCase struct {
 		configFile  string
@@ -38,11 +44,19 @@ func TestComposeBackend_Load(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, tc.projectName, c.ProjectName())
+		cc := c.(*composer)
 
+		// test project name
+		assert.Equal(t, tc.projectName, cc.ProjectName())
+
+		// test unified & modified config
+		appliedConfig, err := cc.dockerCompose(ctx, "config").Output()
+		if err != nil {
+			t.Fatal(err)
+		}
 		tc.goldenFile = strings.TrimPrefix(
 			filepath.Clean(tc.goldenFile), "testdata/")
-		golden.Assert(t, string(c.(*composer).modifiedConfig), tc.goldenFile)
+		golden.Assert(t, string(appliedConfig), tc.goldenFile)
 	}
 
 	testCases := map[string]testCase{
