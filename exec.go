@@ -23,7 +23,7 @@ type ContainerExec struct {
 	Stderr io.Writer
 }
 
-func (c *Container) CreateExec(ctx context.Context, cmd ...string) (*ContainerExec, error) {
+func (c *Container) CreateExec(ctx context.Context, cmd []string) (*ContainerExec, error) {
 	if _, err := c.cft.cli.ContainerInspect(ctx, c.id); err != nil {
 		return nil, err
 	}
@@ -39,12 +39,18 @@ func (e *ContainerExec) Start(ctx context.Context) error {
 		return errors.New("confort: exec: already started")
 	}
 	logging.Debugf("exec on container %q: %v", e.c.name, e.cmd)
-	resp, err := e.cli.ContainerExecCreate(ctx, e.c.id, types.ExecConfig{
+	execConfig := types.ExecConfig{
 		Cmd:          e.cmd,
 		Detach:       false,
 		AttachStdout: e.Stdout != nil,
 		AttachStderr: e.Stderr != nil,
-	})
+	}
+	// When both stdout and stderr haven't attached, ContainerExecCreate behaves like a detached mode.
+	// So, to wait execution done, make stdout attached.
+	if !execConfig.AttachStdout && !execConfig.AttachStderr {
+		execConfig.AttachStdout = true
+	}
+	resp, err := e.cli.ContainerExecCreate(ctx, e.c.id, execConfig)
 	if err != nil {
 		return err
 	}
