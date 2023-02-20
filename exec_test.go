@@ -160,4 +160,55 @@ argument: share
 			t.Fatal("unexpected success")
 		}
 	})
+
+	t.Run("error cases", func(t *testing.T) {
+		t.Run("already started", func(t *testing.T) {
+			t.Parallel()
+
+			ce, err := c.CreateExec(ctx, []string{"pwd"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := ce.Run(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if err := ce.Run(ctx); err == nil { // already started
+				t.Fatal("the second execution must be failed")
+			}
+		})
+
+		t.Run("not started", func(t *testing.T) {
+			t.Parallel()
+
+			ce, err := c.CreateExec(ctx, []string{"pwd"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := ce.Wait(ctx); err == nil { // not started
+				t.Fatal("before the call of Start, Wait must be failed")
+			}
+		})
+
+		t.Run("stdout already set", func(t *testing.T) {
+			t.Parallel()
+
+			ce, err := c.CreateExec(ctx, []string{"pwd"})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			ce.Stdout = bytes.NewBuffer(nil)
+			if _, err := ce.Output(ctx); err == nil {
+				t.Fatal("the Output must be failed when Stdout is already set")
+			}
+			if _, err := ce.CombinedOutput(ctx); err == nil {
+				t.Fatal("the CombinedOutput must be failed when Stdout is already set")
+			}
+
+			ce.Stderr = bytes.NewBuffer(nil)
+			if _, err := ce.CombinedOutput(ctx); err == nil {
+				t.Fatal("the CombinedOutput must be failed when Stderr is already set")
+			}
+		})
+	})
 }
