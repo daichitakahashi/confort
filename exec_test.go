@@ -3,6 +3,7 @@ package confort
 import (
 	"bytes"
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -116,19 +117,28 @@ argument: share
 			if err != nil {
 				t.Fatalf("failed to run command: %s", err)
 			}
+			outputLines := strings.Split(strings.TrimSuffix(string(output), "\n"), "\n")
 
-			const expectedOut = `echo argument: bin
-argument: bin
-echo argument: lib
-argument: lib
-echo argument: local
-argument: local
-echo argument: sbin
-argument: sbin
-echo argument: share
-argument: share
-`
-			if diff := cmp.Diff(expectedOut, string(output)); diff != "" {
+			// Compare map that has a line of message as the key.
+			// Because the order of combined output is not preserved in non-TTY output.
+			// The stdout is line buffered, but the stderr is not buffered.
+			expected := map[string]struct{}{
+				"echo argument: bin":   {},
+				"argument: bin":        {},
+				"echo argument: lib":   {},
+				"argument: lib":        {},
+				"echo argument: local": {},
+				"argument: local":      {},
+				"echo argument: sbin":  {},
+				"argument: sbin":       {},
+				"echo argument: share": {},
+				"argument: share":      {},
+			}
+			actual := map[string]struct{}{}
+			for _, line := range outputLines {
+				actual[line] = struct{}{}
+			}
+			if diff := cmp.Diff(expected, actual); diff != "" {
 				t.Error(diff)
 			}
 		})
