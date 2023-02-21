@@ -1,5 +1,11 @@
 # Changelog
 
+## [v1.3.0](https://github.com/daichitakahashi/confort/compare/v1.2.4...v1.3.0) - 2023-02-21
+- Upgrade: Bump github.com/containerd/containerd from 1.6.16 to 1.6.18 by @dependabot in https://github.com/daichitakahashi/confort/pull/95
+- Update confort: add `(*Confort).APIClient` for manual operation by user by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/98
+- Implement ContainerExec by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/101
+- Upgrade: Bump golang.org/x/net from 0.6.0 to 0.7.0 by @dependabot in https://github.com/daichitakahashi/confort/pull/99
+
 ## [v1.2.4](https://github.com/daichitakahashi/confort/compare/v1.2.3...v1.2.4) - 2023-02-15
 - Upgrade: Bump google.golang.org/grpc from 1.52.3 to 1.53.0 by @dependabot in https://github.com/daichitakahashi/confort/pull/88
 - Upgrade: Bump github.com/docker/cli from 23.0.0+incompatible to 23.0.1+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/89
