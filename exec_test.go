@@ -3,15 +3,16 @@ package confort
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/uuid"
 )
 
-func TestContainer_CreateExec(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
+func createExecEnv(t *testing.T, ctx context.Context) *Container {
+	t.Helper()
 
 	cft, err := New(ctx,
 		WithNamespace(t.Name(), true),
@@ -31,6 +32,15 @@ func TestContainer_CreateExec(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return c
+}
+
+func TestContainer_CreateExec(t *testing.T) {
+	t.Parallel()
+	var (
+		ctx = context.Background()
+		c   = createExecEnv(t, ctx)
+	)
 
 	// install findutils
 	ce, err := c.CreateExec(ctx, []string{"apk", "add", "findutils"})
@@ -211,4 +221,77 @@ argument: share
 			}
 		})
 	})
+}
+
+func TestWithExecWorkingDir(t *testing.T) {
+	t.Parallel()
+	var (
+		ctx = context.Background()
+		c   = createExecEnv(t, ctx)
+	)
+	const workingDir = "/usr/local"
+
+	// Print working directory and compare.
+	ce, err := c.CreateExec(ctx, []string{"pwd"},
+		WithExecWorkingDir(workingDir),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := ce.Output(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pwd := strings.TrimSpace(string(out))
+	if pwd != workingDir {
+		t.Fatalf("unexpected working directory: want %q, got %q", workingDir, pwd)
+	}
+}
+
+func TestWithExecEnv(t *testing.T) {
+	t.Parallel()
+	var (
+		ctx = context.Background()
+		c   = createExecEnv(t, ctx)
+
+		key1   = "EXAMPLE_ENV_1"
+		value1 = fmt.Sprintf("%s %s", uuid.NewString(), uuid.NewString())
+		key2   = "EXAMPLE_ENV_2"
+		value2 = fmt.Sprintf("%s\n%s", uuid.NewString(), uuid.NewString())
+	)
+
+	// Print value and compare.
+	ce, err := c.CreateExec(ctx, []string{"/bin/sh", "-c", fmt.Sprintf(`printf "${%s}"`, key1)},
+		WithExecEnv(map[string]string{
+			key1: value1,
+			key2: value2,
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out1, err := ce.Output(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actual := string(out1); actual != value1 {
+		t.Fatalf("got unexpected value(key=%q): want %q, got %q", key1, value1, actual)
+	}
+
+	ce, err = c.CreateExec(ctx, []string{"/bin/sh", "-c", fmt.Sprintf(`printf "${%s}"`, key2)},
+		WithExecEnv(map[string]string{
+			key1: value1,
+			key2: value2,
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out2, err := ce.Output(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actual := string(out2); actual != value2 {
+		t.Fatalf("got unexpected value(key=%q): want %q, got %q", key2, value2, actual)
+	}
 }

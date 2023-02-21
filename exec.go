@@ -11,27 +11,77 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/lestrrat-go/option"
 )
 
 type ContainerExec struct {
-	c      *Container
-	cmd    []string
-	cli    *client.Client
-	execID string
+	c          *Container
+	cmd        []string
+	workingDir string
+	env        []string
+	cli        *client.Client
+	execID     string
 
 	Stdout io.Writer
 	Stderr io.Writer
 }
 
+type (
+	execIdent  interface{ exec() }
+	ExecOption interface {
+		option.Interface
+		execIdent
+	}
+	identExecWorkingDir struct{}
+	identExecEnv        struct{}
+	execOption          struct {
+		option.Interface
+		execIdent
+	}
+)
+
+// WithExecWorkingDir specifies working directory inside the container.
+func WithExecWorkingDir(s string) ExecOption {
+	return execOption{
+		Interface: option.New(identExecWorkingDir{}, s),
+	}
+}
+
+// WithExecEnv specifies environment variables using in the container.
+func WithExecEnv(kv map[string]string) ExecOption {
+	list := make([]string, 0, len(kv))
+	for k, v := range kv {
+		list = append(list, fmt.Sprintf("%s=%s", k, v))
+	}
+	return execOption{
+		Interface: option.New(identExecEnv{}, list),
+	}
+}
+
 // CreateExec creates new ContainerExec that executes the specified command on the container.
-func (c *Container) CreateExec(ctx context.Context, cmd []string) (*ContainerExec, error) {
+func (c *Container) CreateExec(ctx context.Context, cmd []string, opts ...ExecOption) (*ContainerExec, error) {
+	var (
+		workingDir string
+		execEnv    []string
+	)
+	for _, opt := range opts {
+		switch opt.Ident() {
+		case identExecWorkingDir{}:
+			workingDir = opt.Value().(string)
+		case identExecEnv{}:
+			execEnv = opt.Value().([]string)
+		}
+	}
+
 	if _, err := c.cft.cli.ContainerInspect(ctx, c.id); err != nil {
 		return nil, err
 	}
 	return &ContainerExec{
-		c:   c,
-		cmd: cmd,
-		cli: c.cft.cli,
+		c:          c,
+		cmd:        cmd,
+		workingDir: workingDir,
+		env:        execEnv,
+		cli:        c.cft.cli,
 	}, nil
 }
 
@@ -43,6 +93,8 @@ func (e *ContainerExec) Start(ctx context.Context) error {
 	logging.Debugf("exec on container %q: %v", e.c.name, e.cmd)
 	execConfig := types.ExecConfig{
 		Cmd:          e.cmd,
+		WorkingDir:   e.workingDir,
+		Env:          e.env,
 		AttachStdout: e.Stdout != nil,
 		AttachStderr: e.Stderr != nil,
 	}
