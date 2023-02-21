@@ -7,6 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -135,6 +138,12 @@ func (d *dockerBackend) Namespace(ctx context.Context, namespace string) (Namesp
 		nw = &n
 	}
 
+	// resolve host ip
+	hostIP, err := resolveHostIP(d.cli.DaemonHost(), nw.IPAM)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve docker host ip: %w", err)
+	}
+
 	var term []func(context.Context) error
 	if (nwCreated && d.policy != ResourcePolicyReusable) || d.policy == ResourcePolicyTakeOver {
 		term = append(term, func(ctx context.Context) error {
@@ -146,10 +155,43 @@ func (d *dockerBackend) Namespace(ctx context.Context, namespace string) (Namesp
 		dockerBackend: d,
 		namespace:     namespace,
 		network:       nw,
+		hostIP:        hostIP,
 		labels:        d.labels,
 		terminate:     term,
 		containers:    map[string]*containerInfo{},
 	}, nil
+}
+
+// see: https://github.com/testcontainers/testcontainers-go/blob/34481cf9027b79aaad4f6aa2dbdb7091dd9c49fb/docker.go#L1245
+func resolveHostIP(daemonHost string, ipamConfig network.IPAM) (string, error) {
+	hostURL, err := url.Parse(daemonHost)
+	if err != nil {
+		return "", err
+	}
+
+	switch hostURL.Scheme {
+	case "http", "https", "tcp":
+		return hostURL.Hostname(), nil
+	case "unix", "npipe":
+		if _, err := os.Stat("/.dockerenv"); err == nil { // inside a container
+			// Use "host.docker.internal" if enabled.
+			addr, err := net.ResolveIPAddr("", "host.docker.internal")
+			if err == nil {
+				return addr.String(), nil
+			}
+
+			// Use Gateway IP of bridge network.
+			// This doesn't work in Docker Desktop for Mac.
+			for _, cfg := range ipamConfig.Config {
+				if cfg.Gateway != "" {
+					return cfg.Gateway, nil
+				}
+			}
+		}
+		return "localhost", nil
+	default:
+		return "", fmt.Errorf("unknown scheme found in daemon host: %s", hostURL.String())
+	}
 }
 
 func (d *dockerBackend) BuildImage(ctx context.Context, buildContext io.Reader, buildOptions types.ImageBuildOptions, force bool, buildOut io.Writer) (err error) {
@@ -220,6 +262,7 @@ type dockerNamespace struct {
 	*dockerBackend
 	namespace string
 	network   *types.NetworkResource
+	hostIP    string
 	labels    map[string]string
 
 	m          sync.RWMutex
@@ -434,6 +477,10 @@ retry:
 			} else if len(bindings) == 0 {
 				// endpoint not bound yet
 				continue retry
+			}
+			// Use this port. Replace host ip.
+			for i := range bindings {
+				bindings[i].HostIP = d.hostIP
 			}
 		}
 		return i.NetworkSettings.Ports, nil
