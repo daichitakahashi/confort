@@ -18,6 +18,7 @@ import (
 	"github.com/daichitakahashi/confort/wait"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
@@ -433,9 +434,12 @@ type ContainerParams struct {
 	Name         string
 	Image        string
 	Env          map[string]string
-	Cmd          []string
 	Entrypoint   []string
+	Cmd          []string
+	WorkingDir   string
 	ExposedPorts []string
+	StopTimeout  *int
+	Mounts       []mount.Mount
 	Waiter       *wait.Waiter
 }
 
@@ -482,6 +486,8 @@ func (cft *Confort) createContainer(ctx context.Context, name, alias string, c *
 		Env:          env,
 		Cmd:          c.Cmd,
 		Entrypoint:   c.Entrypoint,
+		WorkingDir:   c.WorkingDir,
+		StopTimeout:  c.StopTimeout,
 	}
 	if modifyContainer != nil {
 		modifyContainer(cc)
@@ -489,6 +495,7 @@ func (cft *Confort) createContainer(ctx context.Context, name, alias string, c *
 	hc := &container.HostConfig{
 		PortBindings: portBindings,
 		AutoRemove:   true,
+		Mounts:       c.Mounts,
 	}
 	if modifyHost != nil {
 		modifyHost(hc)
