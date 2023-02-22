@@ -32,9 +32,9 @@ type (
 		option.Interface
 		execIdent
 	}
-	identExecWorkingDir struct{}
-	identExecEnv        struct{}
-	execOption          struct {
+	identOptionExecWorkingDir struct{}
+	identOptionExecEnv        struct{}
+	execOption                struct {
 		option.Interface
 		execIdent
 	}
@@ -43,7 +43,7 @@ type (
 // WithExecWorkingDir specifies working directory inside the container.
 func WithExecWorkingDir(s string) ExecOption {
 	return execOption{
-		Interface: option.New(identExecWorkingDir{}, s),
+		Interface: option.New(identOptionExecWorkingDir{}, s),
 	}
 }
 
@@ -54,7 +54,7 @@ func WithExecEnv(kv map[string]string) ExecOption {
 		list = append(list, fmt.Sprintf("%s=%s", k, v))
 	}
 	return execOption{
-		Interface: option.New(identExecEnv{}, list),
+		Interface: option.New(identOptionExecEnv{}, list),
 	}
 }
 
@@ -66,9 +66,9 @@ func (c *Container) CreateExec(ctx context.Context, cmd []string, opts ...ExecOp
 	)
 	for _, opt := range opts {
 		switch opt.Ident() {
-		case identExecWorkingDir{}:
+		case identOptionExecWorkingDir{}:
 			workingDir = opt.Value().(string)
-		case identExecEnv{}:
+		case identOptionExecEnv{}:
 			execEnv = opt.Value().([]string)
 		}
 	}
