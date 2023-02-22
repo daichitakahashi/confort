@@ -1,5 +1,8 @@
 # Changelog
 
+## [v1.3.1](https://github.com/daichitakahashi/confort/compare/v1.3.0...v1.3.1) - 2023-02-22
+- Update confort: resolve Docker host IP, which exposed ports will be bound. by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/102
+
 ## [v1.3.0](https://github.com/daichitakahashi/confort/compare/v1.2.4...v1.3.0) - 2023-02-21
 - Upgrade: Bump github.com/containerd/containerd from 1.6.16 to 1.6.18 by @dependabot in https://github.com/daichitakahashi/confort/pull/95
 - Update confort: add `(*Confort).APIClient` for manual operation by user by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/98
