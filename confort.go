@@ -342,7 +342,18 @@ type BuildParams struct {
 	Dockerfile string
 	ContextDir string
 	BuildArgs  map[string]*string
-	Platform   string
+	// RegistryAuth sets authentication config per registry host.
+	//
+	//  BuildParam{
+	//  	RegistryAuth: map[string] types.AuthConfig {
+	//  		"https://your.docker.registry.com": {
+	//  			Username: "your_user",
+	//  			Password: "your_password",
+	// 			},
+	// 		}
+	//  }
+	RegistryAuth map[string]types.AuthConfig
+	Platform     string
 }
 
 // Build creates new image from given Dockerfile and context directory.
@@ -355,8 +366,10 @@ func (cft *Confort) Build(ctx context.Context, b *BuildParams, opts ...BuildOpti
 	ctx, cancel := applyTimeout(ctx, cft.defaultTimeout)
 	defer cancel()
 
-	var modifyBuildOptions func(option *types.ImageBuildOptions)
-	var force bool
+	var (
+		modifyBuildOptions func(option *types.ImageBuildOptions)
+		force              bool
+	)
 	for _, opt := range opts {
 		switch opt.Ident() {
 		case identOptionImageBuildOptions{}:
@@ -386,6 +399,7 @@ func (cft *Confort) Build(ctx context.Context, b *BuildParams, opts ...BuildOpti
 		PullParent:     true,
 		Dockerfile:     relDockerfile,
 		BuildArgs:      b.BuildArgs,
+		AuthConfigs:    b.RegistryAuth,
 		Target:         "",
 		SessionID:      "",
 		Platform:       b.Platform,
