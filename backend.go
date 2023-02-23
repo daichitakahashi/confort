@@ -24,6 +24,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/archive"
 	"github.com/docker/docker/pkg/jsonmessage"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
 	"github.com/lestrrat-go/backoff/v2"
 	"go.uber.org/multierr"
@@ -593,6 +594,40 @@ func (f *fetcher) Log(ctx context.Context) (io.ReadCloser, error) {
 		ShowStdout: true,
 		ShowStderr: true,
 	})
+}
+
+func (f *fetcher) Exec(ctx context.Context, cmd ...string) ([]byte, error) {
+	r, err := f.cli.ContainerExecCreate(ctx, f.containerID, types.ExecConfig{
+		AttachStderr: true,
+		AttachStdout: true,
+		Cmd:          cmd,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	hijackedResp, err := f.cli.ContainerExecAttach(ctx, r.ID, types.ExecStartCheck{})
+	if err != nil {
+		return nil, err
+	}
+	defer hijackedResp.Close()
+
+	buf := bytes.NewBuffer(nil)
+	_, err = stdcopy.StdCopy(buf, buf, hijackedResp.Reader)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := f.cli.ContainerExecInspect(ctx, r.ID)
+	if err != nil {
+		return nil, err
+	}
+	if info.ExitCode != 0 {
+		return nil, &ExitError{
+			ExitCode: info.ExitCode,
+		}
+	}
+	return buf.Bytes(), nil
 }
 
 var _ wait.Fetcher = (*fetcher)(nil)

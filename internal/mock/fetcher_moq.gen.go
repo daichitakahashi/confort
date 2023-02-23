@@ -25,6 +25,9 @@ var _ wait.Fetcher = &Fetcher{}
 //			ContainerIDFunc: func() string {
 //				panic("mock out the ContainerID method")
 //			},
+//			ExecFunc: func(ctx context.Context, cmd ...string) ([]byte, error) {
+//				panic("mock out the Exec method")
+//			},
 //			LogFunc: func(ctx context.Context) (io.ReadCloser, error) {
 //				panic("mock out the Log method")
 //			},
@@ -44,6 +47,9 @@ type Fetcher struct {
 	// ContainerIDFunc mocks the ContainerID method.
 	ContainerIDFunc func() string
 
+	// ExecFunc mocks the Exec method.
+	ExecFunc func(ctx context.Context, cmd ...string) ([]byte, error)
+
 	// LogFunc mocks the Log method.
 	LogFunc func(ctx context.Context) (io.ReadCloser, error)
 
@@ -57,6 +63,13 @@ type Fetcher struct {
 	calls struct {
 		// ContainerID holds details about calls to the ContainerID method.
 		ContainerID []struct {
+		}
+		// Exec holds details about calls to the Exec method.
+		Exec []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Cmd is the cmd argument value.
+			Cmd []string
 		}
 		// Log holds details about calls to the Log method.
 		Log []struct {
@@ -73,6 +86,7 @@ type Fetcher struct {
 		}
 	}
 	lockContainerID sync.RWMutex
+	lockExec        sync.RWMutex
 	lockLog         sync.RWMutex
 	lockPorts       sync.RWMutex
 	lockStatus      sync.RWMutex
@@ -102,6 +116,42 @@ func (mock *Fetcher) ContainerIDCalls() []struct {
 	mock.lockContainerID.RLock()
 	calls = mock.calls.ContainerID
 	mock.lockContainerID.RUnlock()
+	return calls
+}
+
+// Exec calls ExecFunc.
+func (mock *Fetcher) Exec(ctx context.Context, cmd ...string) ([]byte, error) {
+	if mock.ExecFunc == nil {
+		panic("Fetcher.ExecFunc: method is nil but Fetcher.Exec was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+		Cmd []string
+	}{
+		Ctx: ctx,
+		Cmd: cmd,
+	}
+	mock.lockExec.Lock()
+	mock.calls.Exec = append(mock.calls.Exec, callInfo)
+	mock.lockExec.Unlock()
+	return mock.ExecFunc(ctx, cmd...)
+}
+
+// ExecCalls gets all the calls that were made to Exec.
+// Check the length with:
+//
+//	len(mockedFetcher.ExecCalls())
+func (mock *Fetcher) ExecCalls() []struct {
+	Ctx context.Context
+	Cmd []string
+} {
+	var calls []struct {
+		Ctx context.Context
+		Cmd []string
+	}
+	mock.lockExec.RLock()
+	calls = mock.calls.Exec
+	mock.lockExec.RUnlock()
 	return calls
 }
 

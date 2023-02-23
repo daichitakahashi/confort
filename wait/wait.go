@@ -23,6 +23,7 @@ type Fetcher interface {
 	Status(ctx context.Context) (*types.ContainerState, error)
 	Ports() nat.PortMap
 	Log(ctx context.Context) (io.ReadCloser, error)
+	Exec(ctx context.Context, cmd ...string) ([]byte, error)
 }
 
 type (
@@ -123,6 +124,19 @@ func CheckHealthy(ctx context.Context, f Fetcher) (bool, error) {
 		return false, err
 	}
 	return status.Health != nil && status.Health.Status == "healthy", nil
+}
+
+// CommandSucceeds waits for the success of given command.
+func CommandSucceeds(cmd []string, opts ...Option) *Waiter {
+	return New(CheckCommandSucceeds(cmd), opts...)
+}
+
+// CheckCommandSucceeds creates CheckFunc. See CommandSucceeds.
+func CheckCommandSucceeds(cmd []string) CheckFunc {
+	return func(ctx context.Context, f Fetcher) (bool, error) {
+		_, err := f.Exec(ctx, cmd...)
+		return err == nil, nil
+	}
 }
 
 // Wait calls CheckFunc with given Fetcher repeatedly until the first success.

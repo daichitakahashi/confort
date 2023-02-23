@@ -212,7 +212,7 @@ func TestConfort_Run_ContainerIdentification(t *testing.T) {
 			Name:         containerName,
 			Image:        imageEcho,
 			ExposedPorts: []string{port},
-			Waiter:       wait.Healthy(),
+			Waiter:       wait.CommandSucceeds([]string{"wget", "-q", "--spider", "http://localhost"}),
 		})
 		if err != nil {
 			t.Fatal(err)
