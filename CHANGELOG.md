@@ -1,5 +1,11 @@
 # Changelog
 
+## [v1.3.2](https://github.com/daichitakahashi/confort/compare/v1.3.1...v1.3.2) - 2023-02-23
+- Update confort: add `BuildParams.RegistryAuth` to set auth config of docker registry by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/104
+- Update confort: add some params to `ContainerParams` by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/106
+- Update wait: add `Fetcher.Exec` and `CommandSucceeds` by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/107
+- Update internal/cmd: fix test stability by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/108
+
 ## [v1.3.1](https://github.com/daichitakahashi/confort/compare/v1.3.0...v1.3.1) - 2023-02-22
 - Update confort: resolve Docker host IP, which exposed ports will be bound. by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/102
 
