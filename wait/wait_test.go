@@ -2,6 +2,7 @@ package wait_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -88,6 +89,42 @@ func TestCheckHealthy(t *testing.T) {
 
 	time.Sleep(300 * time.Millisecond)
 	ok, err = wait.CheckHealthy(ctx, f)
+	if err != nil {
+		t.Fatal(err)
+	} else if !ok {
+		t.Fatal("expected to be completed")
+	}
+}
+
+func TestCheckCommandSucceeds(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	f := &mock.Fetcher{
+		ExecFunc: func(ctx context.Context, cmd ...string) ([]byte, error) {
+			d, _ := ctx.Deadline()
+			remain := d.Sub(time.Now())
+			if remain < 500*time.Millisecond {
+				return nil, nil
+			}
+			return nil, errors.New("temporary error")
+		},
+	}
+
+	check := wait.CheckCommandSucceeds([]string{"curl", "--fail", "http://localhost"})
+
+	time.Sleep(300 * time.Millisecond)
+	ok, err := check(ctx, f)
+	if err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Fatal("unexpected complete")
+	}
+
+	time.Sleep(300 * time.Millisecond)
+	ok, err = check(ctx, f)
 	if err != nil {
 		t.Fatal(err)
 	} else if !ok {
