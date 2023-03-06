@@ -45,71 +45,109 @@ var (
 	uniqueName, _ = unique.String(context.Background(), 16)
 )
 
+var (
+	done    = make(chan struct{})
+	once    sync.Once
+	cleanup func()
+)
+
+// Build communicator and echo images
+func prepareDependency() {
+	once.Do(func() {
+		defer func() {
+			select {
+			case <-done: // ok
+			default: // panic
+				if cleanup != nil {
+					cleanup()
+				}
+			}
+		}()
+
+		ctx := context.Background()
+		cft, err := confort.New(ctx,
+			confort.WithNamespace("for-build", false),
+		)
+		if err != nil {
+			log.Panic(err)
+		}
+		defer func() {
+			_ = cft.Close()
+		}()
+		cli, err := client.NewClientWithOpts(client.FromEnv)
+		if err != nil {
+			log.Panic(err)
+		}
+		cli.NegotiateAPIVersion(ctx)
+
+		defer func() {
+			_, err := cli.ImagesPrune(ctx, filters.NewArgs(
+				filters.Arg("dangling", "true"),
+			))
+			if err != nil {
+				log.Printf("prune dangling images failed: %s", err)
+			}
+		}()
+		log.Printf("building image: %s", imageCommunicator)
+		err = cft.Build(ctx, &confort.BuildParams{
+			Image:      imageCommunicator,
+			Dockerfile: "testdata/communicator/Dockerfile",
+			ContextDir: "testdata/communicator",
+		}, confort.WithBuildOutput(io.Discard), confort.WithForceBuild())
+		if err != nil {
+			log.Panic(err)
+		}
+		cleanup = func() {
+			log.Printf("remove image: %s", imageCommunicator)
+			_, err := cli.ImageRemove(ctx, imageCommunicator, types.ImageRemoveOptions{})
+			if err != nil {
+				log.Printf("failed to remove image %q: %s", imageCommunicator, err)
+			}
+		}
+		log.Printf("building image: %s", imageEcho)
+		err = cft.Build(ctx, &confort.BuildParams{
+			Image:      imageEcho,
+			Dockerfile: "testdata/echo/Dockerfile",
+			ContextDir: "testdata/echo/",
+		}, confort.WithBuildOutput(io.Discard), confort.WithForceBuild())
+		if err != nil {
+			log.Println(err)
+		}
+
+		cleanupCommunicator := cleanup
+		cleanup = func() {
+			cleanupCommunicator()
+
+			log.Printf("remove image: %s", imageEcho)
+			_, err := cli.ImageRemove(ctx, imageEcho, types.ImageRemoveOptions{})
+			if err != nil {
+				log.Printf("failed to remove image %q: %s", imageEcho, err)
+			}
+		}
+
+		close(done)
+	})
+	<-done
+}
+
 func TestMain(m *testing.M) {
-	ctx := context.Background()
 	err := os.Setenv(beacon.LogLevelEnv, "0")
 	if err != nil {
 		log.Panic(err)
 	}
 
-	cft, err := confort.New(ctx,
-		confort.WithNamespace("for-build", false),
-	)
-	if err != nil {
-		log.Panic(err)
-	}
-	defer func() {
-		_ = cft.Close()
-	}()
-	cli := cft.APIClient()
-
-	defer func() {
-		_, err := cli.ImagesPrune(ctx, filters.NewArgs(
-			filters.Arg("dangling", "true"),
-		))
-		if err != nil {
-			log.Printf("prune dangling images failed: %s", err)
-		}
-	}()
-	log.Printf("building image: %s", imageCommunicator)
-	err = cft.Build(ctx, &confort.BuildParams{
-		Image:      imageCommunicator,
-		Dockerfile: "testdata/communicator/Dockerfile",
-		ContextDir: "testdata/communicator",
-	}, confort.WithBuildOutput(io.Discard), confort.WithForceBuild())
-	if err != nil {
-		log.Panic(err)
-	}
-	defer func() {
-		log.Printf("remove image: %s", imageCommunicator)
-		_, err := cli.ImageRemove(ctx, imageCommunicator, types.ImageRemoveOptions{})
-		if err != nil {
-			log.Printf("failed to remove image %q: %s", imageCommunicator, err)
-		}
-	}()
-	log.Printf("building image: %s", imageEcho)
-	err = cft.Build(ctx, &confort.BuildParams{
-		Image:      imageEcho,
-		Dockerfile: "testdata/echo/Dockerfile",
-		ContextDir: "testdata/echo/",
-	}, confort.WithBuildOutput(io.Discard), confort.WithForceBuild())
-	if err != nil {
-		log.Println(err)
-	}
-	defer func() {
-		log.Printf("remove image: %s", imageEcho)
-		_, err := cli.ImageRemove(ctx, imageEcho, types.ImageRemoveOptions{})
-		if err != nil {
-			log.Printf("failed to remove image %q: %s", imageEcho, err)
-		}
-	}()
-
 	m.Run()
+	select {
+	case <-done:
+		cleanup()
+	default:
+	}
 }
 
 // test network creation and communication between host and container,
 // and between containers.
 func TestConfort_Run_Communication(t *testing.T) {
+	prepareDependency()
 	t.Parallel()
 
 	ctx := context.Background()
@@ -189,6 +227,7 @@ func TestConfort_Run_Communication(t *testing.T) {
 
 // test container identification with namespace
 func TestConfort_Run_ContainerIdentification(t *testing.T) {
+	prepareDependency()
 	t.Parallel()
 
 	var (
@@ -256,6 +295,7 @@ func TestConfort_Run_ContainerIdentification(t *testing.T) {
 
 // check test fails if container name conflicts between different images
 func TestConfort_Run_SameNameButAnotherImage(t *testing.T) {
+	prepareDependency()
 	t.Parallel()
 
 	var (
@@ -309,6 +349,7 @@ func TestConfort_Run_SameNameButAnotherImage(t *testing.T) {
 
 // test if container can join different networks simultaneously
 func TestConfort_Run_AttachAliasToAnotherNetwork(t *testing.T) {
+	prepareDependency()
 	t.Parallel()
 
 	var (
@@ -726,6 +767,7 @@ func TestWithDefaultTimeout(t *testing.T) {
 }
 
 func TestWithResourcePolicy(t *testing.T) {
+	prepareDependency()
 	t.Parallel()
 
 	ctx := context.Background()
@@ -934,6 +976,7 @@ func TestWithResourcePolicy(t *testing.T) {
 }
 
 func TestWithResourcePolicy_reusable(t *testing.T) {
+	prepareDependency()
 	t.Parallel()
 	ctx := context.Background()
 
@@ -1259,6 +1302,7 @@ func TestWithForceBuild_WithBuildOutput(t *testing.T) {
 }
 
 func TestWithContainerConfig(t *testing.T) {
+	prepareDependency()
 	t.Parallel()
 	ctx := context.Background()
 
@@ -1308,6 +1352,7 @@ func TestWithContainerConfig(t *testing.T) {
 }
 
 func TestWithHostConfig(t *testing.T) {
+	prepareDependency()
 	t.Parallel()
 	ctx := context.Background()
 
@@ -1360,6 +1405,7 @@ func TestWithHostConfig(t *testing.T) {
 }
 
 func TestWithNetworkingConfig(t *testing.T) {
+	prepareDependency()
 	t.Parallel()
 	ctx := context.Background()
 
@@ -1416,6 +1462,7 @@ func TestWithNetworkingConfig(t *testing.T) {
 }
 
 func TestWithConfigConsistency(t *testing.T) {
+	prepareDependency()
 	t.Parallel()
 	ctx := context.Background()
 
@@ -1574,6 +1621,7 @@ func TestWithPullOptions(t *testing.T) {
 }
 
 func TestWithInitFunc(t *testing.T) {
+	prepareDependency()
 	t.Parallel()
 	ctx := context.Background()
 
@@ -1682,6 +1730,7 @@ func assertEchoWorks(t *testing.T, endpoint string) {
 }
 
 func TestConfort_Run_UnsupportedStatus(t *testing.T) {
+	prepareDependency()
 	t.Parallel()
 
 	ctx := context.Background()
@@ -1748,6 +1797,7 @@ func TestConfort_Run_UnsupportedStatus(t *testing.T) {
 }
 
 func TestAcquire(t *testing.T) {
+	prepareDependency()
 	t.Parallel()
 	ctx := context.Background()
 
@@ -1794,7 +1844,7 @@ func TestAcquire(t *testing.T) {
 			return nil
 		}
 	}
-	test := func(ports map[*confort.Container]confort.Ports) error {
+	test := func(ports map[confort.AcquisitionTarget]confort.Ports) error {
 		oneHost := ports[one].HostPort(exposed)
 		twoHost := ports[two].HostPort(exposed)
 		communicate(t, oneHost, "exchange", "")

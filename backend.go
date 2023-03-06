@@ -510,10 +510,12 @@ func (d *dockerNamespace) StartContainer(ctx context.Context, name string) (Port
 	}
 
 	if c.wait != nil {
-		err = c.wait.Wait(ctx, &fetcher{
-			cli:         d.cli,
-			containerID: c.containerID,
-			ports:       portMap,
+		err = c.wait.WaitForReady(ctx, []wait.Fetcher{
+			&fetcher{
+				cli:         d.cli,
+				containerID: c.containerID,
+				ports:       portMap,
+			},
 		})
 		if err != nil {
 			return nil, err

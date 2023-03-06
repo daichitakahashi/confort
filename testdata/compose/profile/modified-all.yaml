@@ -1,0 +1,45 @@
+name: profile
+services:
+  controller:
+    image: alpine:3.16.2
+    labels:
+      daichitakahashi.confort.beacon.identifier: 8ec121c93e4a0de65f26e1500cb501e383531efb2c2ca9ec1d457478d6d3627b
+    networks:
+      default: null
+  server1:
+    profiles:
+    - webapp
+    image: alpine:3.16.2
+    labels:
+      daichitakahashi.confort.beacon.identifier: 8ec121c93e4a0de65f26e1500cb501e383531efb2c2ca9ec1d457478d6d3627b
+    networks:
+      default: null
+    ports:
+    - mode: ingress
+      target: 80
+      protocol: tcp
+  server2:
+    profiles:
+    - webapp
+    image: alpine:3.16.2
+    labels:
+      daichitakahashi.confort.beacon.identifier: 8ec121c93e4a0de65f26e1500cb501e383531efb2c2ca9ec1d457478d6d3627b
+    networks:
+      default: null
+    ports:
+    - mode: ingress
+      target: 80
+      protocol: tcp
+  webproxy:
+    profiles:
+    - proxy
+    image: nginx:latest
+    labels:
+      daichitakahashi.confort.beacon.identifier: 8ec121c93e4a0de65f26e1500cb501e383531efb2c2ca9ec1d457478d6d3627b
+    networks:
+      default: null
+networks:
+  default:
+    name: profile_default
+    labels:
+      daichitakahashi.confort.beacon.identifier: 8ec121c93e4a0de65f26e1500cb501e383531efb2c2ca9ec1d457478d6d3627b

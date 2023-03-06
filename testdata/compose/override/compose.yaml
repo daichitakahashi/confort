@@ -1,0 +1,16 @@
+services:
+  server1:
+    image: alpine:3.16.2
+    ports:
+      - 80/tcp
+  server2:
+    image: alpine:3.16.2
+    volumes:
+      - internal:/var/internal
+      - external:/var/external
+
+volumes:
+  internal:
+    external: false
+  external:
+    external: true

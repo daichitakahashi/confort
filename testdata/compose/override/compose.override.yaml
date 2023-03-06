@@ -1,0 +1,16 @@
+services:
+  server1:
+    image: alpine:3.16.2
+    ports:
+      - 8080/tcp
+    networks:
+      - default
+      - private-net
+  server2:
+    networks:
+      - default
+      - private-net
+
+networks:
+  private-net:
+    external: true

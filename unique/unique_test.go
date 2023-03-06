@@ -83,9 +83,6 @@ func TestWithRetry_ZeroValue(t *testing.T) {
 	t.Parallel()
 	opt := WithRetry(0)
 
-	// only coverage matters
-	opt.unique()
-
 	var maxUint uint
 	maxUint--
 	v := opt.Value().(uint)
