@@ -20,8 +20,8 @@ github.com/cpuguy83/go-md2man/v2 v2.0.0-20190314233015-f79a8a8ca69d/go.mod h1:ma
 github.com/creack/pty v1.1.7/go.mod h1:lj5s0c3V2DBrqTV7llrYr5NG6My20zk30Fl46Y7DoTY=
 github.com/creack/pty v1.1.18 h1:n56/Zwd5o6whRC5PMGretI4IdRLlmBXYNjScPaBgsbY=
 github.com/cyphar/filepath-securejoin v0.2.3/go.mod h1:aPGpWjXOXUn2NCNjFvBE6aRxGGx79pTxQpKOJNYHHl4=
-github.com/daichitakahashi/gocmd v1.0.11 h1:btY7153NeC/xJICpY4/XUFUtS7bzYGagYFM8VeVze2g=
-github.com/daichitakahashi/gocmd v1.0.11/go.mod h1:2NcWrNazm1+bXWvnOOaYexqXauYlZ6fqF2MFClCdqvQ=
+github.com/daichitakahashi/gocmd v1.0.12 h1:FRZvbTkPICfZBO5LqyfVRcskolxt+PhNhv64zg3TQyk=
+github.com/daichitakahashi/gocmd v1.0.12/go.mod h1:2NcWrNazm1+bXWvnOOaYexqXauYlZ6fqF2MFClCdqvQ=
 github.com/daichitakahashi/oncewait v1.0.0 h1:ANXeuO0JVVL4MPi8RlCB9sS1CffBV25Ux1ltc1MHrtA=
 github.com/daichitakahashi/oncewait v1.0.0/go.mod h1:KharQPUGj322xxiHjngOTcyKTLCTz8/FoUEQ918ZHCM=
 github.com/daichitakahashi/testingc v0.0.2 h1:iRF0qhnpaoqrzP2yM4jZOU0X3+JQ7tRH/574k2wtNMk=
