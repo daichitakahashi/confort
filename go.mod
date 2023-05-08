@@ -6,7 +6,7 @@ require (
 	github.com/daichitakahashi/gocmd v1.0.12
 	github.com/daichitakahashi/oncewait v1.0.0
 	github.com/daichitakahashi/testingc v0.0.2
-	github.com/docker/cli v23.0.5+incompatible
+	github.com/docker/cli v23.0.6+incompatible
 	github.com/docker/docker v23.0.5+incompatible
 	github.com/docker/go-connections v0.4.0
 	github.com/goccy/go-reflect v1.2.0
