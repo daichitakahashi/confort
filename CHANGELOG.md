@@ -1,5 +1,52 @@
 # Changelog
 
+## [v1.3.3](https://github.com/daichitakahashi/confort/compare/v1.3.2...v1.3.3) - 2023-07-28
+- Upgrade: Bump github.com/jackc/pgx/v4 from 4.18.0 to 4.18.1 by @dependabot in https://github.com/daichitakahashi/confort/pull/109
+- Upgrade: Bump github.com/moby/buildkit from 0.11.2 to 0.11.4 by @dependabot in https://github.com/daichitakahashi/confort/pull/111
+- Upgrade: Bump github.com/daichitakahashi/gocmd from 1.0.9 to 1.0.10 by @dependabot in https://github.com/daichitakahashi/confort/pull/114
+- Upgrade: Bump google.golang.org/protobuf from 1.28.1 to 1.29.0 by @dependabot in https://github.com/daichitakahashi/confort/pull/113
+- Upgrade: Bump go.uber.org/multierr from 1.9.0 to 1.10.0 by @dependabot in https://github.com/daichitakahashi/confort/pull/112
+- Upgrade: Bump google.golang.org/protobuf from 1.29.0 to 1.29.1 by @dependabot in https://github.com/daichitakahashi/confort/pull/115
+- Upgrade: Bump google.golang.org/protobuf from 1.29.1 to 1.30.0 by @dependabot in https://github.com/daichitakahashi/confort/pull/116
+- Upgrade: Bump google.golang.org/grpc from 1.53.0 to 1.54.0 by @dependabot in https://github.com/daichitakahashi/confort/pull/117
+- Upgrade: Bump github.com/docker/docker from 23.0.1+incompatible to 23.0.2+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/118
+- Upgrade: Bump github.com/docker/cli from 23.0.1+incompatible to 23.0.2+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/119
+- Upgrade: Bump go.uber.org/multierr from 1.10.0 to 1.11.0 by @dependabot in https://github.com/daichitakahashi/confort/pull/121
+- Upgrade: Bump github.com/opencontainers/runc from 1.1.4 to 1.1.5 by @dependabot in https://github.com/daichitakahashi/confort/pull/120
+- Upgrade: Bump github.com/docker/docker from 23.0.2+incompatible to 23.0.3+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/123
+- Upgrade: Bump github.com/docker/cli from 23.0.2+incompatible to 23.0.3+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/122
+- Upgrade: Bump github.com/daichitakahashi/gocmd from 1.0.10 to 1.0.11 by @dependabot in https://github.com/daichitakahashi/confort/pull/124
+- Upgrade: Bump github.com/docker/docker from 23.0.3+incompatible to 23.0.4+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/126
+- Upgrade: Bump github.com/docker/cli from 23.0.3+incompatible to 23.0.4+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/125
+- Upgrade: Bump github.com/docker/cli from 23.0.4+incompatible to 23.0.5+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/127
+- Upgrade: Bump github.com/docker/docker from 23.0.4+incompatible to 23.0.5+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/128
+- Upgrade: Bump github.com/daichitakahashi/gocmd from 1.0.11 to 1.0.12 by @dependabot in https://github.com/daichitakahashi/confort/pull/129
+- Upgrade: Bump golang.org/x/sync from 0.1.0 to 0.2.0 by @dependabot in https://github.com/daichitakahashi/confort/pull/131
+- Upgrade: Bump google.golang.org/grpc from 1.54.0 to 1.55.0 by @dependabot in https://github.com/daichitakahashi/confort/pull/130
+- Upgrade: Bump github.com/docker/cli from 23.0.5+incompatible to 23.0.6+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/132
+- Upgrade: Bump github.com/docker/docker from 23.0.5+incompatible to 23.0.6+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/133
+- Upgrade: Bump github.com/docker/distribution from 2.8.1+incompatible to 2.8.2+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/134
+- Upgrade: Bump github.com/docker/docker from 23.0.6+incompatible to 24.0.0+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/135
+- Upgrade: Bump github.com/docker/cli from 23.0.6+incompatible to 24.0.0+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/136
+- Upgrade: Bump github.com/docker/docker from 24.0.0+incompatible to 24.0.1+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/138
+- Upgrade: Bump github.com/docker/cli from 24.0.0+incompatible to 24.0.1+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/137
+- Upgrade: Bump github.com/docker/cli from 24.0.1+incompatible to 24.0.2+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/140
+- Upgrade: Bump github.com/docker/docker from 24.0.1+incompatible to 24.0.2+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/139
+- Upgrade: Bump github.com/daichitakahashi/gocmd from 1.0.12 to 1.0.13 by @dependabot in https://github.com/daichitakahashi/confort/pull/141
+- Upgrade: Bump golang.org/x/sync from 0.2.0 to 0.3.0 by @dependabot in https://github.com/daichitakahashi/confort/pull/142
+- Upgrade: Bump google.golang.org/grpc from 1.55.0 to 1.56.0 by @dependabot in https://github.com/daichitakahashi/confort/pull/143
+- Upgrade: Bump google.golang.org/protobuf from 1.30.0 to 1.31.0 by @dependabot in https://github.com/daichitakahashi/confort/pull/146
+- Upgrade: Bump github.com/daichitakahashi/gocmd from 1.0.13 to 1.0.14 by @dependabot in https://github.com/daichitakahashi/confort/pull/144
+- Upgrade: Bump google.golang.org/grpc from 1.56.0 to 1.56.1 by @dependabot in https://github.com/daichitakahashi/confort/pull/145
+- Upgrade: Bump google.golang.org/grpc from 1.56.1 to 1.56.2 by @dependabot in https://github.com/daichitakahashi/confort/pull/147
+- Upgrade: Bump github.com/docker/cli from 24.0.2+incompatible to 24.0.4+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/150
+- Upgrade: Bump github.com/docker/docker from 24.0.2+incompatible to 24.0.4+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/151
+- Upgrade: Bump github.com/daichitakahashi/gocmd from 1.0.14 to 1.0.16 by @dependabot in https://github.com/daichitakahashi/confort/pull/153
+- Upgrade: Bump github.com/docker/docker from 24.0.4+incompatible to 24.0.5+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/155
+- Upgrade: Bump github.com/docker/cli from 24.0.4+incompatible to 24.0.5+incompatible by @dependabot in https://github.com/daichitakahashi/confort/pull/156
+- Upgrade: Bump google.golang.org/grpc from 1.56.2 to 1.57.0 by @dependabot in https://github.com/daichitakahashi/confort/pull/157
+- Upgrade: Bump github.com/jackc/pgconn from 1.14.0 to 1.14.1 by @dependabot in https://github.com/daichitakahashi/confort/pull/154
+
 ## [v1.3.2](https://github.com/daichitakahashi/confort/compare/v1.3.1...v1.3.2) - 2023-02-23
 - Update confort: add `BuildParams.RegistryAuth` to set auth config of docker registry by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/104
 - Update confort: add some params to `ContainerParams` by @daichitakahashi in https://github.com/daichitakahashi/confort/pull/106
